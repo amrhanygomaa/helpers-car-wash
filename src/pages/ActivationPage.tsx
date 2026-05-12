@@ -14,7 +14,7 @@ const statusText = {
 };
 
 export function ActivationPage() {
-  const { licenseStatus, activateLicense, settings } = useApp();
+  const { licenseStatus, activateLicense } = useApp();
   const toast = useToast();
   const [serial, setSerial] = useState("");
   const [submitting, setSubmitting] = useState(false);
