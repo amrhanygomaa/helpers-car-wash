@@ -1,4 +1,4 @@
-const PREFIX = "helpers_warehouse_v1::";
+const PREFIX = "helpers_inventory_v1::";
 
 export function lsGet<T>(key: string, fallback: T): T {
   try {

@@ -398,7 +398,7 @@ export function SettingsPage() {
                 size="sm" 
                 className="w-full text-blue-600 border-blue-200 bg-blue-50 hover:bg-blue-100"
                 onClick={() => {
-                  const data = lsGet<unknown | null>("warehouse_auto_backup_internal", null);
+                  const data = lsGet<unknown | null>("inventory_auto_backup_internal", null);
                   if (data) {
                     const file = new File([JSON.stringify(data)], "internal_backup.json", { type: "application/json" });
                     importBackup(file).then(ok => {

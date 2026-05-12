@@ -13,16 +13,16 @@ import type {
 const today = new Date().toISOString().slice(0, 10);
 
 export const seedSettings: Settings = {
-  companyName: "Helpers Distribution",
-  companyNameAr: "شركة الهلبرز للتوزيع",
+  companyName: "Helpers Technology",
+  companyNameAr: "شركة هيلبيرز تيكنولوجي",
   invoiceFooter: "شكراً لتعاملكم معنا — يرجى مراجعة الفاتورة قبل الاستلام.",
   currency: "ج.م",
   lowStockThreshold: 10,
   arabicLabels: true,
   openingBalance: 0,
   printPaperSize: "A4",
-  logoText: "HD",
-  logoImage: "",
+  logoText: "HT",
+  logoImage: "./helpers_tech_logo.png",
   autoBackupEnabled: true,
   autoBackupFrequency: "daily",
   lastBackupDate: "",

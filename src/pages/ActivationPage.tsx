@@ -64,25 +64,31 @@ export function ActivationPage() {
     <div className="min-h-screen grid md:grid-cols-2 bg-slate-50" dir="rtl">
       <div className="hidden md:flex relative bg-gradient-to-br from-brand-700 to-brand-900 text-white p-10 flex-col justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-xl bg-white/10 grid place-items-center font-bold overflow-hidden">
-            {settings.logoImage ? (
-              <img src={settings.logoImage} alt="Logo" className="w-full h-full object-cover" />
-            ) : (
-              settings.logoText
-            )}
+          <div className="w-12 h-12 rounded-xl bg-white p-1 shadow-lg overflow-hidden">
+            <img src="./helpers_tech_logo.png" alt="Logo" className="w-full h-full object-contain" />
           </div>
           <div>
-            <div className="font-semibold">{settings.companyNameAr}</div>
-            <div className="text-xs text-white/70">{settings.companyName}</div>
+            <div className="font-bold text-lg">شركة هيلبيرز تيكنولوجي</div>
+            <div className="text-xs text-white/70 font-medium">Helpers Technology</div>
           </div>
         </div>
         <div className="space-y-4 max-w-md">
-          <ShieldCheck className="w-12 h-12 text-white/85" />
-          <h1 className="text-3xl font-bold leading-tight">تفعيل نسخة Helpers Warehouse</h1>
+          <div className="w-16 h-16 rounded-2xl bg-white/10 flex items-center justify-center mb-6">
+            <ShieldCheck className="w-10 h-10 text-white/85" />
+          </div>
+          <h1 className="text-3xl font-bold leading-tight">تفعيل نسخة Helpers Inventory</h1>
           <p className="text-white/80 text-sm leading-relaxed">
             التفعيل يتم بسيريال موقّع ومربوط بهذا الجهاز، وبعده يتم إنشاء حساب مدير
             النظام لأول مرة.
           </p>
+          <div className="pt-6 border-t border-white/10 mt-8">
+            <div className="text-xs text-white/60 mb-2">تطوير وتجهيز:</div>
+            <div className="text-sm font-semibold text-white/90">المطور: هيلبيرز تيكنولوجي (Helpers Technologies)</div>
+            <div className="flex flex-col gap-1 mt-3">
+              <div className="text-xs text-white/70">واتساب: 01118445625 (20+)</div>
+              <div className="text-xs text-white/70">الموقع: www.helpers-tech.com</div>
+            </div>
+          </div>
         </div>
         <div className="text-xs text-white/60">Helpers Technologies © 2026</div>
       </div>
@@ -149,7 +155,7 @@ export function ActivationPage() {
           </div>
 
           <a
-            href="https://wa.me/201118445625?text=%D8%A3%D8%B1%D9%8A%D8%AF%20%D8%AA%D9%81%D8%B9%D9%8A%D9%84%20%D9%86%D8%B3%D8%AE%D8%A9%20Helpers%20Warehouse"
+            href="https://wa.me/201118445625?text=%D8%A3%D8%B1%D9%8I%D8%AF%20%D8%AA%D9%81%D8%B9%D9%8I%D9%84%20%D9%86%D8%B3%D8%AE%D8%A9%20Helpers%20Inventory"
             target="_blank"
             rel="noreferrer"
             className="flex items-center justify-center gap-2 w-full py-3 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-sm transition-colors shadow-sm"

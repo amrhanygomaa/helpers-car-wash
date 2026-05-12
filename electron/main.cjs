@@ -9,10 +9,10 @@ const { machineIdSync } = require("node-machine-id");
 const { z } = require("zod");
 const { LICENSE_PUBLIC_KEY } = require("./license-public-key.cjs");
 
-const STORE_PREFIX = "helpers_warehouse_v1::";
+const STORE_PREFIX = "helpers_inventory_v1::";
 const LICENSE_TOKEN_KEY = "__license_token";
 const LICENSE_LAST_SEEN_KEY = "__license_last_seen_at";
-const APP_SALT = "helpers-warehouse-system-v1-local-license";
+const APP_SALT = "helpers-inventory-system-v1-local-license";
 const CLOCK_SKEW_MS = 5 * 60 * 1000;
 
 // ── SECURITY: Protected keys that cannot be written via renderer IPC ────
@@ -92,7 +92,7 @@ function getMachineMaterial() {
 function getMachineCode() {
   const digest = sha256(`${APP_SALT}:machine:${getMachineMaterial()}`).toUpperCase();
   const groups = digest.slice(0, 32).match(/.{1,4}/g) || [];
-  return `HTW-${groups.join("-")}`;
+  return `HTI-${groups.join("-")}`;
 }
 
 function getMachineHash() {
@@ -108,7 +108,7 @@ function openDatabase() {
 
   const userDataPath = app.getPath("userData");
   fs.mkdirSync(userDataPath, { recursive: true });
-  const dbPath = path.join(userDataPath, "helpers-warehouse.secure.sqlite");
+  const dbPath = path.join(userDataPath, "helpers-inventory.secure.sqlite");
   const existed = fs.existsSync(dbPath);
 
   db = new Database(dbPath);
@@ -386,7 +386,7 @@ function createWindow() {
     height: 860,
     minWidth: 1100,
     minHeight: 720,
-    title: "نظام إدارة المخزون والمبيعات",
+    title: "نظام إدارة المخزون والمبيعات — Helpers Inventory",
     icon: iconPath,
     autoHideMenuBar: true,
     webPreferences: {
@@ -529,13 +529,13 @@ function getInvoicePdfOptions() {
 
 function getPrintSettings() {
   return readJsonKey(`${STORE_PREFIX}settings`, {
-    companyName: "Helpers Distribution",
-    companyNameAr: "شركة الهلبرز للتوزيع",
+    companyName: "Helpers Technology",
+    companyNameAr: "شركة هيلبيرز تيكنولوجي",
     invoiceFooter: "",
     currency: "ج.م",
     arabicLabels: true,
-    logoText: "HD",
-    logoImage: "",
+    logoText: "HT",
+    logoImage: "./helpers_tech_logo.png",
     invoicesSavePath: "",
   });
 }

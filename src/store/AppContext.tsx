@@ -295,7 +295,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           stockMovements, cashEntries, nextProductCode, users, salesReturns, purchaseReturns, drivers
         }
       };
-      lsSet("warehouse_auto_backup_internal", data);
+      lsSet("inventory_auto_backup_internal", data);
       setSettings((current) => ({ ...current, lastBackupDate: now.toISOString() }));
       // SECURITY: Use a non-sensitive log message
       void 0; // Auto-backup performed silently
@@ -313,7 +313,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           stockMovements, cashEntries, nextProductCode, users, salesReturns, purchaseReturns, drivers
         }
       };
-      lsSet("warehouse_last_session_backup", data);
+      lsSet("inventory_last_session_backup", data);
     };
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
