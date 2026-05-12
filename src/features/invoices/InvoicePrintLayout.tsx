@@ -30,7 +30,8 @@ export function InvoicePrintLayout(props: Props) {
       className="min-h-screen bg-slate-50 p-6 print:p-0 print:bg-white"
       dir="rtl"
     >
-      <style dangerouslySetInnerHTML={{ __html: `
+      <style dangerouslySetInnerHTML={{
+        __html: `
         @media print {
           @page { size: A4 landscape; margin: 10mm; }
           body { background: white; }
@@ -179,7 +180,7 @@ export function InvoicePrintLayout(props: Props) {
         <div className="mt-8 pt-4 border-t border-slate-200 text-center text-xs text-slate-500 whitespace-pre-line">
           {settings.invoiceFooter}
         </div>
-        
+
         <div className="mt-16 grid grid-cols-2 gap-6 text-sm">
           <SignatureBlock label="توقيع المستلم" />
           <SignatureBlock label="توقيع المسؤول" />
@@ -187,7 +188,7 @@ export function InvoicePrintLayout(props: Props) {
 
         {/* Developer Info */}
         <div className="mt-12 text-center text-[10px] text-slate-400 font-medium">
-          برمجة وتطوير: م/ عمرو هاني — واتساب: 01118445625
+          برمجة وتطوير: شركة هلبرز تكنولوجي — واتساب: 01118445625
         </div>
       </div>
     </div>
@@ -205,9 +206,8 @@ function Row({
 }) {
   return (
     <div
-      className={`flex items-center justify-between py-1 ${
-        bold ? "text-slate-900 font-bold text-lg" : "text-slate-700 font-medium"
-      }`}
+      className={`flex items-center justify-between py-1 ${bold ? "text-slate-900 font-bold text-lg" : "text-slate-700 font-medium"
+        }`}
     >
       <span>{label}</span>
       <span className="tabular-nums font-mono">{value}</span>
