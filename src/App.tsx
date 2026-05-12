@@ -2,6 +2,8 @@ import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useApp } from "./store/AppContext";
 import { AppLayout } from "./components/layout/AppLayout";
 import { LoginPage } from "./pages/LoginPage";
+import { ActivationPage } from "./pages/ActivationPage";
+import { FirstRunSetupPage } from "./pages/FirstRunSetupPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { ProductsPage } from "./pages/ProductsPage";
 import { InventoryPage } from "./pages/InventoryPage";
@@ -48,7 +50,16 @@ function ProtectedShell({ children, permission, ownerOnly }: { children: React.R
 }
 
 export default function App() {
-  const { auth } = useApp();
+  const { auth, isDesktop, licenseStatus, ownerExists } = useApp();
+
+  if (isDesktop) {
+    if (!licenseStatus || licenseStatus.state !== "active") {
+      return <ActivationPage />;
+    }
+    if (!ownerExists) {
+      return <FirstRunSetupPage />;
+    }
+  }
 
   return (
     <Routes>

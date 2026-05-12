@@ -4,6 +4,7 @@ import { Table, TBody, TD, TH, THead, TR } from "../../components/ui/Table";
 import type { Product } from "../../types";
 import { useApp } from "../../store/AppContext";
 import { formatCurrency, formatDate } from "../../lib/format";
+import { formatStockMovementReference } from "../../lib/stockMovement";
 import { daysUntil } from "../../lib/utils";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { Activity } from "lucide-react";
@@ -15,7 +16,15 @@ export function ProductDetailsDrawer({
   product: Product | null;
   onClose: () => void;
 }) {
-  const { stockMovements, suppliers, settings } = useApp();
+  const {
+    stockMovements,
+    suppliers,
+    settings,
+    salesInvoices,
+    purchaseInvoices,
+    salesReturns,
+    purchaseReturns,
+  } = useApp();
   if (!product) return null;
 
   const supplier = suppliers.find((s) => s.id === product.supplierId);
@@ -120,7 +129,12 @@ export function ProductDetailsDrawer({
                         {m.quantity}
                       </TD>
                       <TD className="text-xs text-slate-500">
-                        {m.reason ?? m.referenceId ?? "—"}
+                        {formatStockMovementReference(m, {
+                          salesInvoices,
+                          purchaseInvoices,
+                          salesReturns,
+                          purchaseReturns,
+                        })}
                       </TD>
                     </TR>
                   ))}

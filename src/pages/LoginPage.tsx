@@ -13,21 +13,57 @@ export function LoginPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [supportOpen, setSupportOpen] = useState(false);
+  const [supportCode, setSupportCode] = useState("");
+  const [supportUsername, setSupportUsername] = useState("");
+  const [supportPassword, setSupportPassword] = useState("");
+  const [supportSubmitting, setSupportSubmitting] = useState(false);
 
-  function onSubmit(e: FormEvent) {
+  async function onSubmit(e: FormEvent) {
     e.preventDefault();
     if (!username.trim()) return;
     setSubmitting(true);
-    setTimeout(() => {
-      const success = login(username.trim(), password);
-      if (success) {
-        toast.success("تم تسجيل الدخول", "مرحباً بك في النظام");
-        navigate("/", { replace: true });
-      } else {
-        toast.error("فشل تسجيل الدخول", "اسم المستخدم أو كلمة المرور غير صحيحة");
-        setSubmitting(false);
-      }
-    }, 350);
+    
+    // The login function returns boolean; rate-limiting is handled at the IPC layer
+    // by the backend. We wrap in try/catch for safety.
+    let success = false;
+    try {
+      success = await login(username.trim(), password);
+    } catch {
+      // ignore
+    }
+
+    if (success) {
+      toast.success("تم تسجيل الدخول", "مرحباً بك في النظام");
+      navigate("/", { replace: true });
+    } else {
+      toast.error("فشل تسجيل الدخول", "اسم المستخدم أو كلمة المرور غير صحيحة. بعد 5 محاولات فاشلة سيتم قفل الحساب لمدة دقيقة.");
+      setSubmitting(false);
+    }
+  }
+
+  async function resetOwnerPassword() {
+    if (!window.desktopAPI?.auth) return;
+    if (!supportCode.trim() || !supportPassword || !supportUsername.trim()) {
+      toast.error("بيانات ناقصة", "أدخل كود الدعم وبيانات المدير الجديدة");
+      return;
+    }
+    setSupportSubmitting(true);
+    const result = await window.desktopAPI.auth.resetOwnerPassword(
+      supportCode.trim(),
+      supportUsername.trim(),
+      supportPassword
+    );
+    setSupportSubmitting(false);
+    if (result.ok) {
+      toast.success("تم تحديث بيانات المدير");
+      setSupportOpen(false);
+      setSupportCode("");
+      setSupportUsername("");
+      setSupportPassword("");
+    } else {
+      toast.error("فشل كود الدعم", "الكود غير صحيح أو منتهي الصلاحية");
+    }
   }
 
   return (
@@ -111,6 +147,48 @@ export function LoginPage() {
           <div className="text-[10px] text-slate-400 text-center">
             هذا النظام محمي ومشفر — Helpers Technologies © 2026
           </div>
+          {window.desktopAPI?.auth && (
+            <button
+              type="button"
+              onClick={() => setSupportOpen((v) => !v)}
+              className="w-full text-[11px] text-slate-400 hover:text-brand-700 transition-colors"
+            >
+              استعادة دخول المدير بكود دعم مؤقت
+            </button>
+          )}
+          {supportOpen && (
+            <div className="border border-slate-200 rounded-xl p-3 space-y-3 bg-slate-50">
+              <Field label="كود الدعم">
+                <Input
+                  value={supportCode}
+                  onChange={(e) => setSupportCode(e.target.value)}
+                  placeholder="HTSUP..."
+                />
+              </Field>
+              <Field label="اسم المدير الجديد">
+                <Input
+                  value={supportUsername}
+                  onChange={(e) => setSupportUsername(e.target.value)}
+                />
+              </Field>
+              <Field label="كلمة المرور الجديدة">
+                <Input
+                  type="password"
+                  value={supportPassword}
+                  onChange={(e) => setSupportPassword(e.target.value)}
+                />
+              </Field>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                onClick={resetOwnerPassword}
+                disabled={supportSubmitting}
+              >
+                {supportSubmitting ? "جاري التحقق..." : "تحديث بيانات المدير"}
+              </Button>
+            </div>
+          )}
         </form>
 
         <footer className="absolute bottom-6 left-0 right-0 px-6">

@@ -1,4 +1,5 @@
 import { NavLink } from "react-router-dom";
+import type { ComponentType } from "react";
 import {
   LayoutDashboard,
   Package,
@@ -17,8 +18,17 @@ import {
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useApp } from "../../store/AppContext";
+import type { UserPermissions } from "../../types";
 
-const NAV = [
+type NavItem = {
+  to: string;
+  label: string;
+  icon: ComponentType<{ className?: string }>;
+  permission?: keyof UserPermissions;
+  ownerOnly?: boolean;
+};
+
+const NAV: NavItem[] = [
   { to: "/", label: "لوحة التحكم", icon: LayoutDashboard },
   { to: "/products", label: "المنتجات", icon: Package, permission: "products" },
   { to: "/inventory", label: "المخزون", icon: Warehouse, permission: "products" },
@@ -45,7 +55,6 @@ export function Sidebar() {
     if (item.to === "/returns") {
       return currentUser.permissions.salesInvoices?.view || currentUser.permissions.purchaseInvoices?.view;
     }
-    // @ts-ignore - dynamic permission check
     if (item.permission && !currentUser.permissions[item.permission]?.view) return false;
     return true;
   });

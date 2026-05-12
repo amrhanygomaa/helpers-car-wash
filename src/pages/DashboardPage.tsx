@@ -25,7 +25,6 @@ import {
   Tooltip,
   ResponsiveContainer,
   CartesianGrid,
-  LabelList,
 } from "recharts";
 import { PageHeader } from "../components/layout/AppLayout";
 import { Card, CardBody, CardHeader } from "../components/ui/Card";

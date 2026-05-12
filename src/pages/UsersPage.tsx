@@ -6,6 +6,7 @@ import { Dialog } from "../components/ui/Dialog";
 import { Field, Input } from "../components/ui/Input";
 import { useToast } from "../components/ui/Toast";
 import type { AppUser, UserPermissions } from "../types";
+import { hashPassword } from "../lib/auth";
 
 const DEFAULT_PERMISSIONS: UserPermissions = {
   products: { view: false, add: false, edit: false, delete: false },
@@ -35,8 +36,9 @@ function UserFormDialog({
     editing?.permissions || DEFAULT_PERMISSIONS
   );
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
 
-  function handleSave() {
+  async function handleSave() {
     const e: Record<string, string> = {};
     if (!username.trim()) e.username = "مطلوب";
     if (!editing && !password) e.password = "مطلوب";
@@ -45,20 +47,22 @@ function UserFormDialog({
       return;
     }
 
+    setSaving(true);
     if (editing) {
       const patch: Partial<AppUser> = { username: username.trim(), permissions };
-      if (password) patch.passwordHash = btoa(password);
+      if (password) patch.passwordHash = await hashPassword(password);
       updateUser(editing.id, patch);
       toast.success("تم تحديث المستخدم");
     } else {
       addUser({
         username: username.trim(),
-        passwordHash: btoa(password),
+        passwordHash: await hashPassword(password),
         role: "employee",
         permissions,
       });
       toast.success("تم إضافة المستخدم");
     }
+    setSaving(false);
     onClose();
   }
 
@@ -71,7 +75,9 @@ function UserFormDialog({
       footer={
         <>
           <Button variant="outline" onClick={onClose}>إلغاء</Button>
-          <Button onClick={handleSave}>حفظ</Button>
+          <Button onClick={handleSave} disabled={saving}>
+            {saving ? "جاري الحفظ..." : "حفظ"}
+          </Button>
         </>
       }
     >

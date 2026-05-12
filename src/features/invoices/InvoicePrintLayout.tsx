@@ -32,7 +32,7 @@ export function InvoicePrintLayout(props: Props) {
     >
       <style dangerouslySetInnerHTML={{ __html: `
         @media print {
-          @page { size: landscape; margin: 10mm; }
+          @page { size: A4 landscape; margin: 10mm; }
           body { background: white; }
         }
       `}} />
@@ -179,9 +179,15 @@ export function InvoicePrintLayout(props: Props) {
         <div className="mt-8 pt-4 border-t border-slate-200 text-center text-xs text-slate-500 whitespace-pre-line">
           {settings.invoiceFooter}
         </div>
-        <div className="mt-8 grid grid-cols-2 gap-6 text-sm">
+        
+        <div className="mt-16 grid grid-cols-2 gap-6 text-sm">
           <SignatureBlock label="توقيع المستلم" />
           <SignatureBlock label="توقيع المسؤول" />
+        </div>
+
+        {/* Developer Info */}
+        <div className="mt-12 text-center text-[10px] text-slate-400 font-medium">
+          برمجة وتطوير: م/ عمرو هاني — واتساب: 01118445625
         </div>
       </div>
     </div>
@@ -212,7 +218,7 @@ function Row({
 function SignatureBlock({ label }: { label: string }) {
   return (
     <div>
-      <div className="h-12 border-b border-slate-400" />
+      <div className="h-16 border-b border-slate-400" />
       <div className="text-xs text-slate-500 mt-1 text-center">{label}</div>
     </div>
   );

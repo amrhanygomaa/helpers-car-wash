@@ -1,36 +1,19 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { PageHeader } from "../components/layout/AppLayout";
 import { Card, CardBody, CardHeader } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Field, Input, Select, Textarea } from "../components/ui/Input";
 import { useApp } from "../store/AppContext";
 import { useToast } from "../components/ui/Toast";
-import { Dialog } from "../components/ui/Dialog";
-import { Save, Printer, Download, Upload, Database, FileSpreadsheet, ShieldCheck, Clock, Image as ImageIcon, Trash2 } from "lucide-react";
+import { lsGet } from "../lib/storage";
+import { Save, Printer, Download, Upload, Database, FileSpreadsheet, ShieldCheck, Clock, Image as ImageIcon, Trash2, FolderOpen } from "lucide-react";
 
 export function SettingsPage() {
   const { settings, updateSettings, exportBackup, importBackup, exportToCSV } = useApp();
   const toast = useToast();
   const [form, setForm] = useState(settings);
-  const [showDevPanel, setShowDevPanel] = useState(false);
-  const [showPasswordDialog, setShowPasswordDialog] = useState(false);
-  const [devPassword, setDevPassword] = useState("");
-  const [showPw, setShowPw] = useState(false);
 
-  const handleDevAccess = () => {
-    setShowPasswordDialog(true);
-  };
-
-  const verifyPassword = () => {
-    if (devPassword.trim() === "HSAmora@26#active") {
-      setShowDevPanel(true);
-      setShowPasswordDialog(false);
-      setDevPassword("");
-      toast.success("تم الوصول للوحة المطور");
-    } else {
-      toast.error("كلمة مرور خاطئة");
-    }
-  };
+  useEffect(() => setForm(settings), [settings]);
 
   function save() {
     updateSettings(form);
@@ -213,10 +196,30 @@ export function SettingsPage() {
             <div className="flex items-center gap-3 bg-slate-50 border border-slate-100 rounded-lg p-3 md:col-span-2">
               <Printer className="w-5 h-5 text-slate-600" />
               <div className="text-sm text-slate-700">
-                يتم توليد فاتورة طباعة مستقلة عبر نافذة جديدة تلقائياً عند الضغط على زر "طباعة"
-                من صفحة الفاتورة.
+                يتم إرسال الفاتورة للطباعة من داخل التطبيق مباشرة عند الضغط على زر "طباعة".
               </div>
             </div>
+            <Field label="مجلد حفظ الفواتير (PDF)" className="md:col-span-3">
+              <div className="flex gap-2">
+                <Input
+                  value={form.invoicesSavePath}
+                  readOnly
+                  placeholder="اختر مجلداً..."
+                  className="bg-slate-50"
+                />
+                <Button
+                  variant="outline"
+                  onClick={async () => {
+                    if (window.desktopAPI?.setup?.selectDirectory) {
+                      const path = await window.desktopAPI.setup.selectDirectory();
+                      if (path) setForm({ ...form, invoicesSavePath: path });
+                    }
+                  }}
+                >
+                  <FolderOpen className="w-4 h-4" />
+                </Button>
+              </div>
+            </Field>
           </CardBody>
         </Card>
 
@@ -237,7 +240,12 @@ export function SettingsPage() {
               <Select
                 value={form.autoBackupFrequency}
                 disabled={!form.autoBackupEnabled}
-                onChange={(e) => setForm({ ...form, autoBackupFrequency: e.target.value as any })}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    autoBackupFrequency: e.target.value as typeof form.autoBackupFrequency,
+                  })
+                }
               >
                 <option value="daily">يومي</option>
                 <option value="weekly">أسبوعي</option>
@@ -259,10 +267,7 @@ export function SettingsPage() {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-brand-700 font-bold">
-                  <ShieldCheck 
-                    className="w-5 h-5 cursor-pointer hover:scale-110 transition-transform" 
-                    onClick={handleDevAccess}
-                  />
+                  <ShieldCheck className="w-5 h-5" />
                   <span>حالة الاشتراك</span>
                 </div>
                 <div className="text-[10px] text-slate-400 font-mono">ID: {settings.companyName.slice(0, 3)}-{new Date(form.subscriptionStartDate).getTime().toString().slice(-4)}</div>
@@ -358,86 +363,6 @@ export function SettingsPage() {
           </div>
         </Card>
 
-        {/* Developer Activation Dialog */}
-        <Dialog
-          open={showDevPanel}
-          onClose={() => setShowDevPanel(false)}
-          title="تفعيل المطور - إعدادات الترخيص"
-          width="lg"
-          footer={
-            <div className="flex gap-2 w-full">
-              <Button variant="outline" className="flex-1" onClick={() => setShowDevPanel(false)}>
-                إلغاء
-              </Button>
-              <Button className="flex-1" onClick={() => { save(); setShowDevPanel(false); }}>
-                حفظ وتفعيل الإعدادات
-              </Button>
-            </div>
-          }
-        >
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4" dir="rtl">
-            <div className="md:col-span-2 pb-2 border-b border-slate-100 mb-2 font-bold text-brand-700 flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4" /> إعدادات الاشتراك
-            </div>
-            <Field label="نوع الاشتراك">
-              <Select
-                value={form.subscriptionType}
-                onChange={(e) => setForm({ ...form, subscriptionType: e.target.value as any })}
-              >
-                <option value="lifetime">مدى الحياة</option>
-                <option value="limited">فترة محدودة</option>
-              </Select>
-            </Field>
-            <Field label="تاريخ البدء">
-              <Input
-                type="date"
-                value={form.subscriptionStartDate}
-                onChange={(e) => setForm({ ...form, subscriptionStartDate: e.target.value })}
-              />
-            </Field>
-            {form.subscriptionType === "limited" && (
-              <Field label="المدة (بالأشهر)">
-                <Input
-                  type="number"
-                  value={form.subscriptionMonths}
-                  onChange={(e) => setForm({ ...form, subscriptionMonths: Number(e.target.value) })}
-                />
-              </Field>
-            )}
-
-            <div className="md:col-span-2 pb-2 border-b border-slate-100 my-2 font-bold text-indigo-700 flex items-center gap-2">
-              <Clock className="w-4 h-4" /> إعدادات الضمان
-            </div>
-            <Field label="نوع الضمان">
-              <Select
-                value={form.warrantyType}
-                onChange={(e) => setForm({ ...form, warrantyType: e.target.value as any })}
-              >
-                <option value="none">بدون ضمان</option>
-                <option value="limited">ضمان محدود</option>
-              </Select>
-            </Field>
-            {form.warrantyType === "limited" && (
-              <>
-                <Field label="تاريخ البدء">
-                  <Input
-                    type="date"
-                    value={form.warrantyStartDate}
-                    onChange={(e) => setForm({ ...form, warrantyStartDate: e.target.value })}
-                  />
-                </Field>
-                <Field label="المدة (بالأشهر)">
-                  <Input
-                    type="number"
-                    value={form.warrantyMonths}
-                    onChange={(e) => setForm({ ...form, warrantyMonths: Number(e.target.value) })}
-                  />
-                </Field>
-              </>
-            )}
-          </div>
-        </Dialog>
-
         <Card className="lg:col-span-1">
           <CardHeader title="النسخة الاحتياطية" subtitle="حفظ واستعادة كل بيانات النظام" />
           <CardBody className="space-y-4">
@@ -473,9 +398,9 @@ export function SettingsPage() {
                 size="sm" 
                 className="w-full text-blue-600 border-blue-200 bg-blue-50 hover:bg-blue-100"
                 onClick={() => {
-                  const data = localStorage.getItem("warehouse_auto_backup_internal");
+                  const data = lsGet<unknown | null>("warehouse_auto_backup_internal", null);
                   if (data) {
-                    const file = new File([data], "internal_backup.json", { type: "application/json" });
+                    const file = new File([JSON.stringify(data)], "internal_backup.json", { type: "application/json" });
                     importBackup(file).then(ok => {
                       if (ok) toast.success("تم استعادة آخر نسخة تلقائية بنجاح");
                     });
@@ -512,51 +437,6 @@ export function SettingsPage() {
         </Card>
       </div>
 
-      <Dialog
-        open={showPasswordDialog}
-        onClose={() => {
-          setShowPasswordDialog(false);
-          setDevPassword("");
-          setShowPw(false);
-        }}
-        title="دخول المطور"
-        width="sm"
-        footer={
-          <div className="flex gap-2 w-full">
-            <Button variant="outline" className="flex-1" onClick={() => setShowPasswordDialog(false)}>
-              إلغاء
-            </Button>
-            <Button className="flex-1" onClick={verifyPassword}>
-              دخول
-            </Button>
-          </div>
-        }
-      >
-        <div className="py-2 space-y-4" dir="rtl">
-          <p className="text-sm text-slate-500 font-medium">برجاء إدخال كلمة مرور المطور للوصول:</p>
-          <div className="relative">
-            <Input 
-              type={showPw ? "text" : "password"} 
-              placeholder="كلمة المرور" 
-              value={devPassword} 
-              onChange={(e) => setDevPassword(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && verifyPassword()}
-              autoFocus
-            />
-            <button 
-              type="button"
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-brand-600 font-bold hover:underline"
-              onClick={() => setShowPw(!showPw)}
-            >
-              {showPw ? "إخفاء" : "إظهار"}
-            </button>
-          </div>
-          <p className="text-[10px] text-slate-400">تأكد من لغة لوحة المفاتيح (الإنجليزية) وحالة الأحرف.</p>
-        </div>
-      </Dialog>
-
     </>
   );
 }
-
-

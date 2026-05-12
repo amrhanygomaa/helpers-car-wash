@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   AlertTriangle,
   CalendarClock,
@@ -21,10 +22,21 @@ import { useApp } from "../store/AppContext";
 import { useToast } from "../components/ui/Toast";
 import { daysUntil } from "../lib/utils";
 import { formatDate } from "../lib/format";
+import { formatStockMovementReference } from "../lib/stockMovement";
 import type { Product } from "../types";
 
 export function InventoryPage() {
-  const { products, suppliers, stockMovements, adjustStock, settings } = useApp();
+  const {
+    products,
+    suppliers,
+    stockMovements,
+    adjustStock,
+    settings,
+    salesInvoices,
+    purchaseInvoices,
+    salesReturns,
+    purchaseReturns,
+  } = useApp();
   const toast = useToast();
   const [q, setQ] = useState("");
   const [category, setCategory] = useState("");
@@ -348,8 +360,38 @@ export function InventoryPage() {
                       {m.quantity > 0 ? "+" : ""}
                       {m.quantity}
                     </TD>
-                    <TD className="text-xs text-slate-500">
-                      {m.reason ?? m.referenceId ?? "—"}
+                    <TD className="text-xs">
+                      {(() => {
+                        const refText = formatStockMovementReference(m, {
+                          salesInvoices,
+                          purchaseInvoices,
+                          salesReturns,
+                          purchaseReturns,
+                        });
+                        if (!m.referenceId)
+                          return <span className="text-slate-500">{refText}</span>;
+
+                        let to = "";
+                        if (m.type === "sale" || m.referenceType === "sale")
+                          to = `/sales/${m.referenceId}`;
+                        else if (
+                          m.type === "purchase" ||
+                          m.referenceType === "purchase"
+                        )
+                          to = `/purchases/${m.referenceId}`;
+                        else if (m.type === "return") to = "/returns";
+
+                        if (!to)
+                          return <span className="text-slate-500">{refText}</span>;
+                        return (
+                          <Link
+                            to={to}
+                            className="text-brand-600 hover:text-brand-800 hover:underline font-medium"
+                          >
+                            {refText}
+                          </Link>
+                        );
+                      })()}
                     </TD>
                   </TR>
                 ))}

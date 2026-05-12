@@ -34,6 +34,8 @@ import { useToast } from "../components/ui/Toast";
 import { formatCurrency, formatDate } from "../lib/format";
 import { daysUntil, inRange } from "../lib/utils";
 
+type PrintMode = "full" | "sales" | "purchases" | "stock" | "customers" | "suppliers" | "commissions";
+
 export function ReportsPage() {
   const {
     products,
@@ -55,7 +57,7 @@ export function ReportsPage() {
     return d.toISOString().slice(0, 10);
   });
   const [to, setTo] = useState<string>(() => new Date().toISOString().slice(0, 10));
-  const [printMode, setPrintMode] = useState<"full" | "sales" | "purchases" | "stock" | "customers" | "suppliers" | "commissions">("full");
+  const [printMode, setPrintMode] = useState<PrintMode>("full");
 
   const salesInRange = useMemo(
     () => salesInvoices.filter((s) => !s.cancelled && inRange(s.date, from, to)),
@@ -156,7 +158,7 @@ export function ReportsPage() {
                 if (printMode === "full") {
                   toast.info("تصدير", "يرجى اختيار تقرير محدد (مبيعات، مشتريات، إلخ) للتصدير إلى Excel");
                 } else {
-                  exportToCSV(printMode as any);
+                  exportToCSV(printMode);
                 }
               }}
             >
@@ -189,7 +191,7 @@ export function ReportsPage() {
             <div className="flex items-center gap-2 ms-auto">
               <Select 
                 value={printMode} 
-                onChange={(e) => setPrintMode(e.target.value as any)}
+                onChange={(e) => setPrintMode(e.target.value as PrintMode)}
                 className="w-48 text-xs h-9"
               >
                 <option value="full">التقرير التحليلي الشامل</option>

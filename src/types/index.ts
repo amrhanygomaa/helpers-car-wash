@@ -4,6 +4,32 @@ export type PaymentStatus = "paid" | "partial" | "unpaid";
 export type SalesPaymentType = "cash" | "account";
 
 export type UserRole = "owner" | "employee";
+export type ActivationState =
+  | "inactive"
+  | "active"
+  | "expired"
+  | "machine_mismatch"
+  | "clock_tampered";
+
+export interface LicensePayload {
+  licenseId: string;
+  machineHash: string;
+  subscriptionType: "limited" | "lifetime";
+  subscriptionStartDate: string;
+  subscriptionExpiresAt: string | null;
+  warrantyStartDate: string | null;
+  warrantyExpiresAt: string | null;
+  issuedAt: string;
+  signature: string;
+}
+
+export interface LicenseStatus {
+  state: ActivationState;
+  machineCode: string;
+  machineHash: string;
+  license?: LicensePayload;
+  message?: string;
+}
 
 export interface UserPermissions {
   products: { view: boolean; add: boolean; edit: boolean; delete: boolean };
@@ -212,6 +238,7 @@ export interface Settings {
   autoBackupEnabled: boolean;
   autoBackupFrequency: "daily" | "weekly" | "monthly";
   lastBackupDate: string;
+  invoicesSavePath: string;
   subscriptionType: "limited" | "lifetime";
   subscriptionStartDate: string;
   subscriptionMonths: number;

@@ -9,12 +9,15 @@ import { Input, Select } from "../components/ui/Input";
 import { Table, TBody, TD, TH, THead, TR } from "../components/ui/Table";
 import { EmptyState } from "../components/ui/EmptyState";
 import { useApp } from "../store/AppContext";
+import { useToast } from "../components/ui/Toast";
 import { formatCurrency, formatDate } from "../lib/format";
 import { inRange } from "../lib/utils";
+import { printAppRoute } from "../lib/print";
 
 export function SalesInvoicesPage() {
   const { salesInvoices, customers, settings } = useApp();
   const navigate = useNavigate();
+  const toast = useToast();
   const [q, setQ] = useState("");
   const [customerId, setCustomerId] = useState("");
   const [status, setStatus] = useState("");
@@ -210,7 +213,12 @@ export function SalesInvoicesPage() {
                           size="icon"
                           variant="ghost"
                           title="طباعة"
-                          onClick={() => window.open(`/sales/${s.id}/print`, "_blank")}
+                          onClick={async () => {
+                            const result = await printAppRoute(`/sales/${s.id}/print`);
+                            if (!result.ok && result.error !== "cancelled") {
+                              toast.error("تعذر الطباعة", "تأكد من إعدادات الطابعة وحاول مرة أخرى");
+                            }
+                          }}
                         >
                           <Printer className="w-4 h-4" />
                         </Button>

@@ -22,8 +22,10 @@ import type {
   Driver,
   CommissionTier,
   CommissionType,
+  LicenseStatus,
 } from "../types";
 import { lsClearAll, lsGet, lsSet } from "../lib/storage";
+import { verifyFallbackPassword } from "../lib/auth";
 import {
   seedCashEntries,
   seedCustomers,
@@ -44,6 +46,9 @@ interface AuthState {
 
 interface AppState {
   auth: AuthState;
+  licenseStatus: LicenseStatus | null;
+  isDesktop: boolean;
+  ownerExists: boolean;
   settings: Settings;
   products: Product[];
   suppliers: Supplier[];
@@ -61,8 +66,11 @@ interface AppState {
 }
 
 interface AppActions {
-  login: (username: string, passwordHash: string) => boolean;
+  login: (username: string, password: string) => Promise<boolean>;
   logout: () => void;
+  refreshLicenseStatus: () => Promise<LicenseStatus | null>;
+  activateLicense: (serial: string) => Promise<{ ok: boolean; status: LicenseStatus }>;
+  createOwner: (username: string, password: string) => Promise<boolean>;
   resetDemo: () => void;
   updateSettings: (patch: Partial<Settings>) => void;
 
@@ -160,7 +168,46 @@ function computeStatus(
   return "partial";
 }
 
+function monthsBetween(start?: string | null, end?: string | null): number {
+  if (!start || !end) return 0;
+  const startDate = new Date(start);
+  const endDate = new Date(end);
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) return 0;
+  return Math.max(
+    0,
+    Math.round((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 30))
+  );
+}
+
+function applyLicenseSettings(settings: Settings, status: LicenseStatus | null): Settings {
+  if (!status?.license) return settings;
+  const license = status.license;
+  return {
+    ...settings,
+    subscriptionType: license.subscriptionType,
+    subscriptionStartDate: license.subscriptionStartDate.slice(0, 10),
+    subscriptionMonths:
+      license.subscriptionType === "limited"
+        ? monthsBetween(license.subscriptionStartDate, license.subscriptionExpiresAt)
+        : 0,
+    warrantyType: license.warrantyExpiresAt ? "limited" : "none",
+    warrantyStartDate: license.warrantyStartDate?.slice(0, 10) || "",
+    warrantyMonths: monthsBetween(license.warrantyStartDate, license.warrantyExpiresAt),
+  };
+}
+
 export function AppProvider({ children }: { children: ReactNode }) {
+  const isDesktop = Boolean(window.desktopAPI);
+  const [licenseStatus, setLicenseStatus] = useState<LicenseStatus | null>(
+    () =>
+      isDesktop
+        ? null
+        : {
+            state: "active",
+            machineCode: "WEB-DEVELOPMENT",
+            machineHash: "WEB-DEVELOPMENT",
+          }
+  );
   const [auth, setAuth] = useState<AuthState>(() =>
     lsGet<AuthState>("auth", { isAuthenticated: false })
   );
@@ -189,7 +236,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     lsGet<CashEntry[]>("cashEntries", seedCashEntries)
   );
   const [nextProductCode, setNextProductCode] = useState<number>(() =>
-    lsGet<number>("nextProductCode", 1012)
+    lsGet<number>("nextProductCode", 1000)
   );
   const [users, setUsers] = useState<AppUser[]>(() =>
     lsGet<AppUser[]>("users", seedUsers)
@@ -201,6 +248,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
     lsGet<PurchaseReturn[]>("purchaseReturns", [])
   );
   const [drivers, setDrivers] = useState<Driver[]>(() => lsGet("drivers", []));
+
+  const refreshLicenseStatus = useCallback(async () => {
+    if (!window.desktopAPI?.license) return null;
+    const status = await window.desktopAPI.license.getStatus();
+    setLicenseStatus(status);
+    setSettings((current) => applyLicenseSettings(current, status));
+    return status;
+  }, []);
+
+  useEffect(() => {
+    if (!window.desktopAPI?.license) return;
+    void refreshLicenseStatus();
+    const timer = window.setInterval(() => {
+      void refreshLicenseStatus();
+    }, 60_000);
+    return () => window.clearInterval(timer);
+  }, [refreshLicenseStatus]);
 
   // --- Auto Backup Logic ---
   useEffect(() => {
@@ -232,8 +296,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       };
       lsSet("warehouse_auto_backup_internal", data);
-      updateSettings({ lastBackupDate: now.toISOString() });
-      console.log("Auto-backup performed and saved to internal storage.");
+      setSettings((current) => ({ ...current, lastBackupDate: now.toISOString() }));
+      // SECURITY: Use a non-sensitive log message
+      void 0; // Auto-backup performed silently
     }
   }, [settings, products, suppliers, customers, purchaseInvoices, salesInvoices, stockMovements, cashEntries, nextProductCode, users, salesReturns, purchaseReturns, drivers]);
 
@@ -258,6 +323,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!auth.isAuthenticated || !auth.username) return null;
     return users.find((u) => u.username === auth.username) || null;
   }, [users, auth]);
+  const ownerExists = useMemo(() => users.some((u) => u.role === "owner"), [users]);
 
   useEffect(() => lsSet("auth", auth), [auth]);
   useEffect(() => lsSet("settings", settings), [settings]);
@@ -277,10 +343,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => lsSet("purchaseReturns", purchaseReturns), [purchaseReturns]);
   useEffect(() => lsSet("drivers", drivers), [drivers]);
 
-  const login = useCallback((username: string, passwordRaw: string) => {
+  const login = useCallback(async (username: string, passwordRaw: string) => {
+    if (window.desktopAPI?.auth) {
+      const result = await window.desktopAPI.auth.login(username, passwordRaw);
+      if (!result.ok) return false;
+      if (result.user) {
+        const updatedUser = result.user;
+        setUsers((list) =>
+          list.map((u) => (u.id === updatedUser.id ? updatedUser : u))
+        );
+      }
+      setAuth({ isAuthenticated: true, username });
+      return true;
+    }
+
     const user = users.find((u) => u.username === username);
     if (!user) return false;
-    if (user.passwordHash !== btoa(passwordRaw)) return false;
+    if (!(await verifyFallbackPassword(user.passwordHash, passwordRaw))) return false;
     setAuth({ isAuthenticated: true, username });
     return true;
   }, [users]);
@@ -288,9 +367,37 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setAuth({ isAuthenticated: false });
   }, []);
 
+  const activateLicense = useCallback(async (serial: string) => {
+    if (!window.desktopAPI?.license) {
+      const status: LicenseStatus = {
+        state: "active",
+        machineCode: "WEB-DEVELOPMENT",
+        machineHash: "WEB-DEVELOPMENT",
+      };
+      setLicenseStatus(status);
+      return { ok: true, status };
+    }
+    const result = await window.desktopAPI.license.activate(serial);
+    setLicenseStatus(result.status);
+    setSettings((current) => applyLicenseSettings(current, result.status));
+    return result;
+  }, []);
+
+  const createOwner = useCallback(async (username: string, password: string) => {
+    if (window.desktopAPI?.setup) {
+      const result = await window.desktopAPI.setup.createOwner(username, password);
+      if (!result.ok || !result.user) return false;
+      const owner = result.user;
+      setUsers((list) => [owner, ...list.filter((u) => u.id !== owner.id)]);
+      setAuth({ isAuthenticated: true, username: owner.username });
+      return true;
+    }
+    return false;
+  }, []);
+
   const resetDemo = useCallback(() => {
     lsClearAll();
-    setAuth({ isAuthenticated: true, username: "admin" });
+    setAuth({ isAuthenticated: false });
     setSettings(seedSettings);
     setProducts(seedProducts);
     setSuppliers(seedSuppliers);
@@ -299,7 +406,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSalesInvoices(seedSalesInvoices);
     setStockMovements(seedStockMovements);
     setCashEntries(seedCashEntries);
-    setNextProductCode(1012);
+    setNextProductCode(1000);
     setUsers(seedUsers);
     setSalesReturns([]);
     setPurchaseReturns([]);
@@ -307,6 +414,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const updateSettings = useCallback((patch: Partial<Settings>) => {
+    if (window.desktopAPI) {
+      const {
+        subscriptionType: _subscriptionType,
+        subscriptionStartDate: _subscriptionStartDate,
+        subscriptionMonths: _subscriptionMonths,
+        warrantyType: _warrantyType,
+        warrantyStartDate: _warrantyStartDate,
+        warrantyMonths: _warrantyMonths,
+        ...safePatch
+      } = patch;
+      void _subscriptionType;
+      void _subscriptionStartDate;
+      void _subscriptionMonths;
+      void _warrantyType;
+      void _warrantyStartDate;
+      void _warrantyMonths;
+      setSettings((s) => ({ ...s, ...safePatch }));
+      return;
+    }
     setSettings((s) => ({ ...s, ...patch }));
   }, []);
 
@@ -521,6 +647,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       productName: l.productName,
       type: "purchase",
       quantity: l.quantity,
+      reason: `فاتورة مشتريات ${inv.invoiceNumber}`,
       referenceId: id,
       referenceType: "purchase",
       date: inv.date,
@@ -617,6 +744,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       productName: l.productName,
       type: "sale",
       quantity: -l.quantity,
+      reason: `فاتورة مبيعات ${inv.invoiceNumber}`,
       referenceId: id,
       referenceType: "sale",
       date: inv.date,
@@ -894,12 +1022,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // --- Backup & Export ---
 
   const exportBackup: AppActions["exportBackup"] = useCallback(() => {
+    // SECURITY: Strip passwordHash from exported user data
+    const safeUsers = users.map(({ passwordHash: _pw, ...rest }) => ({ ...rest, passwordHash: "[REDACTED]" }));
     const data = {
       version: "1.0",
       timestamp: new Date().toISOString(),
       state: {
         settings, products, suppliers, customers, purchaseInvoices, salesInvoices,
-        stockMovements, cashEntries, nextProductCode, users, salesReturns, purchaseReturns, drivers
+        stockMovements, cashEntries, nextProductCode, users: safeUsers, salesReturns, purchaseReturns, drivers
       }
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
@@ -915,32 +1045,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       const text = await file.text();
       const data = JSON.parse(text);
-      if (!data.state) return false;
+      if (!data.state || !data.version) return false;
       
+      // SECURITY: Validate required structure keys
       const s = data.state;
+      const requiredKeys = ["products", "customers", "suppliers"];
+      if (!requiredKeys.some(k => Array.isArray(s[k]))) return false;
+
       if (s.settings) setSettings(s.settings);
-      if (s.products) setProducts(s.products);
-      if (s.suppliers) setSuppliers(s.suppliers);
-      if (s.customers) setCustomers(s.customers);
-      if (s.purchaseInvoices) setPurchaseInvoices(s.purchaseInvoices);
-      if (s.salesInvoices) setSalesInvoices(s.salesInvoices);
-      if (s.stockMovements) setStockMovements(s.stockMovements);
-      if (s.cashEntries) setCashEntries(s.cashEntries);
-      if (s.nextProductCode) setNextProductCode(s.nextProductCode);
-      if (s.users) setUsers(s.users);
-      if (s.salesReturns) setSalesReturns(s.salesReturns);
-      if (s.purchaseReturns) setPurchaseReturns(s.purchaseReturns);
-      if (s.drivers) setDrivers(s.drivers);
+      if (Array.isArray(s.products)) setProducts(s.products);
+      if (Array.isArray(s.suppliers)) setSuppliers(s.suppliers);
+      if (Array.isArray(s.customers)) setCustomers(s.customers);
+      if (Array.isArray(s.purchaseInvoices)) setPurchaseInvoices(s.purchaseInvoices);
+      if (Array.isArray(s.salesInvoices)) setSalesInvoices(s.salesInvoices);
+      if (Array.isArray(s.stockMovements)) setStockMovements(s.stockMovements);
+      if (Array.isArray(s.cashEntries)) setCashEntries(s.cashEntries);
+      if (typeof s.nextProductCode === "number") setNextProductCode(s.nextProductCode);
+      // SECURITY: Users with [REDACTED] passwords are NOT imported — keep current users
+      if (Array.isArray(s.users)) {
+        const hasValidPasswords = s.users.every((u: Record<string, unknown>) => typeof u.passwordHash === "string" && u.passwordHash !== "[REDACTED]");
+        if (hasValidPasswords) setUsers(s.users);
+      }
+      if (Array.isArray(s.salesReturns)) setSalesReturns(s.salesReturns);
+      if (Array.isArray(s.purchaseReturns)) setPurchaseReturns(s.purchaseReturns);
+      if (Array.isArray(s.drivers)) setDrivers(s.drivers);
       
       return true;
-    } catch (e) {
-      console.error(e);
+    } catch {
       return false;
     }
   }, []);
 
   const exportToCSV: AppActions["exportToCSV"] = useCallback((type) => {
-    let rows: any[] = [];
+    let rows: (string | number | undefined)[][] = [];
     let headers: string[] = [];
     
     if (type === "products") {
@@ -979,11 +1116,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     link.download = `${type}_export_${new Date().toISOString().slice(0, 10)}.csv`;
     link.click();
     URL.revokeObjectURL(url);
-  }, [products, customers, suppliers, salesInvoices, purchaseInvoices, customerBalance, supplierBalance]);
+  }, [products, customers, suppliers, salesInvoices, purchaseInvoices, customerBalance, supplierBalance, calculateSupplierCommission]);
 
   const value: AppContextValue = useMemo(
     () => ({
       auth,
+      licenseStatus,
+      isDesktop,
+      ownerExists,
       settings,
       products,
       suppliers,
@@ -1000,6 +1140,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       currentUser,
       login,
       logout,
+      refreshLicenseStatus,
+      activateLicense,
+      createOwner,
       resetDemo,
       updateSettings,
       addUser,
@@ -1042,6 +1185,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       auth,
+      licenseStatus,
+      isDesktop,
+      ownerExists,
       settings,
       products,
       suppliers,
@@ -1056,6 +1202,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       drivers,
       users,
       currentUser,
+      login,
+      refreshLicenseStatus,
+      activateLicense,
+      createOwner,
       calculateSupplierCommission,
       exportBackup,
       importBackup,

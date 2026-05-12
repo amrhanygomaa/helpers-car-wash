@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { ArrowRight, Ban, HandCoins, Printer, Trash2 } from "lucide-react";
 import { PageHeader } from "../components/layout/AppLayout";
 import { Card, CardBody, CardHeader } from "../components/ui/Card";
@@ -12,6 +12,7 @@ import { formatCurrency, formatDate } from "../lib/format";
 import { ConfirmDialog, Dialog } from "../components/ui/Dialog";
 import { Field, Input } from "../components/ui/Input";
 import { SalesReturnDialog } from "../features/returns/SalesReturnDialog";
+import { printAppRoute } from "../lib/print";
 
 export function SalesInvoiceDetailPage() {
   const { id } = useParams();
@@ -60,11 +61,17 @@ export function SalesInvoiceDetailPage() {
               <ArrowRight className="w-4 h-4" />
               رجوع
             </Button>
-            <Link to={`/sales/${inv.id}/print`} target="_blank">
-              <Button variant="outline">
-                <Printer className="w-4 h-4" /> طباعة
-              </Button>
-            </Link>
+            <Button
+              variant="outline"
+              onClick={async () => {
+                const result = await printAppRoute(`/sales/${inv.id}/print`);
+                if (!result.ok && result.error !== "cancelled") {
+                  toast.error("تعذر الطباعة", "تأكد من إعدادات الطابعة وحاول مرة أخرى");
+                }
+              }}
+            >
+              <Printer className="w-4 h-4" /> طباعة
+            </Button>
             {!inv.cancelled && inv.remaining > 0 ? (
               <Button onClick={() => { setPayAmount(inv.remaining); setPayOpen(true); }}>
                 <HandCoins className="w-4 h-4" /> تسجيل دفعة

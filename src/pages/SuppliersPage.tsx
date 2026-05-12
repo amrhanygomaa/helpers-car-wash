@@ -13,7 +13,7 @@ import { Drawer } from "../components/ui/Drawer";
 import { useApp } from "../store/AppContext";
 import { useToast } from "../components/ui/Toast";
 import { formatCurrency, formatDate } from "../lib/format";
-import type { Supplier, CommissionTier } from "../types";
+import type { Supplier, CommissionTier, CommissionType } from "../types";
 import { Select } from "../components/ui/Input";
 
 export function SuppliersPage() {
@@ -435,7 +435,7 @@ export function SuppliersPage() {
             <Field label="نوع العمولة">
               <Select 
                 value={tierForm.commissionType} 
-                onChange={e => setTierForm({...tierForm, commissionType: e.target.value as any})}
+                onChange={e => setTierForm({...tierForm, commissionType: e.target.value as CommissionType})}
               >
                 <option value="percentage">نسبة مئوية (%)</option>
                 <option value="fixed">مبلغ ثابت</option>
