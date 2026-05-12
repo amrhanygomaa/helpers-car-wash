@@ -13,7 +13,8 @@ import { Drawer } from "../components/ui/Drawer";
 import { useApp } from "../store/AppContext";
 import { useToast } from "../components/ui/Toast";
 import { formatCurrency, formatDate } from "../lib/format";
-import type { Supplier } from "../types";
+import type { Supplier, CommissionTier } from "../types";
+import { Select } from "../components/ui/Input";
 
 export function SuppliersPage() {
   const {
@@ -24,6 +25,11 @@ export function SuppliersPage() {
     supplierBalance,
     purchaseInvoices,
     settings,
+    calculateSupplierCommission,
+    addCommissionTier,
+    updateCommissionTier,
+    deleteCommissionTier,
+    currentUser,
   } = useApp();
   const toast = useToast();
 
@@ -32,6 +38,15 @@ export function SuppliersPage() {
   const [editing, setEditing] = useState<Supplier | null>(null);
   const [viewing, setViewing] = useState<Supplier | null>(null);
   const [toDelete, setToDelete] = useState<Supplier | null>(null);
+  
+  const [tierDialogOpen, setTierDialogOpen] = useState(false);
+  const [editingTier, setEditingTier] = useState<CommissionTier | null>(null);
+  const [tierForm, setTierForm] = useState<Omit<CommissionTier, "id">>({
+    threshold: 0,
+    commissionType: "percentage",
+    commissionValue: 0,
+    periodDays: 30,
+  });
 
   const [form, setForm] = useState<Omit<Supplier, "id" | "createdAt">>({
     name: "",
@@ -301,9 +316,149 @@ export function SuppliersPage() {
                 </div>
               )}
             </div>
+
+            {/* Commissions Section */}
+            <div className="pt-4 border-t border-slate-100">
+              <div className="flex items-center justify-between mb-3">
+                <div className="text-sm font-medium">نظام العمولات والبونص</div>
+                {currentUser?.role === "owner" && (
+                  <Button size="sm" variant="outline" onClick={() => {
+                    setEditingTier(null);
+                    setTierForm({ threshold: 0, commissionType: "percentage", commissionValue: 0, periodDays: 30 });
+                    setTierDialogOpen(true);
+                  }}>
+                    <Plus className="w-3.5 h-3.5" /> إضافة شريحة
+                  </Button>
+                )}
+              </div>
+
+              {calculateSupplierCommission(viewing.id).length === 0 ? (
+                <div className="text-xs text-slate-500 bg-slate-50 border border-slate-100 rounded-lg p-3 text-center">
+                  لا توجد شرائح عمولة محددة لهذا المورد.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {calculateSupplierCommission(viewing.id).map(res => (
+                    <div key={res.tierId} className="bg-white border border-slate-200 rounded-lg p-3 shadow-sm">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <div className="text-xs font-semibold text-slate-900">
+                            شريحة: {formatCurrency(res.threshold, settings.currency)} في {res.periodDays} يوم
+                          </div>
+                          <div className="text-[11px] text-slate-500 mt-0.5">
+                            العمولة: {res.commissionType === "percentage" ? `${res.commissionValue}%` : formatCurrency(res.commissionValue, settings.currency)}
+                          </div>
+                        </div>
+                        {currentUser?.role === "owner" && (
+                          <div className="flex gap-1">
+                            <button onClick={() => {
+                              const t = viewing.commissionTiers?.find(x => x.id === res.tierId);
+                              if (t) {
+                                setEditingTier(t);
+                                setTierForm({ ...t });
+                                setTierDialogOpen(true);
+                              }
+                            }} className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-brand-600 transition-colors">
+                              <Pencil className="w-3 h-3" />
+                            </button>
+                            <button onClick={() => deleteCommissionTier(viewing.id, res.tierId)} className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-red-600 transition-colors">
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      
+                      <div className="mt-3 pt-2 border-t border-slate-50 flex items-center justify-between">
+                        <div className="text-[11px]">
+                          <span className="text-slate-500">المشتريات الحالية: </span>
+                          <span className="font-medium">{formatCurrency(res.totalPurchases, settings.currency)}</span>
+                        </div>
+                        <div className="text-xs">
+                          <span className="text-slate-500">البونص: </span>
+                          <span className={`font-bold ${res.earned > 0 ? "text-emerald-600" : "text-slate-400"}`}>
+                            {formatCurrency(res.earned, settings.currency)}
+                          </span>
+                        </div>
+                      </div>
+                      
+                      {res.totalPurchases < res.threshold && (
+                        <div className="mt-1.5 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                          <div 
+                            className="h-full bg-brand-400" 
+                            style={{ width: `${Math.min(100, (res.totalPurchases / res.threshold) * 100)}%` }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  
+                  <div className="bg-emerald-50 border border-emerald-100 rounded-lg p-3 text-emerald-900">
+                    <div className="text-[11px] font-medium opacity-75">إجمالي البونص المستحق حالياً</div>
+                    <div className="text-lg font-bold leading-tight mt-0.5">
+                      {formatCurrency(calculateSupplierCommission(viewing.id).reduce((s, r) => s + r.earned, 0), settings.currency)}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         ) : null}
       </Drawer>
+
+      <Dialog
+        open={tierDialogOpen}
+        onClose={() => setTierDialogOpen(false)}
+        title={editingTier ? "تعديل شريحة عمولة" : "إضافة شريحة عمولة"}
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setTierDialogOpen(false)}>إلغاء</Button>
+            <Button onClick={() => {
+              if (viewing) {
+                if (editingTier) updateCommissionTier(viewing.id, editingTier.id, tierForm);
+                else addCommissionTier(viewing.id, tierForm);
+                setTierDialogOpen(false);
+                toast.success("تم الحفظ بنجاح");
+              }
+            }}>حفظ</Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <Field label="الحد الأدنى للمشتريات (Threshold)" required>
+            <Input 
+              type="number" 
+              value={tierForm.threshold} 
+              onChange={e => setTierForm({...tierForm, threshold: Number(e.target.value)})} 
+            />
+          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="نوع العمولة">
+              <Select 
+                value={tierForm.commissionType} 
+                onChange={e => setTierForm({...tierForm, commissionType: e.target.value as any})}
+              >
+                <option value="percentage">نسبة مئوية (%)</option>
+                <option value="fixed">مبلغ ثابت</option>
+              </Select>
+            </Field>
+            <Field label="القيمة">
+              <Input 
+                type="number" 
+                value={tierForm.commissionValue} 
+                onChange={e => setTierForm({...tierForm, commissionValue: Number(e.target.value)})} 
+              />
+            </Field>
+          </div>
+          <Field label="الفترة الزمنية (أيام)">
+            <Input 
+              type="number" 
+              value={tierForm.periodDays} 
+              onChange={e => setTierForm({...tierForm, periodDays: Number(e.target.value)})} 
+              placeholder="مثلاً: 30 يوم"
+            />
+          </Field>
+        </div>
+      </Dialog>
 
       <ConfirmDialog
         open={!!toDelete}

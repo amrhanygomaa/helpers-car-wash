@@ -25,6 +25,7 @@ import {
   Tooltip,
   ResponsiveContainer,
   CartesianGrid,
+  LabelList,
 } from "recharts";
 import { PageHeader } from "../components/layout/AppLayout";
 import { Card, CardBody, CardHeader } from "../components/ui/Card";
@@ -63,13 +64,15 @@ function StatCard({
         >
           {icon}
         </div>
-        <div className="min-w-0">
-          <div className="text-xs text-slate-500">{title}</div>
-          <div className="text-xl font-semibold text-slate-900 mt-0.5">
+        <div className="min-w-0 flex-1">
+          <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{title}</div>
+          <div className="text-2xl font-bold text-slate-900 mt-1 tabular-nums">
             {value}
           </div>
           {delta ? (
-            <div className="text-[11px] text-slate-400 mt-0.5">{delta}</div>
+            <div className="text-[10px] text-slate-500 mt-1 font-medium bg-slate-50 inline-block px-1.5 py-0.5 rounded-md border border-slate-100">
+              {delta}
+            </div>
           ) : null}
         </div>
       </CardBody>
@@ -338,23 +341,43 @@ export function DashboardPage() {
             subtitle="أعلى 5 منتجات"
           />
           <CardBody>
-            <div className="h-72">
+            <div className="h-72" dir="ltr">
               <ResponsiveContainer>
-                <BarChart data={topProductsByStock} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis type="number" fontSize={12} stroke="#94a3b8" />
+                <BarChart 
+                  data={topProductsByStock} 
+                  layout="vertical"
+                  margin={{ left: 10, right: 30, top: 0, bottom: 0 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" horizontal={false} />
+                  <XAxis type="number" fontSize={10} stroke="#94a3b8" />
                   <YAxis
                     type="category"
                     dataKey="name"
-                    width={120}
-                    fontSize={11}
+                    width={140}
+                    fontSize={12}
                     stroke="#475569"
+                    tick={{ fill: "#475569", fontWeight: 500, fontFamily: 'Cairo' }}
+                    axisLine={false}
+                    tickLine={false}
                   />
                   <Tooltip
-                    contentStyle={{ fontSize: 12, borderRadius: 8 }}
-                    formatter={(v) => formatNumber(Number(v)) as string}
+                    cursor={{ fill: "#f8fafc" }}
+                    contentStyle={{ fontSize: 12, borderRadius: 12, border: "none", boxShadow: "0 10px 15px -3px rgb(0 0 0 / 0.1)" }}
+                    formatter={(v) => [formatNumber(Number(v)), "الكمية"]}
                   />
-                  <Bar dataKey="qty" name="الكمية" fill="#6366f1" radius={[0, 6, 6, 0]} />
+                  <Bar 
+                    dataKey="qty" 
+                    name="الكمية" 
+                    fill="url(#barGradient)" 
+                    radius={[0, 4, 4, 0]} 
+                    barSize={20}
+                  />
+                  <defs>
+                    <linearGradient id="barGradient" x1="0" y1="0" x2="1" y2="0">
+                      <stop offset="0%" stopColor="#6366f1" />
+                      <stop offset="100%" stopColor="#818cf8" />
+                    </linearGradient>
+                  </defs>
                 </BarChart>
               </ResponsiveContainer>
             </div>

@@ -11,6 +11,7 @@ import { useToast } from "../components/ui/Toast";
 import { formatCurrency, formatDate } from "../lib/format";
 import { ConfirmDialog, Dialog } from "../components/ui/Dialog";
 import { Field, Input } from "../components/ui/Input";
+import { PurchaseReturnDialog } from "../features/returns/PurchaseReturnDialog";
 
 export function PurchaseInvoiceDetailPage() {
   const { id } = useParams();
@@ -27,6 +28,7 @@ export function PurchaseInvoiceDetailPage() {
   const [payOpen, setPayOpen] = useState(false);
   const [payAmount, setPayAmount] = useState(0);
   const [delOpen, setDelOpen] = useState(false);
+  const [returnOpen, setReturnOpen] = useState(false);
 
   if (!inv) {
     return (
@@ -66,6 +68,9 @@ export function PurchaseInvoiceDetailPage() {
                 <HandCoins className="w-4 h-4" /> تسجيل دفعة
               </Button>
             ) : null}
+            <Button variant="outline" onClick={() => setReturnOpen(true)}>
+              <ArrowRight className="w-4 h-4" /> إنشاء مرتجع
+            </Button>
             <Button variant="danger" onClick={() => setDelOpen(true)}>
               <Trash2 className="w-4 h-4" /> حذف
             </Button>
@@ -186,6 +191,14 @@ export function PurchaseInvoiceDetailPage() {
         variant="danger"
         confirmText="حذف نهائي"
       />
+
+      {returnOpen && (
+        <PurchaseReturnDialog
+          open={returnOpen}
+          onClose={() => setReturnOpen(false)}
+          invoice={inv}
+        />
+      )}
     </>
   );
 }

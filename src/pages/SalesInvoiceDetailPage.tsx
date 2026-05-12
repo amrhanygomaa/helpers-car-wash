@@ -11,6 +11,7 @@ import { useToast } from "../components/ui/Toast";
 import { formatCurrency, formatDate } from "../lib/format";
 import { ConfirmDialog, Dialog } from "../components/ui/Dialog";
 import { Field, Input } from "../components/ui/Input";
+import { SalesReturnDialog } from "../features/returns/SalesReturnDialog";
 
 export function SalesInvoiceDetailPage() {
   const { id } = useParams();
@@ -29,6 +30,7 @@ export function SalesInvoiceDetailPage() {
   const [payAmount, setPayAmount] = useState(0);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [delOpen, setDelOpen] = useState(false);
+  const [returnOpen, setReturnOpen] = useState(false);
 
   if (!inv) {
     return (
@@ -69,9 +71,14 @@ export function SalesInvoiceDetailPage() {
               </Button>
             ) : null}
             {!inv.cancelled ? (
-              <Button variant="outline" onClick={() => setCancelOpen(true)}>
-                <Ban className="w-4 h-4" /> إلغاء
-              </Button>
+              <>
+                <Button variant="outline" onClick={() => setReturnOpen(true)}>
+                  <ArrowRight className="w-4 h-4" /> إنشاء مرتجع
+                </Button>
+                <Button variant="outline" onClick={() => setCancelOpen(true)}>
+                  <Ban className="w-4 h-4" /> إلغاء
+                </Button>
+              </>
             ) : null}
             <Button variant="danger" onClick={() => setDelOpen(true)}>
               <Trash2 className="w-4 h-4" /> حذف
@@ -208,6 +215,14 @@ export function SalesInvoiceDetailPage() {
         variant="danger"
         confirmText="حذف نهائي"
       />
+
+      {returnOpen && (
+        <SalesReturnDialog
+          open={returnOpen}
+          onClose={() => setReturnOpen(false)}
+          invoice={inv}
+        />
+      )}
     </>
   );
 }

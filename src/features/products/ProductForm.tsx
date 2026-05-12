@@ -43,7 +43,7 @@ export function ProductFormDialog({
   onClose: () => void;
   editing?: Product | null;
 }) {
-  const { addProduct, updateProduct, suppliers } = useApp();
+  const { addProduct, updateProduct, suppliers, nextProductCode } = useApp();
   const toast = useToast();
   const [form, setForm] = useState<FormState>(EMPTY);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -55,10 +55,10 @@ export function ProductFormDialog({
       void _c;
       setForm(rest);
     } else {
-      setForm({ ...EMPTY, code: `P-${Math.floor(1000 + Math.random() * 9000)}` });
+      setForm({ ...EMPTY, code: nextProductCode.toString() });
     }
     setErrors({});
-  }, [editing, open]);
+  }, [editing, open, nextProductCode]);
 
   function validate(): boolean {
     const e: Record<string, string> = {};
@@ -112,7 +112,8 @@ export function ProductFormDialog({
         <Field label="كود المنتج" required error={errors.code}>
           <Input
             value={form.code}
-            onChange={(e) => set("code", e.target.value)}
+            readOnly
+            className="bg-gray-100 cursor-not-allowed text-gray-600 font-mono"
           />
         </Field>
         <Field label="اسم المنتج" required error={errors.name}>

@@ -7,6 +7,7 @@ import type {
   Settings,
   StockMovement,
   Supplier,
+  AppUser,
 } from "../types";
 
 function d(offset: number): string {
@@ -31,7 +32,36 @@ export const seedSettings: Settings = {
   openingBalance: 25000,
   printPaperSize: "A4",
   logoText: "HD",
+  logoImage: "",
+  autoBackupEnabled: true,
+  autoBackupFrequency: "daily",
+  lastBackupDate: "",
+  subscriptionType: "lifetime",
+  subscriptionStartDate: new Date().toISOString().slice(0, 10),
+  subscriptionMonths: 0,
+  warrantyType: "limited",
+  warrantyStartDate: new Date().toISOString().slice(0, 10),
+  warrantyMonths: 12,
 };
+
+export const seedUsers: AppUser[] = [
+  {
+    id: "usr_owner",
+    username: "admin",
+    passwordHash: btoa("admin123"),
+    role: "owner",
+    permissions: {
+      products: { view: true, add: true, edit: true, delete: true },
+      purchaseInvoices: { view: true, add: true },
+      salesInvoices: { view: true, add: true },
+      customers: { view: true, add: true, edit: true },
+      suppliers: { view: true, add: true, edit: true },
+      cashbox: { view: true },
+      reports: { view: true },
+    },
+    createdAt: ts(-365),
+  },
+];
 
 export const seedSuppliers: Supplier[] = [
   {
@@ -41,6 +71,10 @@ export const seedSuppliers: Supplier[] = [
     address: "القاهرة - العبور",
     notes: "توريد أسبوعي",
     commissionNote: "خصم 2% على الكميات الكبيرة",
+    commissionTiers: [
+      { id: "tier_1", threshold: 10000, commissionType: "percentage", commissionValue: 2, periodDays: 90 },
+      { id: "tier_2", threshold: 5000, commissionType: "fixed", commissionValue: 500, periodDays: 30 }
+    ],
     createdAt: ts(-120),
   },
   {
@@ -119,7 +153,7 @@ export const seedCustomers: Customer[] = [
 export const seedProducts: Product[] = [
   {
     id: "prd_01",
-    code: "RIC-001",
+    code: "1000",
     name: "أرز مصري فاخر 5 كجم",
     category: "مواد غذائية",
     unit: "كيس",
@@ -135,7 +169,7 @@ export const seedProducts: Product[] = [
   },
   {
     id: "prd_02",
-    code: "OIL-002",
+    code: "1001",
     name: "زيت عباد الشمس 1.8 لتر",
     category: "مواد غذائية",
     unit: "زجاجة",
@@ -150,7 +184,7 @@ export const seedProducts: Product[] = [
   },
   {
     id: "prd_03",
-    code: "SUG-003",
+    code: "1002",
     name: "سكر أبيض 1 كجم",
     category: "مواد غذائية",
     unit: "كيلو",
@@ -164,7 +198,7 @@ export const seedProducts: Product[] = [
   },
   {
     id: "prd_04",
-    code: "MLK-004",
+    code: "1003",
     name: "حليب طازج 1 لتر",
     category: "ألبان",
     unit: "علبة",
@@ -179,7 +213,7 @@ export const seedProducts: Product[] = [
   },
   {
     id: "prd_05",
-    code: "CHE-005",
+    code: "1004",
     name: "جبنة بيضاء 500 جم",
     category: "ألبان",
     unit: "علبة",
@@ -195,7 +229,7 @@ export const seedProducts: Product[] = [
   },
   {
     id: "prd_06",
-    code: "YOG-006",
+    code: "1005",
     name: "زبادي طبيعي 170 جم",
     category: "ألبان",
     unit: "كوب",
@@ -210,7 +244,7 @@ export const seedProducts: Product[] = [
   },
   {
     id: "prd_07",
-    code: "BRD-007",
+    code: "1006",
     name: "توست أبيض 500 جم",
     category: "مخبوزات",
     unit: "كيس",
@@ -225,7 +259,7 @@ export const seedProducts: Product[] = [
   },
   {
     id: "prd_08",
-    code: "BRD-008",
+    code: "1007",
     name: "كرواسون سادة",
     category: "مخبوزات",
     unit: "قطعة",
@@ -240,7 +274,7 @@ export const seedProducts: Product[] = [
   },
   {
     id: "prd_09",
-    code: "SOA-009",
+    code: "1008",
     name: "صابون سائل للأطباق 1 لتر",
     category: "منظفات",
     unit: "زجاجة",
@@ -254,7 +288,7 @@ export const seedProducts: Product[] = [
   },
   {
     id: "prd_10",
-    code: "SOA-010",
+    code: "1009",
     name: "مسحوق غسيل 3 كجم",
     category: "منظفات",
     unit: "كيس",
@@ -268,7 +302,7 @@ export const seedProducts: Product[] = [
   },
   {
     id: "prd_11",
-    code: "JUC-011",
+    code: "1010",
     name: "عصير مانجو 1 لتر",
     category: "مشروبات",
     unit: "علبة",
@@ -283,7 +317,7 @@ export const seedProducts: Product[] = [
   },
   {
     id: "prd_12",
-    code: "JUC-012",
+    code: "1011",
     name: "عصير برتقال 250 مل",
     category: "مشروبات",
     unit: "علبة صغيرة",
@@ -327,9 +361,9 @@ export const seedPurchaseInvoices: PurchaseInvoice[] = [
     supplierId: "sup_01",
     supplierName: "مصنع النيل للأغذية",
     lines: [
-      line("pl01", P("RIC-001"), 60, 95, d(180)),
-      line("pl02", P("OIL-002"), 40, 72, d(60)),
-      line("pl03", P("SUG-003"), 100, 28),
+      line("pl01", P("1000"), 60, 95, d(180)),
+      line("pl02", P("1001"), 40, 72, d(60)),
+      line("pl03", P("1002"), 100, 28),
     ],
     total: 60 * 95 + 40 * 72 + 100 * 28,
     amountPaid: 60 * 95 + 40 * 72 + 100 * 28,
@@ -345,9 +379,9 @@ export const seedPurchaseInvoices: PurchaseInvoice[] = [
     supplierId: "sup_02",
     supplierName: "شركة الدلتا للألبان",
     lines: [
-      line("pl11", P("MLK-004"), 50, 26, d(7)),
-      line("pl12", P("CHE-005"), 20, 55, d(-3)),
-      line("pl13", P("YOG-006"), 80, 8, d(14)),
+      line("pl11", P("1003"), 50, 26, d(7)),
+      line("pl12", P("1004"), 20, 55, d(-3)),
+      line("pl13", P("1005"), 80, 8, d(14)),
     ],
     total: 50 * 26 + 20 * 55 + 80 * 8,
     amountPaid: 2000,
@@ -361,7 +395,7 @@ export const seedPurchaseInvoices: PurchaseInvoice[] = [
     date: d(-20),
     supplierId: "sup_03",
     supplierName: "مخبز الإسكندرية الكبير",
-    lines: [line("pl21", P("BRD-007"), 60, 14, d(5)), line("pl22", P("BRD-008"), 150, 6, d(2))],
+    lines: [line("pl21", P("1006"), 60, 14, d(5)), line("pl22", P("1007"), 150, 6, d(2))],
     total: 60 * 14 + 150 * 6,
     amountPaid: 0,
     remaining: 60 * 14 + 150 * 6,
@@ -375,7 +409,7 @@ export const seedPurchaseInvoices: PurchaseInvoice[] = [
     date: d(-15),
     supplierId: "sup_04",
     supplierName: "مصنع النور للمنظفات",
-    lines: [line("pl31", P("SOA-009"), 60, 32), line("pl32", P("SOA-010"), 25, 120)],
+    lines: [line("pl31", P("1008"), 60, 32), line("pl32", P("1009"), 25, 120)],
     total: 60 * 32 + 25 * 120,
     amountPaid: 60 * 32 + 25 * 120,
     remaining: 0,
@@ -388,7 +422,7 @@ export const seedPurchaseInvoices: PurchaseInvoice[] = [
     date: d(-7),
     supplierId: "sup_05",
     supplierName: "شركة الواحة للعصائر",
-    lines: [line("pl41", P("JUC-011"), 80, 22, d(90)), line("pl42", P("JUC-012"), 120, 7, d(20))],
+    lines: [line("pl41", P("1010"), 80, 22, d(90)), line("pl42", P("1011"), 120, 7, d(20))],
     total: 80 * 22 + 120 * 7,
     amountPaid: 1500,
     remaining: 80 * 22 + 120 * 7 - 1500,
@@ -401,7 +435,7 @@ export const seedPurchaseInvoices: PurchaseInvoice[] = [
     date: d(-2),
     supplierId: "sup_01",
     supplierName: "مصنع النيل للأغذية",
-    lines: [line("pl51", P("RIC-001"), 30, 95, d(180)), line("pl52", P("SUG-003"), 50, 28)],
+    lines: [line("pl51", P("1000"), 30, 95, d(180)), line("pl52", P("1002"), 50, 28)],
     total: 30 * 95 + 50 * 28,
     amountPaid: 30 * 95 + 50 * 28,
     remaining: 0,
@@ -418,7 +452,7 @@ export const seedSalesInvoices: SalesInvoice[] = [
     customerId: "cus_01",
     customerName: "سوبر ماركت البركة",
     driverName: "محمود السائق",
-    lines: [line("sl01", P("RIC-001"), 10, 120), line("sl02", P("OIL-002"), 8, 88), line("sl03", P("SUG-003"), 20, 34)],
+    lines: [line("sl01", P("1000"), 10, 120), line("sl02", P("1001"), 8, 88), line("sl03", P("1002"), 20, 34)],
     total: 10 * 120 + 8 * 88 + 20 * 34,
     amountReceived: 10 * 120 + 8 * 88 + 20 * 34,
     remaining: 0,
@@ -432,7 +466,7 @@ export const seedSalesInvoices: SalesInvoice[] = [
     date: d(-18),
     customerId: "cus_02",
     customerName: "بقالة أبو يوسف",
-    lines: [line("sl11", P("MLK-004"), 12, 32), line("sl12", P("YOG-006"), 20, 11)],
+    lines: [line("sl11", P("1003"), 12, 32), line("sl12", P("1005"), 20, 11)],
     total: 12 * 32 + 20 * 11,
     amountReceived: 200,
     remaining: 12 * 32 + 20 * 11 - 200,
@@ -447,7 +481,7 @@ export const seedSalesInvoices: SalesInvoice[] = [
     customerId: "cus_03",
     customerName: "محلات السعادة",
     driverName: "أحمد سائق التوزيع",
-    lines: [line("sl21", P("BRD-007"), 15, 20), line("sl22", P("BRD-008"), 40, 10)],
+    lines: [line("sl21", P("1006"), 15, 20), line("sl22", P("1007"), 40, 10)],
     total: 15 * 20 + 40 * 10,
     amountReceived: 0,
     remaining: 15 * 20 + 40 * 10,
@@ -462,7 +496,7 @@ export const seedSalesInvoices: SalesInvoice[] = [
     date: d(-7),
     customerId: "cus_04",
     customerName: "ماركت النخبة",
-    lines: [line("sl31", P("SOA-009"), 10, 42), line("sl32", P("SOA-010"), 5, 150)],
+    lines: [line("sl31", P("1008"), 10, 42), line("sl32", P("1009"), 5, 150)],
     total: 10 * 42 + 5 * 150,
     amountReceived: 10 * 42 + 5 * 150,
     remaining: 0,
@@ -477,7 +511,7 @@ export const seedSalesInvoices: SalesInvoice[] = [
     customerId: "cus_05",
     customerName: "سوبر ماركت الفجر",
     driverName: "كريم سائق",
-    lines: [line("sl41", P("JUC-011"), 20, 30), line("sl42", P("JUC-012"), 50, 11)],
+    lines: [line("sl41", P("1010"), 20, 30), line("sl42", P("1011"), 50, 11)],
     total: 20 * 30 + 50 * 11,
     amountReceived: 600,
     remaining: 20 * 30 + 50 * 11 - 600,
@@ -491,7 +525,7 @@ export const seedSalesInvoices: SalesInvoice[] = [
     date: d(-2),
     customerId: "cus_01",
     customerName: "سوبر ماركت البركة",
-    lines: [line("sl51", P("RIC-001"), 5, 120), line("sl52", P("SUG-003"), 10, 34)],
+    lines: [line("sl51", P("1000"), 5, 120), line("sl52", P("1002"), 10, 34)],
     total: 5 * 120 + 10 * 34,
     amountReceived: 5 * 120 + 10 * 34,
     remaining: 0,
@@ -506,7 +540,7 @@ export const seedSalesInvoices: SalesInvoice[] = [
     customerId: "cus_02",
     customerName: "بقالة أبو يوسف",
     driverName: "محمود السائق",
-    lines: [line("sl61", P("MLK-004"), 6, 32), line("sl62", P("BRD-007"), 10, 20)],
+    lines: [line("sl61", P("1003"), 6, 32), line("sl62", P("1006"), 10, 20)],
     total: 6 * 32 + 10 * 20,
     amountReceived: 0,
     remaining: 6 * 32 + 10 * 20,
@@ -520,7 +554,7 @@ export const seedSalesInvoices: SalesInvoice[] = [
     date: d(0),
     customerId: "cus_03",
     customerName: "محلات السعادة",
-    lines: [line("sl71", P("JUC-011"), 12, 30), line("sl72", P("SOA-009"), 6, 42)],
+    lines: [line("sl71", P("1010"), 12, 30), line("sl72", P("1008"), 6, 42)],
     total: 12 * 30 + 6 * 42,
     amountReceived: 12 * 30 + 6 * 42,
     remaining: 0,

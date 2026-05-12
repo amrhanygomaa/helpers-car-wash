@@ -19,13 +19,13 @@ export default {
       },
       fontFamily: {
         sans: [
+          "Cairo",
           "Inter",
           "ui-sans-serif",
           "system-ui",
           "-apple-system",
           "Segoe UI",
           "Roboto",
-          "Cairo",
           "Tajawal",
           "sans-serif",
         ],

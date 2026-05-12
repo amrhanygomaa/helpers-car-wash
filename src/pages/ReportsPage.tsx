@@ -26,7 +26,7 @@ import { PageHeader } from "../components/layout/AppLayout";
 import { Card, CardBody, CardHeader } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Badge } from "../components/ui/Badge";
-import { Input, Field } from "../components/ui/Input";
+import { Input, Field, Select } from "../components/ui/Input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/Tabs";
 import { Table, TBody, TD, TH, THead, TR } from "../components/ui/Table";
 import { useApp } from "../store/AppContext";
@@ -44,6 +44,8 @@ export function ReportsPage() {
     settings,
     customerBalance,
     supplierBalance,
+    calculateSupplierCommission,
+    exportToCSV,
   } = useApp();
   const toast = useToast();
 
@@ -53,6 +55,7 @@ export function ReportsPage() {
     return d.toISOString().slice(0, 10);
   });
   const [to, setTo] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [printMode, setPrintMode] = useState<"full" | "sales" | "purchases" | "stock" | "customers" | "suppliers" | "commissions">("full");
 
   const salesInRange = useMemo(
     () => salesInvoices.filter((s) => !s.cancelled && inRange(s.date, from, to)),
@@ -65,6 +68,13 @@ export function ReportsPage() {
 
   const totalSales = salesInRange.reduce((a, s) => a + s.total, 0);
   const totalPurchases = purchasesInRange.reduce((a, p) => a + p.total, 0);
+
+  const totalCommissions = useMemo(() => {
+    return suppliers.reduce((sum, s) => {
+      const comms = calculateSupplierCommission(s.id);
+      return sum + comms.reduce((a, c) => a + c.earned, 0);
+    }, 0);
+  }, [suppliers, calculateSupplierCommission]);
 
   const estimatedProfit = useMemo(() => {
     // approximate profit based on productId cost vs sale price per line
@@ -135,49 +145,79 @@ export function ReportsPage() {
 
   return (
     <>
-      <PageHeader
-        title="التقارير"
-        description="تقارير عملية لأداء الأعمال"
-        actions={
-          <Button variant="outline" onClick={() => toast.info("تصدير", "في النسخة الكاملة سيتم التصدير إلى Excel/PDF")}>
-            <Download className="w-4 h-4" /> تصدير
-          </Button>
-        }
-      />
+      <div className="no-print">
+        <PageHeader
+          title="التقارير"
+          description="تقارير عملية لأداء الأعمال"
+          actions={
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                if (printMode === "full") {
+                  toast.info("تصدير", "يرجى اختيار تقرير محدد (مبيعات، مشتريات، إلخ) للتصدير إلى Excel");
+                } else {
+                  exportToCSV(printMode as any);
+                }
+              }}
+            >
+              <Download className="w-4 h-4" /> تصدير
+            </Button>
+          }
+        />
+      </div>
 
-      <Card>
-        <CardBody className="flex flex-wrap gap-3 items-end">
-          <Field label="من تاريخ">
-            <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-44" />
-          </Field>
-          <Field label="إلى تاريخ">
-            <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-44" />
-          </Field>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => { const d=new Date(); d.setDate(d.getDate()-7); setFrom(d.toISOString().slice(0,10)); setTo(new Date().toISOString().slice(0,10));}}>
-              آخر 7 أيام
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => { const d=new Date(); d.setDate(d.getDate()-30); setFrom(d.toISOString().slice(0,10)); setTo(new Date().toISOString().slice(0,10));}}>
-              آخر 30 يوم
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => { const d=new Date(); d.setDate(d.getDate()-90); setFrom(d.toISOString().slice(0,10)); setTo(new Date().toISOString().slice(0,10));}}>
-              آخر 90 يوم
-            </Button>
-          </div>
-          <Button variant="outline" className="ms-auto" onClick={() => window.print()}>
-            <Printer className="w-4 h-4" /> طباعة
-          </Button>
-        </CardBody>
-      </Card>
+      <div className="no-print">
+        <Card>
+          <CardBody className="flex flex-wrap gap-3 items-end">
+            <Field label="من تاريخ">
+              <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-44" />
+            </Field>
+            <Field label="إلى تاريخ">
+              <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-44" />
+            </Field>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => { const d=new Date(); d.setDate(d.getDate()-7); setFrom(d.toISOString().slice(0,10)); setTo(new Date().toISOString().slice(0,10));}}>
+                آخر 7 أيام
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => { const d=new Date(); d.setDate(d.getDate()-30); setFrom(d.toISOString().slice(0,10)); setTo(new Date().toISOString().slice(0,10));}}>
+                آخر 30 يوم
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => { const d=new Date(); d.setDate(d.getDate()-90); setFrom(d.toISOString().slice(0,10)); setTo(new Date().toISOString().slice(0,10));}}>
+                آخر 90 يوم
+              </Button>
+            </div>
+            <div className="flex items-center gap-2 ms-auto">
+              <Select 
+                value={printMode} 
+                onChange={(e) => setPrintMode(e.target.value as any)}
+                className="w-48 text-xs h-9"
+              >
+                <option value="full">التقرير التحليلي الشامل</option>
+                <option value="sales">تقرير مبيعات الفترة</option>
+                <option value="purchases">تقرير مشتريات الفترة</option>
+                <option value="stock">كشف حالة المخزون</option>
+                <option value="customers">كشف أرصدة العملاء</option>
+                <option value="suppliers">كشف أرصدة الموردين</option>
+                <option value="commissions">تقرير عمولات الموردين</option>
+              </Select>
+              <Button variant="outline" onClick={() => window.print()}>
+                <Printer className="w-4 h-4" /> طباعة
+              </Button>
+            </div>
+          </CardBody>
+        </Card>
+      </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="no-print grid grid-cols-2 md:grid-cols-5 gap-3">
         <Stat icon={<TrendingUp className="w-5 h-5" />} tone="green" label="إجمالي المبيعات" value={formatCurrency(totalSales, settings.currency)} />
         <Stat icon={<TrendingDown className="w-5 h-5" />} tone="blue" label="إجمالي المشتريات" value={formatCurrency(totalPurchases, settings.currency)} />
         <Stat icon={<Coins className="w-5 h-5" />} tone="amber" label="الربح التقديري" value={formatCurrency(estimatedProfit, settings.currency)} />
+        <Stat icon={<TrendingUp className="w-5 h-5" />} tone="emerald" label="بونص الموردين" value={formatCurrency(totalCommissions, settings.currency)} />
         <Stat icon={<Package className="w-5 h-5" />} tone="indigo" label="عدد الفواتير" value={`${salesInRange.length} / ${purchasesInRange.length}`} />
       </div>
 
-      <Tabs defaultValue="sales">
+      <div className="no-print">
+        <Tabs defaultValue="sales">
         <TabsList>
           <TabsTrigger value="sales">تقرير المبيعات</TabsTrigger>
           <TabsTrigger value="purchases">تقرير المشتريات</TabsTrigger>
@@ -185,6 +225,7 @@ export function ReportsPage() {
           <TabsTrigger value="lowstock">منخفض/منتهي</TabsTrigger>
           <TabsTrigger value="customers">أرصدة العملاء</TabsTrigger>
           <TabsTrigger value="suppliers">أرصدة الموردين</TabsTrigger>
+          <TabsTrigger value="commissions">عمولات الموردين</TabsTrigger>
         </TabsList>
 
         <TabsContent value="sales">
@@ -193,12 +234,21 @@ export function ReportsPage() {
               <CardHeader title="المبيعات اليومية" />
               <CardBody className="h-72">
                 <ResponsiveContainer>
-                  <LineChart data={dailyData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                    <XAxis dataKey="date" fontSize={12} stroke="#94a3b8" />
-                    <YAxis fontSize={12} stroke="#94a3b8" />
-                    <Tooltip formatter={(v) => formatCurrency(Number(v), settings.currency) as string} />
-                    <Line type="monotone" dataKey="sales" name="مبيعات" stroke="#10b981" strokeWidth={2} dot={false} />
+                  <LineChart data={dailyData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.1}/>
+                        <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                    <XAxis dataKey="date" fontSize={12} stroke="#94a3b8" tick={{ fill: "#64748b" }} />
+                    <YAxis fontSize={12} stroke="#94a3b8" tick={{ fill: "#64748b" }} />
+                    <Tooltip 
+                      contentStyle={{ borderRadius: 12, border: "none", boxShadow: "0 10px 15px -3px rgb(0 0 0 / 0.1)" }}
+                      formatter={(v) => [formatCurrency(Number(v), settings.currency), "مبيعات"]} 
+                    />
+                    <Line type="monotone" dataKey="sales" name="مبيعات" stroke="#10b981" strokeWidth={3} dot={{ r: 4, fill: "#10b981", strokeWidth: 2, stroke: "#fff" }} activeDot={{ r: 6 }} />
                   </LineChart>
                 </ResponsiveContainer>
               </CardBody>
@@ -211,13 +261,28 @@ export function ReportsPage() {
                 ) : (
                   <ResponsiveContainer>
                     <PieChart>
-                      <Pie data={categoryShare} dataKey="value" nameKey="name" innerRadius={50} outerRadius={90}>
+                      <Pie 
+                        data={categoryShare} 
+                        dataKey="value" 
+                        nameKey="name" 
+                        innerRadius={60} 
+                        outerRadius={80} 
+                        paddingAngle={5}
+                      >
                         {categoryShare.map((_, idx) => (
-                          <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
+                          <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} stroke="none" />
                         ))}
                       </Pie>
-                      <Legend />
-                      <Tooltip formatter={(v) => formatCurrency(Number(v), settings.currency) as string} />
+                      <Legend 
+                        verticalAlign="bottom" 
+                        height={36} 
+                        iconType="circle"
+                        wrapperStyle={{ fontSize: '12px', paddingTop: '20px' }}
+                      />
+                      <Tooltip 
+                        contentStyle={{ borderRadius: 12, border: "none", boxShadow: "0 10px 15px -3px rgb(0 0 0 / 0.1)" }}
+                        formatter={(v) => formatCurrency(Number(v), settings.currency) as string} 
+                      />
                     </PieChart>
                   </ResponsiveContainer>
                 )}
@@ -454,8 +519,374 @@ export function ReportsPage() {
             </CardBody>
           </Card>
         </TabsContent>
+
+        <TabsContent value="commissions">
+          <Card>
+            <CardHeader title="تفاصيل عمولات وبونص الموردين" />
+            <CardBody>
+              <Table>
+                <THead>
+                  <TR>
+                    <TH>المورد</TH>
+                    <TH>الشريحة</TH>
+                    <TH className="text-end">المشتريات الحالية</TH>
+                    <TH className="text-end">البونص المستحق</TH>
+                  </TR>
+                </THead>
+                <TBody>
+                  {suppliers.map((s) => {
+                    const comms = calculateSupplierCommission(s.id);
+                    if (comms.length === 0) return null;
+                    return comms.map((c, idx) => (
+                      <TR key={`${s.id}-${c.tierId}`}>
+                        <TD className={idx === 0 ? "font-medium" : "opacity-0"}>{idx === 0 ? s.name : ""}</TD>
+                        <TD className="text-xs text-slate-600">
+                          {formatCurrency(c.threshold, settings.currency)} ({c.periodDays} يوم)
+                        </TD>
+                        <TD className="text-end">{formatCurrency(c.totalPurchases, settings.currency)}</TD>
+                        <TD className="text-end font-bold text-emerald-600">
+                          {c.earned > 0 ? formatCurrency(c.earned, settings.currency) : "—"}
+                        </TD>
+                      </TR>
+                    ));
+                  })}
+                  {suppliers.every(s => calculateSupplierCommission(s.id).length === 0) && (
+                    <TR>
+                      <TD colSpan={4} className="text-center py-8 text-slate-500">لا توجد شرائح عمولة مسجلة</TD>
+                    </TR>
+                  )}
+                </TBody>
+              </Table>
+            </CardBody>
+          </Card>
+        </TabsContent>
       </Tabs>
+      </div>
+
+      {/* Print-Only Layout (Statement Style) */}
+      <div className="print-only font-sans text-slate-900">
+        <div className="border-b-2 border-slate-900 pb-6 mb-8 flex justify-between items-end">
+          <div>
+            <h1 className="text-3xl font-bold">{settings.companyNameAr}</h1>
+            <p className="text-lg text-slate-600 mt-1">{settings.companyName}</p>
+            <div className="mt-4 space-y-1 text-sm text-slate-500">
+              <p>تاريخ استخراج التقرير: {formatDate(new Date().toISOString())}</p>
+              <p>الفترة من: {formatDate(from)} إلى: {formatDate(to)}</p>
+            </div>
+          </div>
+          <div className="text-right">
+            <div className="w-20 h-20 bg-slate-900 text-white rounded-2xl grid place-items-center text-3xl font-bold mb-3 ms-auto">
+              {settings.logoText}
+            </div>
+            <h2 className="text-xl font-bold tracking-widest uppercase">
+              {printMode === "full" && "كشف حساب مالي تحليلي"}
+              {printMode === "sales" && "تقرير مبيعات تفصيلي"}
+              {printMode === "purchases" && "تقرير مشتريات تفصيلي"}
+              {printMode === "stock" && "تقرير جرد المخزون"}
+              {printMode === "customers" && "كشف أرصدة مديونيات العملاء"}
+              {printMode === "suppliers" && "كشف مستحقات الموردين"}
+              {printMode === "commissions" && "تقرير عمولات الموردين"}
+            </h2>
+            <p className="text-xs opacity-50">نظام الهلبرز لإدارة المستودعات</p>
+          </div>
+        </div>
+
+        {printMode === "full" && (
+          <>
+            <div className="grid grid-cols-2 gap-8 mb-10">
+              <section>
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 border-b pb-1">الخلاصة المالية</h3>
+                <table className="w-full text-sm">
+                  <tbody className="divide-y divide-slate-100">
+                    <TR_Print label="إجمالي قيمة المبيعات" value={formatCurrency(totalSales, settings.currency)} />
+                    <TR_Print label="إجمالي قيمة المشتريات" value={formatCurrency(totalPurchases, settings.currency)} />
+                    <TR_Print label="إجمالي مرتجعات البيع" value={formatCurrency(salesInRange.reduce((a, s) => a + (s.total < 0 ? s.total : 0), 0), settings.currency)} />
+                    <TR_Print label="الربح التشغيلي التقديري" value={formatCurrency(estimatedProfit, settings.currency)} highlight />
+                    <TR_Print label="إجمالي العمولات المستحقة" value={formatCurrency(totalCommissions, settings.currency)} highlight />
+                  </tbody>
+                </table>
+              </section>
+              <section>
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 border-b pb-1">إحصائيات العمليات</h3>
+                <table className="w-full text-sm">
+                  <tbody className="divide-y divide-slate-100">
+                    <TR_Print label="عدد فواتير البيع" value={salesInRange.length.toString()} />
+                    <TR_Print label="عدد فواتير الشراء" value={purchasesInRange.length.toString()} />
+                    <TR_Print label="أعلى فئة مبيعاً" value={categoryShare[0]?.name || "—"} />
+                    <TR_Print label="متوسط قيمة الفاتورة" value={formatCurrency(totalSales / (salesInRange.length || 1), settings.currency)} />
+                  </tbody>
+                </table>
+              </section>
+            </div>
+
+            <div className="space-y-10">
+              <section className="break-inside-avoid">
+                <h3 className="text-sm font-bold mb-4 bg-slate-100 p-2 border-r-4 border-slate-900">أداء المنتجات (الأكثر مبيعاً)</h3>
+                <table className="w-full text-left text-sm">
+                  <thead>
+                    <tr className="border-b-2 border-slate-200">
+                      <th className="py-2 text-right">المنتج</th>
+                      <th className="py-2 text-center">الكمية المباعة</th>
+                      <th className="py-2 text-left">إجمالي الإيراد</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {topProducts.map((p, i) => (
+                      <tr key={i}>
+                        <td className="py-2 text-right font-medium">{p.name}</td>
+                        <td className="py-2 text-center tabular-nums">{p.qty}</td>
+                        <td className="py-2 text-left tabular-nums font-mono">{formatCurrency(p.revenue, settings.currency)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </section>
+
+              <section className="break-inside-avoid">
+                <h3 className="text-sm font-bold mb-4 bg-slate-100 p-2 border-r-4 border-slate-900">مديونيات العملاء والموردين</h3>
+                <div className="grid grid-cols-2 gap-8">
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-500 mb-2">أعلى 5 مديونيات عملاء</h4>
+                    <table className="w-full text-xs">
+                      <tbody className="divide-y divide-slate-50">
+                        {customers.map(c => ({ name: c.name, bal: customerBalance(c.id) }))
+                          .filter(x => x.bal > 0)
+                          .sort((a,b) => b.bal - a.bal)
+                          .slice(0, 5)
+                          .map((x, i) => (
+                            <tr key={i}><td className="py-1 text-right">{x.name}</td><td className="py-1 text-left tabular-nums font-mono font-semibold">{formatCurrency(x.bal, settings.currency)}</td></tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-500 mb-2">أعلى 5 مستحقات موردين</h4>
+                    <table className="w-full text-xs">
+                      <tbody className="divide-y divide-slate-50">
+                        {suppliers.map(s => ({ name: s.name, bal: supplierBalance(s.id) }))
+                          .filter(x => x.bal > 0)
+                          .sort((a,b) => b.bal - a.bal)
+                          .slice(0, 5)
+                          .map((x, i) => (
+                            <tr key={i}><td className="py-1 text-right">{x.name}</td><td className="py-1 text-left tabular-nums font-mono font-semibold">{formatCurrency(x.bal, settings.currency)}</td></tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </>
+        )}
+
+        {printMode === "sales" && (
+          <section>
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b-2 border-slate-200">
+                  <th className="py-2 text-right">رقم الفاتورة</th>
+                  <th className="py-2 text-right">التاريخ</th>
+                  <th className="py-2 text-right">العميل</th>
+                  <th className="py-2 text-left">الإجمالي</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {salesInRange.map((s, i) => (
+                  <tr key={i}>
+                    <td className="py-2 text-right font-mono tabular-nums">{s.invoiceNumber}</td>
+                    <td className="py-2 text-right tabular-nums">{formatDate(s.date)}</td>
+                    <td className="py-2 text-right">{s.customerName}</td>
+                    <td className="py-2 text-left tabular-nums font-mono">{formatCurrency(s.total, settings.currency)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-slate-900 font-bold bg-slate-50">
+                  <td colSpan={3} className="py-3 text-right">الإجمالي الكلي للمبيعات</td>
+                  <td className="py-3 text-left tabular-nums font-mono text-lg">{formatCurrency(totalSales, settings.currency)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </section>
+        )}
+
+        {printMode === "purchases" && (
+          <section>
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b-2 border-slate-200">
+                  <th className="py-2 text-right">رقم الفاتورة</th>
+                  <th className="py-2 text-right">التاريخ</th>
+                  <th className="py-2 text-right">المورد</th>
+                  <th className="py-2 text-left">الإجمالي</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {purchasesInRange.map((p, i) => (
+                  <tr key={i}>
+                    <td className="py-2 text-right font-mono tabular-nums">{p.invoiceNumber}</td>
+                    <td className="py-2 text-right tabular-nums">{formatDate(p.date)}</td>
+                    <td className="py-2 text-right">{p.supplierName}</td>
+                    <td className="py-2 text-left tabular-nums font-mono">{formatCurrency(p.total, settings.currency)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-slate-900 font-bold bg-slate-50">
+                  <td colSpan={3} className="py-3 text-right">الإجمالي الكلي للمشتريات</td>
+                  <td className="py-3 text-left tabular-nums font-mono text-lg">{formatCurrency(totalPurchases, settings.currency)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </section>
+        )}
+
+        {printMode === "stock" && (
+          <section>
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b-2 border-slate-200">
+                  <th className="py-2 text-right">الكود</th>
+                  <th className="py-2 text-right">المنتج</th>
+                  <th className="py-2 text-center">الكمية</th>
+                  <th className="py-2 text-left">قيمة المخزون (شراء)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {products.map((p, i) => (
+                  <tr key={i}>
+                    <td className="py-2 text-right font-mono tabular-nums">{p.code}</td>
+                    <td className="py-2 text-right">{p.name}</td>
+                    <td className="py-2 text-center tabular-nums">{p.quantity} {p.unit}</td>
+                    <td className="py-2 text-left tabular-nums font-mono">{formatCurrency(p.quantity * p.purchasePrice, settings.currency)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-slate-900 font-bold bg-slate-50">
+                  <td colSpan={3} className="py-3 text-right">قيمة المخزون الكلية (سعر الشراء)</td>
+                  <td className="py-3 text-left tabular-nums font-mono text-lg">{formatCurrency(products.reduce((a,p) => a + (p.quantity * p.purchasePrice), 0), settings.currency)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </section>
+        )}
+
+        {printMode === "customers" && (
+          <section>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b-2 border-slate-200">
+                  <th className="py-2 text-right">العميل</th>
+                  <th className="py-2 text-right">الهاتف</th>
+                  <th className="py-2 text-left">الرصيد المستحق</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {customers.map((c, i) => {
+                  const bal = customerBalance(c.id);
+                  if (bal === 0) return null;
+                  return (
+                    <tr key={i}>
+                      <td className="py-2 text-right font-medium">{c.name}</td>
+                      <td className="py-2 text-right text-slate-500 tabular-nums">{c.phone || "—"}</td>
+                      <td className="py-2 text-left font-bold tabular-nums font-mono">{formatCurrency(bal, settings.currency)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-slate-900 font-bold bg-slate-50">
+                  <td colSpan={2} className="py-3 text-right">إجمالي أرصدة العملاء المستحقة</td>
+                  <td className="py-3 text-left tabular-nums font-mono text-lg">{formatCurrency(customers.reduce((a,c) => a + customerBalance(c.id), 0), settings.currency)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </section>
+        )}
+
+        {printMode === "suppliers" && (
+          <section>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b-2 border-slate-200">
+                  <th className="py-2 text-right">المورد</th>
+                  <th className="py-2 text-right">الهاتف</th>
+                  <th className="py-2 text-left">الرصيد المستحق</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {suppliers.map((s, i) => {
+                  const bal = supplierBalance(s.id);
+                  if (bal === 0) return null;
+                  return (
+                    <tr key={i}>
+                      <td className="py-2 text-right font-medium">{s.name}</td>
+                      <td className="py-2 text-right text-slate-500 tabular-nums">{s.phone || "—"}</td>
+                      <td className="py-2 text-left font-bold tabular-nums font-mono">{formatCurrency(bal, settings.currency)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-slate-900 font-bold bg-slate-50">
+                  <td colSpan={2} className="py-3 text-right">إجمالي مستحقات الموردين</td>
+                  <td className="py-3 text-left tabular-nums font-mono text-lg">{formatCurrency(suppliers.reduce((a,s) => a + supplierBalance(s.id), 0), settings.currency)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </section>
+        )}
+
+        {printMode === "commissions" && (
+          <section>
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b-2 border-slate-200">
+                  <th className="py-2 text-right">المورد</th>
+                  <th className="py-2 text-right">الشريحة (الهدف)</th>
+                  <th className="py-2 text-center">المشتريات الحالية</th>
+                  <th className="py-2 text-left">البونص المستحق</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {suppliers.flatMap(s => calculateSupplierCommission(s.id).map(c => ({ sName: s.name, ...c }))).map((row, i) => (
+                  <tr key={i}>
+                    <td className="py-2 text-right font-medium">{row.sName}</td>
+                    <td className="py-2 text-right">{formatCurrency(row.threshold, settings.currency)} ({row.periodDays} يوم)</td>
+                    <td className="py-2 text-center">{formatCurrency(row.totalPurchases, settings.currency)}</td>
+                    <td className="py-2 text-left font-bold text-emerald-700 tabular-nums font-mono">{formatCurrency(row.earned, settings.currency)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-slate-900 font-bold bg-slate-50">
+                  <td colSpan={3} className="py-3 text-right">إجمالي البونص المستحق لجميع الموردين</td>
+                  <td className="py-3 text-left tabular-nums font-mono text-lg">{formatCurrency(totalCommissions, settings.currency)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </section>
+        )}
+
+        <div className="mt-20 pt-10 border-t border-slate-200 flex justify-between text-xs text-slate-400">
+          <p>هذا التقرير تم استخراجه آلياً ولا يحتاج لختم رسمي.</p>
+          <div className="text-center">
+            <p className="mb-8 font-bold text-slate-900">توقيع المسؤول</p>
+            <p>.........................................</p>
+          </div>
+        </div>
+      </div>
     </>
+  );
+}
+
+function TR_Print({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
+  return (
+    <tr>
+      <td className="py-2 text-slate-600">{label}</td>
+      <td className={`py-2 text-left tabular-nums font-mono ${highlight ? "text-lg font-bold text-slate-900" : "text-sm font-medium"}`}>{value}</td>
+    </tr>
   );
 }
 
@@ -468,22 +899,23 @@ function Stat({
   icon: React.ReactNode;
   label: string;
   value: string;
-  tone: "green" | "blue" | "amber" | "indigo";
+  tone: "green" | "blue" | "amber" | "indigo" | "emerald";
 }) {
   const colors: Record<string, string> = {
-    green: "bg-emerald-50 text-emerald-700",
-    blue: "bg-blue-50 text-blue-700",
-    amber: "bg-amber-50 text-amber-700",
-    indigo: "bg-indigo-50 text-indigo-700",
+    green: "bg-emerald-50 text-emerald-600",
+    blue: "bg-blue-50 text-blue-600",
+    amber: "bg-amber-50 text-amber-600",
+    indigo: "bg-indigo-50 text-indigo-600",
+    emerald: "bg-emerald-50 text-emerald-600",
   };
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-4 flex items-center gap-3">
-      <div className={`w-10 h-10 rounded-lg grid place-items-center ${colors[tone]}`}>
+    <div className="bg-white rounded-xl border border-slate-200 p-4 flex items-center gap-4 hover:shadow-md transition-shadow">
+      <div className={`w-11 h-11 rounded-xl grid place-items-center shrink-0 ${colors[tone]}`}>
         {icon}
       </div>
-      <div>
-        <div className="text-xs text-slate-500">{label}</div>
-        <div className="font-semibold text-slate-900">{value}</div>
+      <div className="min-w-0">
+        <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 truncate">{label}</div>
+        <div className="text-lg font-bold text-slate-900 mt-0.5 tabular-nums truncate">{value}</div>
       </div>
     </div>
   );

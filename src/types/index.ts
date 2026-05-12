@@ -3,6 +3,37 @@ export type ID = string;
 export type PaymentStatus = "paid" | "partial" | "unpaid";
 export type SalesPaymentType = "cash" | "account";
 
+export type UserRole = "owner" | "employee";
+
+export interface UserPermissions {
+  products: { view: boolean; add: boolean; edit: boolean; delete: boolean };
+  purchaseInvoices: { view: boolean; add: boolean };
+  salesInvoices: { view: boolean; add: boolean };
+  customers: { view: boolean; add: boolean; edit: boolean };
+  suppliers: { view: boolean; add: boolean; edit: boolean };
+  cashbox: { view: boolean };
+  reports: { view: boolean };
+}
+
+export interface AppUser {
+  id: ID;
+  username: string;
+  passwordHash: string;
+  role: UserRole;
+  permissions: UserPermissions;
+  createdAt: string;
+}
+
+export type CommissionType = "percentage" | "fixed";
+
+export interface CommissionTier {
+  id: ID;
+  threshold: number;
+  commissionType: CommissionType;
+  commissionValue: number;
+  periodDays: number;
+}
+
 export interface Supplier {
   id: ID;
   name: string;
@@ -10,6 +41,7 @@ export interface Supplier {
   address?: string;
   notes?: string;
   commissionNote?: string;
+  commissionTiers?: CommissionTier[];
   createdAt: string;
 }
 
@@ -19,6 +51,14 @@ export interface Customer {
   phone?: string;
   address?: string;
   notes?: string;
+  createdAt: string;
+}
+
+export interface Driver {
+  id: ID;
+  name: string;
+  phone?: string;
+  licenseNumber?: string;
   createdAt: string;
 }
 
@@ -71,6 +111,7 @@ export interface SalesInvoice {
   date: string;
   customerId: ID;
   customerName: string;
+  driverId?: ID;
   driverName?: string;
   lines: InvoiceLine[];
   total: number;
@@ -89,6 +130,45 @@ export type StockMovementType =
   | "adjustment-in"
   | "adjustment-out"
   | "return";
+
+export interface ReturnLine {
+  id: ID;
+  productId: ID;
+  productName: string;
+  unit: string;
+  quantity: number;
+  price: number;
+  subtotal: number;
+}
+
+export interface SalesReturn {
+  id: ID;
+  returnNumber: string;
+  date: string;
+  originalInvoiceId: ID;
+  originalInvoiceNumber: string;
+  customerId: ID;
+  customerName: string;
+  lines: ReturnLine[];
+  total: number;
+  refundCash: boolean;
+  notes?: string;
+  createdAt: string;
+}
+
+export interface PurchaseReturn {
+  id: ID;
+  returnNumber: string;
+  date: string;
+  originalInvoiceId: ID;
+  originalInvoiceNumber: string;
+  supplierId: ID;
+  supplierName: string;
+  lines: ReturnLine[];
+  total: number;
+  notes?: string;
+  createdAt: string;
+}
 
 export interface StockMovement {
   id: ID;
@@ -128,6 +208,16 @@ export interface Settings {
   openingBalance: number;
   printPaperSize: "A4" | "A5";
   logoText: string;
+  logoImage: string;
+  autoBackupEnabled: boolean;
+  autoBackupFrequency: "daily" | "weekly" | "monthly";
+  lastBackupDate: string;
+  subscriptionType: "limited" | "lifetime";
+  subscriptionStartDate: string;
+  subscriptionMonths: number;
+  warrantyType: "none" | "limited";
+  warrantyStartDate: string;
+  warrantyMonths: number;
 }
 
 export interface ActivityItem {

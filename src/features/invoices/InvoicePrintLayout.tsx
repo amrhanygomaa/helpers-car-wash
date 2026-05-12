@@ -30,7 +30,13 @@ export function InvoicePrintLayout(props: Props) {
       className="min-h-screen bg-slate-50 p-6 print:p-0 print:bg-white"
       dir="rtl"
     >
-      <div className="max-w-4xl mx-auto bg-white print-container shadow-card border border-slate-200 print:border-0 print:shadow-none rounded-xl p-8 print:p-0">
+      <style dangerouslySetInnerHTML={{ __html: `
+        @media print {
+          @page { size: landscape; margin: 10mm; }
+          body { background: white; }
+        }
+      `}} />
+      <div className="max-w-6xl mx-auto bg-white print-container shadow-card border border-slate-200 print:border-0 print:shadow-none rounded-xl p-8 print:p-0">
         {/* Top action bar — hidden on print */}
         <div className="no-print flex items-center justify-between mb-6">
           <button
@@ -50,8 +56,12 @@ export function InvoicePrintLayout(props: Props) {
         {/* Header */}
         <div className="flex items-start justify-between border-b border-slate-200 pb-6 mb-6">
           <div className="flex items-center gap-3">
-            <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-brand-600 to-brand-800 grid place-items-center text-white font-bold text-lg">
-              {settings.logoText}
+            <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-brand-600 to-brand-800 grid place-items-center text-white font-bold text-lg overflow-hidden">
+              {settings.logoImage ? (
+                <img src={settings.logoImage} alt="Logo" className="w-full h-full object-cover" />
+              ) : (
+                settings.logoText
+              )}
             </div>
             <div>
               <div className="font-bold text-xl text-slate-900">
@@ -67,9 +77,9 @@ export function InvoicePrintLayout(props: Props) {
               {props.kind === "sales" ? "فاتورة مبيعات" : "فاتورة مشتريات"}
             </div>
             <div className="text-sm text-slate-500 mt-1">
-              رقم الفاتورة: <span className="font-mono">{props.invoiceNumber}</span>
+              رقم الفاتورة: <span className="font-mono font-bold tabular-nums text-slate-900">{props.invoiceNumber}</span>
             </div>
-            <div className="text-sm text-slate-500">
+            <div className="text-sm text-slate-500 tabular-nums">
               التاريخ: {formatDate(props.date)}
             </div>
           </div>
@@ -128,11 +138,11 @@ export function InvoicePrintLayout(props: Props) {
                   ) : null}
                 </td>
                 <td className="p-2 border border-slate-200 text-center">{l.unit}</td>
-                <td className="p-2 border border-slate-200 text-center">{l.quantity}</td>
-                <td className="p-2 border border-slate-200 text-center">
+                <td className="p-2 border border-slate-200 text-center tabular-nums">{l.quantity}</td>
+                <td className="p-2 border border-slate-200 text-center tabular-nums font-mono">
                   {formatCurrency(l.price, settings.currency)}
                 </td>
-                <td className="p-2 border border-slate-200 text-center font-medium">
+                <td className="p-2 border border-slate-200 text-center font-bold tabular-nums font-mono">
                   {formatCurrency(l.subtotal, settings.currency)}
                 </td>
               </tr>
@@ -190,11 +200,11 @@ function Row({
   return (
     <div
       className={`flex items-center justify-between py-1 ${
-        bold ? "text-slate-900 font-bold text-base" : "text-slate-700"
+        bold ? "text-slate-900 font-bold text-lg" : "text-slate-700 font-medium"
       }`}
     >
       <span>{label}</span>
-      <span>{value}</span>
+      <span className="tabular-nums font-mono">{value}</span>
     </div>
   );
 }

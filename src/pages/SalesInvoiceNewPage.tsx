@@ -12,6 +12,7 @@ import { uid } from "../lib/utils";
 import type { InvoiceLine, Product, SalesPaymentType } from "../types";
 import { formatCurrency } from "../lib/format";
 import { Badge } from "../components/ui/Badge";
+import { DriverDialog } from "../features/drivers/DriverDialog";
 
 interface LineDraft {
   id: string;
@@ -30,7 +31,7 @@ function nextInvoiceNumber(existing: string[]): string {
 }
 
 export function SalesInvoiceNewPage() {
-  const { products, customers, salesInvoices, addSalesInvoice, settings } = useApp();
+  const { products, customers, drivers, salesInvoices, addSalesInvoice, settings } = useApp();
   const navigate = useNavigate();
   const toast = useToast();
 
@@ -39,11 +40,12 @@ export function SalesInvoiceNewPage() {
   );
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [customerId, setCustomerId] = useState(customers[0]?.id ?? "");
-  const [driverName, setDriverName] = useState("");
+  const [driverId, setDriverId] = useState("");
   const [paymentType, setPaymentType] = useState<SalesPaymentType>("cash");
   const [amountReceived, setAmountReceived] = useState<number>(0);
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<LineDraft[]>([]);
+  const [newDriverOpen, setNewDriverOpen] = useState(false);
 
   useEffect(() => {
     if (!customerId && customers[0]) setCustomerId(customers[0].id);
@@ -156,7 +158,8 @@ export function SalesInvoiceNewPage() {
       date,
       customerId,
       customerName: customer.name,
-      driverName: driverName.trim() || undefined,
+      driverId: driverId || undefined,
+      driverName: driverId ? drivers.find(d => d.id === driverId)?.name : undefined,
       lines: invLines,
       total,
       amountReceived,
@@ -220,8 +223,20 @@ export function SalesInvoiceNewPage() {
                 ))}
               </Select>
             </Field>
-            <Field label="اسم السائق (اختياري)">
-              <Input value={driverName} onChange={(e) => setDriverName(e.target.value)} placeholder="مثل: محمود السائق" />
+            <Field label="السائق (اختياري)">
+              <div className="flex items-center gap-2">
+                <Select value={driverId} onChange={(e) => setDriverId(e.target.value)} className="flex-1">
+                  <option value="">— اختر سائقاً —</option>
+                  {drivers.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name}
+                    </option>
+                  ))}
+                </Select>
+                <Button variant="outline" size="icon" onClick={() => setNewDriverOpen(true)}>
+                  <Plus className="w-4 h-4" />
+                </Button>
+              </div>
             </Field>
           </div>
           {customer ? (
@@ -399,6 +414,12 @@ export function SalesInvoiceNewPage() {
           </CardBody>
         </Card>
       </div>
+
+      <DriverDialog
+        open={newDriverOpen}
+        onClose={() => setNewDriverOpen(false)}
+        onSaved={(drv) => setDriverId(drv.id)}
+      />
     </>
   );
 }

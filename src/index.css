@@ -15,7 +15,15 @@ body,
 }
 
 body {
-  @apply bg-slate-50 text-slate-800 font-sans antialiased;
+  background-color: #f8fafc;
+  color: #1e293b;
+  font-family: 'Cairo', sans-serif !important;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+input, button, select, textarea {
+  font-family: 'Cairo', sans-serif !important;
 }
 
 /* Scrollbar */
@@ -63,6 +71,10 @@ body {
     border: none !important;
     padding: 0 !important;
     margin: 0 !important;
+  }
+  .break-inside-avoid {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
   }
 }
 
