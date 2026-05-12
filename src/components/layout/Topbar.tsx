@@ -1,0 +1,159 @@
+import { useLocation, useNavigate } from "react-router-dom";
+import { Search, Bell, ChevronDown, User } from "lucide-react";
+import { useApp } from "../../store/AppContext";
+import { useMemo, useState } from "react";
+import { formatDate } from "../../lib/format";
+
+const TITLES: Record<string, string> = {
+  "/": "لوحة التحكم",
+  "/products": "المنتجات",
+  "/inventory": "المخزون",
+  "/suppliers": "الموردين",
+  "/customers": "العملاء",
+  "/purchases": "فواتير المشتريات",
+  "/sales": "فواتير المبيعات",
+  "/alerts": "التنبيهات",
+  "/cashbox": "الخزينة",
+  "/reports": "التقارير",
+  "/settings": "الإعدادات",
+};
+
+export function Topbar() {
+  const loc = useLocation();
+  const navigate = useNavigate();
+  const { auth, logout, products, customers, suppliers, purchaseInvoices, salesInvoices } =
+    useApp();
+  const [q, setQ] = useState("");
+  const [open, setOpen] = useState(false);
+
+  const title = useMemo(() => {
+    for (const key of Object.keys(TITLES)) {
+      if (loc.pathname === key || loc.pathname.startsWith(key + "/")) return TITLES[key];
+    }
+    return "نظام المخزون";
+  }, [loc.pathname]);
+
+  const results = useMemo(() => {
+    const term = q.trim().toLowerCase();
+    if (!term) return [] as { label: string; sub: string; to: string }[];
+    const out: { label: string; sub: string; to: string }[] = [];
+    products.forEach((p) => {
+      if (
+        p.name.toLowerCase().includes(term) ||
+        p.code.toLowerCase().includes(term)
+      )
+        out.push({ label: p.name, sub: `منتج — ${p.code}`, to: "/products" });
+    });
+    customers.forEach((c) => {
+      if (c.name.toLowerCase().includes(term))
+        out.push({ label: c.name, sub: "عميل", to: "/customers" });
+    });
+    suppliers.forEach((s) => {
+      if (s.name.toLowerCase().includes(term))
+        out.push({ label: s.name, sub: "مورد", to: "/suppliers" });
+    });
+    salesInvoices.forEach((s) => {
+      if (s.invoiceNumber.toLowerCase().includes(term))
+        out.push({
+          label: s.invoiceNumber,
+          sub: `فاتورة مبيعات — ${s.customerName}`,
+          to: `/sales/${s.id}`,
+        });
+    });
+    purchaseInvoices.forEach((p) => {
+      if (p.invoiceNumber.toLowerCase().includes(term))
+        out.push({
+          label: p.invoiceNumber,
+          sub: `فاتورة مشتريات — ${p.supplierName}`,
+          to: `/purchases/${p.id}`,
+        });
+    });
+    return out.slice(0, 10);
+  }, [q, products, customers, suppliers, salesInvoices, purchaseInvoices]);
+
+  return (
+    <header className="sticky top-0 z-30 bg-white/90 backdrop-blur border-b border-slate-200 h-14 flex items-center gap-4 px-4">
+      <div className="flex items-center gap-3 min-w-0">
+        <div className="text-sm text-slate-500">اليوم {formatDate(new Date().toISOString())}</div>
+        <span className="text-slate-300">|</span>
+        <h1 className="font-semibold text-slate-900 text-base truncate">{title}</h1>
+      </div>
+      <div className="flex-1 max-w-md relative">
+        <div className="relative">
+          <Search className="w-4 h-4 absolute top-1/2 -translate-y-1/2 end-3 text-slate-400" />
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="بحث سريع عن منتج، عميل، فاتورة..."
+            className="w-full h-9 ps-3 pe-9 rounded-lg border border-slate-200 bg-slate-50 text-sm focus-ring"
+          />
+        </div>
+        {q && results.length > 0 ? (
+          <div className="absolute top-11 start-0 end-0 bg-white border border-slate-200 rounded-lg shadow-lg overflow-hidden z-30">
+            {results.map((r, idx) => (
+              <button
+                key={idx}
+                onClick={() => {
+                  navigate(r.to);
+                  setQ("");
+                }}
+                className="w-full text-right px-3 py-2 hover:bg-slate-50 block border-b border-slate-100 last:border-0"
+              >
+                <div className="text-sm text-slate-900">{r.label}</div>
+                <div className="text-xs text-slate-500">{r.sub}</div>
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </div>
+      <div className="flex items-center gap-2 ms-auto">
+        <button
+          onClick={() => navigate("/alerts")}
+          className="relative w-9 h-9 rounded-lg hover:bg-slate-100 grid place-items-center text-slate-600"
+        >
+          <Bell className="w-4 h-4" />
+          <span className="absolute top-1 end-1 w-2 h-2 rounded-full bg-red-500" />
+        </button>
+        <div className="relative">
+          <button
+            onClick={() => setOpen((v) => !v)}
+            className="flex items-center gap-2 px-2 h-9 rounded-lg hover:bg-slate-100"
+          >
+            <div className="w-7 h-7 rounded-full bg-brand-600 text-white grid place-items-center text-xs">
+              <User className="w-3.5 h-3.5" />
+            </div>
+            <div className="text-sm text-slate-700">
+              {auth.username || "مدير"}
+            </div>
+            <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
+          </button>
+          {open ? (
+            <div
+              className="absolute top-11 end-0 bg-white border border-slate-200 rounded-lg shadow-lg w-48 py-1 z-30"
+              onMouseLeave={() => setOpen(false)}
+            >
+              <button
+                className="w-full text-right px-3 py-2 text-sm hover:bg-slate-50"
+                onClick={() => {
+                  setOpen(false);
+                  navigate("/settings");
+                }}
+              >
+                الإعدادات
+              </button>
+              <button
+                className="w-full text-right px-3 py-2 text-sm hover:bg-slate-50 text-red-600"
+                onClick={() => {
+                  setOpen(false);
+                  logout();
+                }}
+              >
+                تسجيل الخروج
+              </button>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </header>
+  );
+}

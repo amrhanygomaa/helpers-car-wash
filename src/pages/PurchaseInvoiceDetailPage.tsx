@@ -1,0 +1,231 @@
+import { useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { ArrowRight, HandCoins, Printer, Trash2 } from "lucide-react";
+import { PageHeader } from "../components/layout/AppLayout";
+import { Card, CardBody, CardHeader } from "../components/ui/Card";
+import { Button } from "../components/ui/Button";
+import { Badge } from "../components/ui/Badge";
+import { Table, TBody, TD, TH, THead, TR } from "../components/ui/Table";
+import { useApp } from "../store/AppContext";
+import { useToast } from "../components/ui/Toast";
+import { formatCurrency, formatDate } from "../lib/format";
+import { ConfirmDialog, Dialog } from "../components/ui/Dialog";
+import { Field, Input } from "../components/ui/Input";
+
+export function PurchaseInvoiceDetailPage() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const toast = useToast();
+  const {
+    purchaseInvoices,
+    suppliers,
+    settings,
+    recordPurchasePayment,
+    deletePurchaseInvoice,
+  } = useApp();
+  const inv = purchaseInvoices.find((s) => s.id === id);
+  const [payOpen, setPayOpen] = useState(false);
+  const [payAmount, setPayAmount] = useState(0);
+  const [delOpen, setDelOpen] = useState(false);
+
+  if (!inv) {
+    return (
+      <Card>
+        <CardBody>
+          <div className="text-center py-8">
+            <div className="text-slate-900 font-medium">الفاتورة غير موجودة</div>
+            <Button className="mt-4" onClick={() => navigate("/purchases")}>
+              العودة للقائمة
+            </Button>
+          </div>
+        </CardBody>
+      </Card>
+    );
+  }
+
+  const supplier = suppliers.find((s) => s.id === inv.supplierId);
+
+  return (
+    <>
+      <PageHeader
+        title={`فاتورة مشتريات ${inv.invoiceNumber}`}
+        description={`${inv.supplierName} • ${formatDate(inv.date)}`}
+        actions={
+          <>
+            <Button variant="outline" onClick={() => navigate("/purchases")}>
+              <ArrowRight className="w-4 h-4" />
+              رجوع
+            </Button>
+            <Link to={`/purchases/${inv.id}/print`} target="_blank">
+              <Button variant="outline">
+                <Printer className="w-4 h-4" /> طباعة
+              </Button>
+            </Link>
+            {inv.remaining > 0 ? (
+              <Button onClick={() => { setPayAmount(inv.remaining); setPayOpen(true); }}>
+                <HandCoins className="w-4 h-4" /> تسجيل دفعة
+              </Button>
+            ) : null}
+            <Button variant="danger" onClick={() => setDelOpen(true)}>
+              <Trash2 className="w-4 h-4" /> حذف
+            </Button>
+          </>
+        }
+      />
+
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <Stat label="الإجمالي" value={formatCurrency(inv.total, settings.currency)} />
+        <Stat label="المدفوع" value={formatCurrency(inv.amountPaid, settings.currency)} tone="green" />
+        <Stat label="المتبقي" value={formatCurrency(inv.remaining, settings.currency)} tone={inv.remaining > 0 ? "amber" : "slate"} />
+        <Stat label="الحالة" value={inv.status === "paid" ? "مسددة" : inv.status === "partial" ? "جزئي" : "غير مسددة"} tone={inv.status === "paid" ? "green" : inv.status === "partial" ? "amber" : "red"} />
+      </div>
+
+      <Card>
+        <CardHeader title="تفاصيل المورد والفاتورة" />
+        <CardBody className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <Info label="المورد">{inv.supplierName}</Info>
+          <Info label="هاتف المورد">{supplier?.phone ?? "—"}</Info>
+          <Info label="عدد البنود">{inv.lines.length}</Info>
+          <Info label="الحالة">
+            <Badge
+              tone={inv.status === "paid" ? "green" : inv.status === "partial" ? "amber" : "red"}
+            >
+              {inv.status === "paid" ? "مسدد" : inv.status === "partial" ? "جزئي" : "غير مسدد"}
+            </Badge>
+          </Info>
+          {inv.notes ? (
+            <Info label="ملاحظات" className="col-span-2 md:col-span-4">
+              {inv.notes}
+            </Info>
+          ) : null}
+        </CardBody>
+      </Card>
+
+      <Card>
+        <CardHeader title="بنود الفاتورة" />
+        <CardBody>
+          <Table>
+            <THead>
+              <TR>
+                <TH className="w-10">#</TH>
+                <TH>المنتج</TH>
+                <TH>الوحدة</TH>
+                <TH className="text-end">الكمية</TH>
+                <TH className="text-end">السعر</TH>
+                <TH>الصلاحية</TH>
+                <TH className="text-end">الإجمالي</TH>
+              </TR>
+            </THead>
+            <TBody>
+              {inv.lines.map((l, idx) => (
+                <TR key={l.id}>
+                  <TD>{idx + 1}</TD>
+                  <TD className="font-medium text-slate-900">{l.productName}</TD>
+                  <TD>{l.unit}</TD>
+                  <TD className="text-end">{l.quantity}</TD>
+                  <TD className="text-end">{formatCurrency(l.price, settings.currency)}</TD>
+                  <TD className="text-xs text-slate-600">{l.expiryDate ? formatDate(l.expiryDate) : "—"}</TD>
+                  <TD className="text-end font-medium">
+                    {formatCurrency(l.subtotal, settings.currency)}
+                  </TD>
+                </TR>
+              ))}
+            </TBody>
+          </Table>
+        </CardBody>
+      </Card>
+
+      <Dialog
+        open={payOpen}
+        onClose={() => setPayOpen(false)}
+        title="تسجيل دفعة للمورد"
+        subtitle={`المتبقي: ${formatCurrency(inv.remaining, settings.currency)}`}
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setPayOpen(false)}>إلغاء</Button>
+            <Button
+              onClick={() => {
+                if (payAmount <= 0 || payAmount > inv.remaining) {
+                  toast.error("المبلغ غير صحيح");
+                  return;
+                }
+                recordPurchasePayment(inv.id, payAmount);
+                toast.success("تم تسجيل الدفعة");
+                setPayOpen(false);
+              }}
+            >
+              تسجيل
+            </Button>
+          </>
+        }
+      >
+        <Field label="المبلغ" required>
+          <Input
+            type="number"
+            min={0.01}
+            max={inv.remaining}
+            step="0.01"
+            value={payAmount}
+            onChange={(e) => setPayAmount(Number(e.target.value))}
+          />
+        </Field>
+      </Dialog>
+
+      <ConfirmDialog
+        open={delOpen}
+        onClose={() => setDelOpen(false)}
+        onConfirm={() => {
+          const ok = deletePurchaseInvoice(inv.id);
+          if (ok) {
+            toast.success("تم الحذف", "وتم عكس الكميات من المخزون");
+            navigate("/purchases");
+          } else toast.error("تعذر الحذف");
+        }}
+        title="حذف نهائي"
+        message="سيتم حذف الفاتورة وعكس تأثيرها على المخزون. متابعة؟"
+        variant="danger"
+        confirmText="حذف نهائي"
+      />
+    </>
+  );
+}
+
+function Info({
+  label,
+  children,
+  className,
+}: {
+  label: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={`bg-slate-50 border border-slate-100 rounded-lg p-3 ${className ?? ""}`}>
+      <div className="text-[11px] text-slate-500">{label}</div>
+      <div className="text-sm text-slate-900 mt-1">{children}</div>
+    </div>
+  );
+}
+
+function Stat({
+  label,
+  value,
+  tone = "slate",
+}: {
+  label: string;
+  value: string;
+  tone?: "slate" | "green" | "amber" | "red";
+}) {
+  const colors: Record<string, string> = {
+    slate: "text-slate-900",
+    green: "text-emerald-700",
+    amber: "text-amber-700",
+    red: "text-rose-700",
+  };
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 p-4">
+      <div className="text-xs text-slate-500">{label}</div>
+      <div className={`text-lg font-semibold mt-1 ${colors[tone]}`}>{value}</div>
+    </div>
+  );
+}

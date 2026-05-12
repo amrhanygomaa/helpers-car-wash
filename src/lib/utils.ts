@@ -1,0 +1,36 @@
+import { clsx, type ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+
+export function uid(prefix = "id"): string {
+  return `${prefix}_${Math.random().toString(36).slice(2, 9)}${Date.now()
+    .toString(36)
+    .slice(-4)}`;
+}
+
+export function todayISO(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+export function isToday(dateStr: string): boolean {
+  return dateStr.slice(0, 10) === todayISO();
+}
+
+export function daysUntil(dateStr?: string): number | null {
+  if (!dateStr) return null;
+  const d = new Date(dateStr);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  d.setHours(0, 0, 0, 0);
+  return Math.round((d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+export function inRange(dateStr: string, from?: string, to?: string): boolean {
+  const d = dateStr.slice(0, 10);
+  if (from && d < from) return false;
+  if (to && d > to) return false;
+  return true;
+}
