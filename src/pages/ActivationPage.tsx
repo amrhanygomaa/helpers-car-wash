@@ -69,7 +69,7 @@ export function ActivationPage() {
           </div>
           <div>
             <div className="font-bold text-lg">شركة هيلبيرز تيكنولوجي</div>
-            <div className="text-xs text-white/70 font-medium">Helpers Technology</div>
+            <div className="text-xs text-white/70 font-medium">Helpers Technologies</div>
           </div>
         </div>
         <div className="space-y-4 max-w-md">
