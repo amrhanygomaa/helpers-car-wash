@@ -1,7 +1,7 @@
 {
   "name": "helpers-inventory-system",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Protected desktop inventory and sales management system",
   "author": "Helpers Technologies",
   "type": "module",

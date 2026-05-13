@@ -64,7 +64,7 @@ export function ActivationPage() {
     <div className="min-h-screen grid md:grid-cols-2 bg-slate-50" dir="rtl">
       <div className="hidden md:flex relative bg-gradient-to-br from-brand-700 to-brand-900 text-white p-10 flex-col justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-xl bg-white p-1 shadow-lg overflow-hidden">
+          <div className="w-12 h-12 rounded-xl overflow-hidden">
             <img src="./helpers_tech_logo.png" alt="Logo" className="w-full h-full object-contain" />
           </div>
           <div>
