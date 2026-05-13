@@ -92,7 +92,7 @@ function getMachineMaterial() {
 function getMachineCode() {
   const digest = sha256(`${APP_SALT}:machine:${getMachineMaterial()}`).toUpperCase();
   const groups = digest.slice(0, 32).match(/.{1,4}/g) || [];
-  return `HTI-${groups.join("-")}`;
+  return `HTW-${groups.join("-")}`;
 }
 
 function getMachineHash() {
@@ -380,7 +380,9 @@ async function resetOwnerPassword({ supportCode, username, password }) {
 
 function createWindow() {
   const isDev = Boolean(process.env.ELECTRON_RENDERER_URL);
-  const iconPath = path.join(__dirname, "..", "build", "icon.ico");
+  const iconPath = app.isPackaged
+    ? path.join(process.resourcesPath, "app", "build", "icon.ico")
+    : path.join(__dirname, "..", "build", "icon.ico");
   const win = new BrowserWindow({
     width: 1366,
     height: 860,
