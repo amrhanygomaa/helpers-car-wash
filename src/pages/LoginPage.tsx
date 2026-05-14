@@ -1,13 +1,14 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { Boxes, ShieldCheck } from "lucide-react";
 import { useApp } from "../store/AppContext";
 import { Button } from "../components/ui/Button";
 import { Field, Input } from "../components/ui/Input";
 import { useToast } from "../components/ui/Toast";
+import type { LoginResult } from "../types";
 
 export function LoginPage() {
-  const { login, settings } = useApp();
+  const { login } = useApp();
   const navigate = useNavigate();
   const toast = useToast();
   const [username, setUsername] = useState("");
@@ -18,28 +19,63 @@ export function LoginPage() {
   const [supportUsername, setSupportUsername] = useState("");
   const [supportPassword, setSupportPassword] = useState("");
   const [supportSubmitting, setSupportSubmitting] = useState(false);
+  const [supportCodeRequesting, setSupportCodeRequesting] = useState(false);
+  const [machineCode, setMachineCode] = useState("");
+  const [lockRemaining, setLockRemaining] = useState(0);
+  const submitInFlight = useRef(false);
+
+  useEffect(() => {
+    if (lockRemaining <= 0) return;
+    const timer = window.setInterval(() => {
+      setLockRemaining((current) => Math.max(0, current - 1));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [lockRemaining]);
+
+  useEffect(() => {
+    if (!supportOpen || !window.desktopAPI?.license || machineCode) return;
+    void window.desktopAPI.license.getMachineCode().then(setMachineCode).catch(() => {
+      setMachineCode("");
+    });
+  }, [supportOpen, machineCode]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
+    if (submitInFlight.current) return;
     if (!username.trim()) return;
+    if (lockRemaining > 0) {
+      toast.error("الحساب مقفول مؤقتاً", `حاول مرة أخرى بعد ${lockRemaining} ثانية`);
+      return;
+    }
+    submitInFlight.current = true;
     setSubmitting(true);
     
-    // The login function returns boolean; rate-limiting is handled at the IPC layer
-    // by the backend. We wrap in try/catch for safety.
-    let success = false;
+    let result: LoginResult = { ok: false, error: "invalid_credentials" };
     try {
-      success = await login(username.trim(), password);
+      result = await login(username.trim(), password);
     } catch {
       // ignore
     }
 
-    if (success) {
+    if (result.ok) {
       toast.success("تم تسجيل الدخول", "مرحباً بك في النظام");
       navigate("/", { replace: true });
-    } else {
-      toast.error("فشل تسجيل الدخول", "اسم المستخدم أو كلمة المرور غير صحيحة. بعد 5 محاولات فاشلة سيتم قفل الحساب لمدة دقيقة.");
-      setSubmitting(false);
+      return;
     }
+
+    if (result.error === "rate_limited") {
+      const seconds = result.remainSeconds ?? 60;
+      setLockRemaining(seconds);
+      toast.error("تم قفل الحساب مؤقتاً", `محاولات فاشلة كثيرة. حاول مرة أخرى بعد ${seconds} ثانية.`);
+    } else {
+      const attemptsText =
+        result.attemptsRemaining !== undefined
+          ? `المتبقي قبل القفل: ${result.attemptsRemaining} محاولات.`
+          : "بعد 5 محاولات فاشلة سيتم قفل الحساب لمدة دقيقة.";
+      toast.error("فشل تسجيل الدخول", `اسم الدخول أو كلمة المرور غير صحيحة. ${attemptsText}`);
+    }
+    submitInFlight.current = false;
+    setSubmitting(false);
   }
 
   async function resetOwnerPassword() {
@@ -49,8 +85,9 @@ export function LoginPage() {
       return;
     }
     setSupportSubmitting(true);
+    const cleanSupportCode = supportCode.replace(/\s+/g, "").trim();
     const result = await window.desktopAPI.auth.resetOwnerPassword(
-      supportCode.trim(),
+      cleanSupportCode,
       supportUsername.trim(),
       supportPassword
     );
@@ -62,8 +99,40 @@ export function LoginPage() {
       setSupportUsername("");
       setSupportPassword("");
     } else {
-      toast.error("فشل كود الدعم", "الكود غير صحيح أو منتهي الصلاحية");
+      const messages: Record<NonNullable<typeof result.error>, string> = {
+        invalid_support_code: "الكود غير صحيح أو تم توليده بمفتاح مختلف. أعد تشغيل التطبيق لو تم تحديث المفتاح العام.",
+        machine_mismatch: "الكود صادر لجهاز مختلف. استخدم كود الجهاز الظاهر في هذه الشاشة.",
+        support_code_expired: "كود الدعم منتهي الصلاحية. ولّد كود دعم جديد.",
+        owner_missing: "لا يوجد مدير مسجل على هذا الجهاز.",
+        invalid_input: "اسم المدير وكلمة المرور الجديدة مطلوبان.",
+        rate_limited: `محاولات كثيرة غير صحيحة. حاول مرة أخرى بعد ${result.remainSeconds ?? 600} ثانية.`,
+      };
+      toast.error("فشل كود الدعم", messages[result.error ?? "invalid_support_code"]);
     }
+  }
+
+  async function requestSupportCode() {
+    setSupportCodeRequesting(true);
+    let currentMachineCode = machineCode || "غير متاح";
+    try {
+      if (window.desktopAPI?.license) {
+        currentMachineCode = await window.desktopAPI.license.getMachineCode();
+        setMachineCode(currentMachineCode);
+      }
+      if (navigator.clipboard && currentMachineCode !== "غير متاح") {
+        await navigator.clipboard.writeText(currentMachineCode);
+        toast.success("تم نسخ كود الجهاز", "أرسله للدعم للحصول على كود الاستعادة");
+      }
+    } catch {
+      // The WhatsApp message below still gives support enough context.
+    } finally {
+      setSupportCodeRequesting(false);
+    }
+
+    const message = encodeURIComponent(
+      `مرحباً، نسيت كود الدعم الخاص باستعادة دخول المدير.\nكود الجهاز: ${currentMachineCode}\nاسم الدخول الحالي: ${username.trim() || "غير محدد"}`
+    );
+    window.open(`https://wa.me/201118445625?text=${message}`, "_blank", "noopener,noreferrer");
   }
 
   return (
@@ -74,15 +143,11 @@ export function LoginPage() {
       <div className="hidden md:flex relative bg-gradient-to-br from-brand-700 to-brand-900 text-white p-10 flex-col justify-between">
         <div className="flex items-center gap-3">
           <div className="w-11 h-11 rounded-xl bg-white/10 grid place-items-center font-bold overflow-hidden">
-            {settings.logoImage ? (
-              <img src={settings.logoImage} alt="Logo" className="w-full h-full object-cover" />
-            ) : (
-              settings.logoText
-            )}
+            <img src="./helpers_tech_logo.png" alt="Helpers Technologies" className="w-full h-full object-contain p-1" />
           </div>
           <div>
-            <div className="font-semibold">{settings.companyNameAr}</div>
-            <div className="text-xs text-white/70">{settings.companyName}</div>
+            <div className="font-semibold">شركة هيلبيرز تكنولوجي</div>
+            <div className="text-xs text-white/70">Helpers Technologies</div>
           </div>
         </div>
         <div className="space-y-3 max-w-md">
@@ -102,7 +167,7 @@ export function LoginPage() {
           </ul>
         </div>
         <div className="text-xs text-white/60">
-          نظام مرخص ومعتمد — {settings.arabicLabels ? settings.companyNameAr : settings.companyName}
+          نظام مرخص ومعتمد — شركة هيلبيرز تكنولوجي
         </div>
       </div>
 
@@ -121,11 +186,11 @@ export function LoginPage() {
               يرجى إدخال بيانات الاعتماد الخاصة بك للوصول إلى النظام.
             </p>
           </div>
-          <Field label="اسم المستخدم" required>
+          <Field label="اسم الدخول" required>
             <Input
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder="Username"
+              placeholder="Login username"
             />
           </Field>
           <Field label="كلمة المرور" required>
@@ -140,10 +205,19 @@ export function LoginPage() {
             type="submit"
             size="lg"
             className="w-full"
-            disabled={submitting}
+            disabled={submitting || lockRemaining > 0}
           >
-            {submitting ? "جاري التحقق..." : "تسجيل الدخول"}
+            {lockRemaining > 0
+              ? `الحساب مقفول ${lockRemaining} ثانية`
+              : submitting
+              ? "جاري التحقق..."
+              : "تسجيل الدخول"}
           </Button>
+          {lockRemaining > 0 ? (
+            <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+              تم قفل تسجيل الدخول مؤقتاً بسبب محاولات فاشلة كثيرة.
+            </div>
+          ) : null}
           <div className="text-[10px] text-slate-400 text-center">
             هذا النظام محمي ومشفر — Helpers Technologies © 2026
           </div>
@@ -158,14 +232,31 @@ export function LoginPage() {
           )}
           {supportOpen && (
             <div className="border border-slate-200 rounded-xl p-3 space-y-3 bg-slate-50">
+              {machineCode ? (
+                <Field label="كود الجهاز الحالي">
+                  <div className="flex gap-2">
+                    <Input value={machineCode} readOnly className="font-mono text-xs" />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={async () => {
+                        await navigator.clipboard?.writeText(machineCode);
+                        toast.success("تم نسخ كود الجهاز");
+                      }}
+                    >
+                      نسخ
+                    </Button>
+                  </div>
+                </Field>
+              ) : null}
               <Field label="كود الدعم">
                 <Input
                   value={supportCode}
-                  onChange={(e) => setSupportCode(e.target.value)}
+                  onChange={(e) => setSupportCode(e.target.value.replace(/\s+/g, ""))}
                   placeholder="HTSUP..."
                 />
               </Field>
-              <Field label="اسم المدير الجديد">
+              <Field label="اسم دخول المدير الجديد">
                 <Input
                   value={supportUsername}
                   onChange={(e) => setSupportUsername(e.target.value)}
@@ -186,6 +277,15 @@ export function LoginPage() {
                 disabled={supportSubmitting}
               >
                 {supportSubmitting ? "جاري التحقق..." : "تحديث بيانات المدير"}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                className="w-full text-brand-700"
+                onClick={requestSupportCode}
+                disabled={supportCodeRequesting}
+              >
+                {supportCodeRequesting ? "جاري تجهيز الطلب..." : "نسيت كود الدعم؟ تواصل مع الدعم"}
               </Button>
             </div>
           )}

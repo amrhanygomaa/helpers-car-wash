@@ -77,7 +77,7 @@ export function FirstRunSetupPage() {
             </p>
           </div>
 
-          <Field label="اسم المستخدم" required>
+          <Field label="اسم الدخول" required>
             <Input value={username} onChange={(e) => setUsername(e.target.value)} />
           </Field>
           <Field label="كلمة المرور" required>

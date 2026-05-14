@@ -8,6 +8,7 @@ import {
   Factory,
   ArrowLeft,
   Bell,
+  Receipt,
 } from "lucide-react";
 import { PageHeader } from "../components/layout/AppLayout";
 import { Card, CardBody, CardHeader } from "../components/ui/Card";
@@ -24,6 +25,7 @@ export function AlertsPage() {
     customers,
     suppliers,
     purchaseInvoices,
+    salesInvoices,
     customerBalance,
     supplierBalance,
     settings,
@@ -57,6 +59,34 @@ export function AlertsPage() {
       .filter((x) => x.bal > 0)
       .sort((a, b) => b.bal - a.bal);
   }, [customers, customerBalance]);
+  const accountDueInvoices = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const dueSoonDays = 3;
+
+    return salesInvoices
+      .filter(
+        (inv) =>
+          inv.paymentType === "account" &&
+          inv.remaining > 0 &&
+          !inv.cancelled &&
+          inv.paymentDueDate
+      )
+      .flatMap((inv) => {
+        const due = new Date(inv.paymentDueDate!);
+        if (Number.isNaN(due.getTime())) return [];
+        due.setHours(0, 0, 0, 0);
+        const diffDays = Math.ceil(
+          (due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+        );
+        return [{ inv, diffDays }];
+      })
+      .filter(({ diffDays }) => diffDays <= dueSoonDays)
+      .sort((a, b) => a.diffDays - b.diffDays);
+  }, [salesInvoices]);
+  const overdueAccountCount = accountDueInvoices.filter(
+    ({ diffDays }) => diffDays < 0
+  ).length;
   // supplier balances are summarized inline from purchaseInvoices below
   void suppliers;
   void supplierBalance;
@@ -68,10 +98,11 @@ export function AlertsPage() {
         description="كل ما تحتاج لمتابعته اليوم في مكان واحد"
       />
 
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
         <Stat icon={<AlertTriangle className="w-4 h-4" />} label="مخزون منخفض" value={lowStock.length} tone="amber" />
         <Stat icon={<CalendarClock className="w-4 h-4" />} label="قريب الانتهاء" value={expiringSoon.length} tone="rose" />
         <Stat icon={<CalendarX className="w-4 h-4" />} label="منتهي الصلاحية" value={expired.length} tone="red" />
+        <Stat icon={<Receipt className="w-4 h-4" />} label="فواتير آجل متأخرة" value={overdueAccountCount} tone="red" />
         <Stat icon={<Users className="w-4 h-4" />} label="عملاء لديهم رصيد" value={unpaidCustomers.length} tone="indigo" />
         <Stat icon={<Factory className="w-4 h-4" />} label="فواتير موردين غير مسددة" value={purchaseInvoices.filter(p=>p.remaining>0).length} tone="blue" />
       </div>
@@ -159,6 +190,50 @@ export function AlertsPage() {
                   </div>
                 );
               })
+            )}
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader
+            title="فواتير آجل متأخرة أو قريبة الاستحقاق"
+            subtitle={`عدد: ${accountDueInvoices.length}`}
+          />
+          <CardBody className="divide-y divide-slate-100 p-0">
+            {accountDueInvoices.length === 0 ? (
+              <EmptyState
+                icon={<Receipt className="w-5 h-5" />}
+                title="لا توجد فواتير آجل قريبة الاستحقاق"
+              />
+            ) : (
+              accountDueInvoices.slice(0, 8).map(({ inv, diffDays }) => (
+                <div key={inv.id} className="flex items-center gap-3 p-3">
+                  <div className="w-9 h-9 rounded-lg bg-red-50 text-red-600 grid place-items-center">
+                    <Receipt className="w-4 h-4" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-slate-900 truncate">
+                      {inv.customerName} — {inv.invoiceNumber}
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      تاريخ الاستحقاق: {formatDate(inv.paymentDueDate!)} • المتبقي:{" "}
+                      {formatCurrency(inv.remaining, settings.currency)}
+                    </div>
+                  </div>
+                  <Badge
+                    tone={diffDays < 0 ? "red" : diffDays === 0 ? "orange" : "amber"}
+                  >
+                    {diffDays < 0
+                      ? "متأخر"
+                      : diffDays === 0
+                      ? "اليوم"
+                      : `خلال ${diffDays} أيام`}
+                  </Badge>
+                  <Link to={`/sales/${inv.id}`}>
+                    <Button variant="outline" size="sm">عرض</Button>
+                  </Link>
+                </div>
+              ))
             )}
           </CardBody>
         </Card>

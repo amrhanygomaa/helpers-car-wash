@@ -3,12 +3,13 @@ import { useApp } from "../store/AppContext";
 import { PageHeader } from "../components/layout/AppLayout";
 import { Receipt, ShoppingBag } from "lucide-react";
 import { formatCurrency, formatDate } from "../lib/format";
+import { hasPermission } from "../lib/permissions";
 
 export function ReturnsPage() {
   const { salesReturns, purchaseReturns, currentUser, settings } = useApp();
   
-  const canViewSales = currentUser?.role === "owner" || currentUser?.permissions.salesInvoices?.view;
-  const canViewPurchases = currentUser?.role === "owner" || currentUser?.permissions.purchaseInvoices?.view;
+  const canViewSales = hasPermission(currentUser, "returns");
+  const canViewPurchases = hasPermission(currentUser, "returns");
   
   const [tab, setTab] = useState<"sales" | "purchases">(canViewSales ? "sales" : "purchases");
 

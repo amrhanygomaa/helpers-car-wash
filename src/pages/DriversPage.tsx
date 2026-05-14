@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Plus, Settings2, Trash2 } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Eye, Phone, Plus, Receipt, Settings2, Trash2, Truck } from "lucide-react";
 import { PageHeader } from "../components/layout/AppLayout";
 import { Card, CardBody } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -8,16 +9,24 @@ import { useApp } from "../store/AppContext";
 import { ConfirmDialog, Dialog } from "../components/ui/Dialog";
 import { Field, Input } from "../components/ui/Input";
 import { useToast } from "../components/ui/Toast";
-import type { Driver } from "../types";
-import { formatCurrency } from "../lib/format";
+import { Badge } from "../components/ui/Badge";
+import { Drawer } from "../components/ui/Drawer";
+import { EmptyState } from "../components/ui/EmptyState";
+import type { Driver, SalesInvoice } from "../types";
+import { formatCurrency, formatDate } from "../lib/format";
+import { hasPermission } from "../lib/permissions";
 
 export function DriversPage() {
-  const { drivers, addDriver, updateDriver, deleteDriver, salesInvoices, settings } = useApp();
+  const { drivers, addDriver, updateDriver, deleteDriver, salesInvoices, settings, currentUser } = useApp();
   const toast = useToast();
+  const canAddDriver = hasPermission(currentUser, "drivers", "add");
+  const canEditDriver = hasPermission(currentUser, "drivers", "edit");
+  const canDeleteDriver = hasPermission(currentUser, "drivers", "delete");
 
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Driver | null>(null);
   const [delId, setDelId] = useState<string | null>(null);
+  const [viewing, setViewing] = useState<Driver | null>(null);
 
   function handleSave(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -44,14 +53,16 @@ export function DriversPage() {
         title="السائقين"
         description="إدارة بيانات السائقين وتتبع رحلاتهم"
         actions={
-          <Button
-            onClick={() => {
-              setEditing(null);
-              setOpen(true);
-            }}
-          >
-            <Plus className="w-4 h-4" /> إضافة سائق
-          </Button>
+          canAddDriver ? (
+            <Button
+              onClick={() => {
+                setEditing(null);
+                setOpen(true);
+              }}
+            >
+              <Plus className="w-4 h-4" /> إضافة سائق
+            </Button>
+          ) : null
         }
       />
 
@@ -81,7 +92,11 @@ export function DriversPage() {
                   const tripsTotal = trips.reduce((acc, inv) => acc + inv.total, 0);
 
                   return (
-                    <TR key={d.id}>
+                    <TR
+                      key={d.id}
+                      className="cursor-pointer hover:bg-slate-50"
+                      onClick={() => setViewing(d)}
+                    >
                       <TD className="font-medium">{d.name}</TD>
                       <TD>{d.phone || "—"}</TD>
                       <TD>{d.licenseNumber || "—"}</TD>
@@ -90,20 +105,40 @@ export function DriversPage() {
                       <TD>
                         <div className="flex items-center gap-2 justify-end">
                           <button
-                            onClick={() => {
-                              setEditing(d);
-                              setOpen(true);
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setViewing(d);
                             }}
                             className="p-1.5 text-slate-400 hover:text-brand-600 transition-colors"
+                            title="عرض التفاصيل"
                           >
-                            <Settings2 className="w-4 h-4" />
+                            <Eye className="w-4 h-4" />
                           </button>
-                          <button
-                            onClick={() => setDelId(d.id)}
-                            className="p-1.5 text-slate-400 hover:text-rose-600 transition-colors"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          {canEditDriver ? (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditing(d);
+                                setOpen(true);
+                              }}
+                              className="p-1.5 text-slate-400 hover:text-brand-600 transition-colors"
+                              title="تعديل"
+                            >
+                              <Settings2 className="w-4 h-4" />
+                            </button>
+                          ) : null}
+                          {canDeleteDriver ? (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setDelId(d.id);
+                              }}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 transition-colors"
+                              title="حذف"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          ) : null}
                         </div>
                       </TD>
                     </TR>
@@ -139,6 +174,20 @@ export function DriversPage() {
         </form>
       </Dialog>
 
+      <DriverDetailsDrawer
+        driver={viewing}
+        invoices={salesInvoices}
+        currency={settings.currency}
+        canEdit={canEditDriver}
+        onClose={() => setViewing(null)}
+        onEdit={(driver) => {
+          if (!canEditDriver) return;
+          setViewing(null);
+          setEditing(driver);
+          setOpen(true);
+        }}
+      />
+
       <ConfirmDialog
         open={!!delId}
         onClose={() => setDelId(null)}
@@ -158,5 +207,222 @@ export function DriversPage() {
         variant="danger"
       />
     </>
+  );
+}
+
+function DriverDetailsDrawer({
+  driver,
+  invoices,
+  currency,
+  canEdit,
+  onClose,
+  onEdit,
+}: {
+  driver: Driver | null;
+  invoices: SalesInvoice[];
+  currency: string;
+  canEdit: boolean;
+  onClose: () => void;
+  onEdit: (driver: Driver) => void;
+}) {
+  if (!driver) return null;
+
+  const trips = invoices
+    .filter((invoice) => invoice.driverId === driver.id && !invoice.cancelled)
+    .sort((a, b) => b.date.localeCompare(a.date));
+  const cancelledTrips = invoices.filter(
+    (invoice) => invoice.driverId === driver.id && invoice.cancelled
+  );
+  const totalSales = trips.reduce((sum, invoice) => sum + invoice.total, 0);
+  const totalReceived = trips.reduce((sum, invoice) => sum + invoice.amountReceived, 0);
+  const totalRemaining = trips.reduce((sum, invoice) => sum + invoice.remaining, 0);
+  const cashTrips = trips.filter((invoice) => invoice.paymentType === "cash").length;
+  const accountTrips = trips.filter((invoice) => invoice.paymentType === "account").length;
+  const lastTrip = trips[0];
+  const averageTrip = trips.length > 0 ? totalSales / trips.length : 0;
+  const uniqueCustomers = new Set(trips.map((invoice) => invoice.customerId)).size;
+  const topCustomers = Array.from(
+    trips.reduce((map, invoice) => {
+      const current = map.get(invoice.customerId) ?? {
+        name: invoice.customerName,
+        trips: 0,
+        total: 0,
+      };
+      current.trips += 1;
+      current.total += invoice.total;
+      map.set(invoice.customerId, current);
+      return map;
+    }, new Map<string, { name: string; trips: number; total: number }>())
+  )
+    .map(([, value]) => value)
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 4);
+
+  return (
+    <Drawer
+      open={!!driver}
+      onClose={onClose}
+      title={
+        <div className="flex items-center gap-2">
+          <Truck className="w-4 h-4 text-brand-600" />
+          <span>{driver.name}</span>
+        </div>
+      }
+      subtitle="بيانات السائق وتفاصيل رحلاته وفواتيره"
+      width={760}
+      footer={
+        canEdit ? (
+          <Button variant="outline" onClick={() => onEdit(driver)}>
+            <Settings2 className="w-4 h-4" /> تعديل البيانات
+          </Button>
+        ) : null
+      }
+    >
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 gap-3">
+          <InfoBox label="رقم الهاتف" value={driver.phone || "—"} icon={<Phone className="w-4 h-4" />} />
+          <InfoBox label="رقم الرخصة / السيارة" value={driver.licenseNumber || "—"} />
+          <InfoBox label="تاريخ الإضافة" value={formatDate(driver.createdAt)} />
+          <InfoBox label="آخر رحلة" value={lastTrip ? formatDate(lastTrip.date) : "—"} />
+        </div>
+
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <Metric label="عدد الرحلات" value={trips.length.toString()} />
+          <Metric label="إجمالي المبيعات" value={formatCurrency(totalSales, currency)} tone="green" />
+          <Metric label="المحصل" value={formatCurrency(totalReceived, currency)} tone="blue" />
+          <Metric label="المتبقي" value={formatCurrency(totalRemaining, currency)} tone="amber" />
+          <Metric label="متوسط الرحلة" value={formatCurrency(averageTrip, currency)} />
+          <Metric label="عملاء مختلفين" value={uniqueCustomers.toString()} />
+          <Metric label="رحلات نقدي" value={cashTrips.toString()} />
+          <Metric label="رحلات آجل" value={accountTrips.toString()} />
+        </div>
+
+        <div className="rounded-lg border border-slate-200 overflow-hidden">
+          <div className="flex items-center justify-between gap-3 bg-slate-50 px-3 py-2 border-b border-slate-200">
+            <div className="text-sm font-semibold text-slate-900">تفاصيل الرحلات</div>
+            {cancelledTrips.length > 0 ? (
+              <Badge tone="slate">ملغاة: {cancelledTrips.length}</Badge>
+            ) : null}
+          </div>
+          {trips.length === 0 ? (
+            <div className="p-4">
+              <EmptyState
+                icon={<Receipt className="w-5 h-5" />}
+                title="لا توجد رحلات"
+                description="ستظهر هنا فواتير المبيعات المرتبطة بهذا السائق."
+              />
+            </div>
+          ) : (
+            <div className="max-h-80 overflow-auto">
+              <Table>
+                <THead>
+                  <TR>
+                    <TH>الفاتورة</TH>
+                    <TH>التاريخ</TH>
+                    <TH>العميل</TH>
+                    <TH className="text-end">الإجمالي</TH>
+                    <TH className="text-end">المتبقي</TH>
+                    <TH>الدفع</TH>
+                    <TH className="w-14"></TH>
+                  </TR>
+                </THead>
+                <TBody>
+                  {trips.map((invoice) => (
+                    <TR key={invoice.id}>
+                      <TD className="font-mono text-xs">{invoice.invoiceNumber}</TD>
+                      <TD>{formatDate(invoice.date)}</TD>
+                      <TD className="font-medium text-slate-900">{invoice.customerName}</TD>
+                      <TD className="text-end">{formatCurrency(invoice.total, currency)}</TD>
+                      <TD className="text-end">
+                        {invoice.remaining > 0 ? (
+                          <Badge tone="amber">{formatCurrency(invoice.remaining, currency)}</Badge>
+                        ) : (
+                          <Badge tone="green">مسدد</Badge>
+                        )}
+                      </TD>
+                      <TD>
+                        <Badge tone={invoice.paymentType === "cash" ? "green" : "indigo"}>
+                          {invoice.paymentType === "cash" ? "نقدي" : "آجل"}
+                        </Badge>
+                      </TD>
+                      <TD>
+                        <Link to={`/sales/${invoice.id}`}>
+                          <Button size="sm" variant="outline">فتح</Button>
+                        </Link>
+                      </TD>
+                    </TR>
+                  ))}
+                </TBody>
+              </Table>
+            </div>
+          )}
+        </div>
+
+        {topCustomers.length > 0 ? (
+          <div className="rounded-lg border border-slate-200 overflow-hidden">
+            <div className="bg-slate-50 px-3 py-2 border-b border-slate-200 text-sm font-semibold text-slate-900">
+              أكثر العملاء معه
+            </div>
+            <div className="divide-y divide-slate-100">
+              {topCustomers.map((customer) => (
+                <div key={customer.name} className="flex items-center justify-between gap-3 p-3 text-sm">
+                  <div>
+                    <div className="font-medium text-slate-900">{customer.name}</div>
+                    <div className="text-xs text-slate-500">{customer.trips} رحلة</div>
+                  </div>
+                  <div className="font-semibold text-slate-900">
+                    {formatCurrency(customer.total, currency)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </Drawer>
+  );
+}
+
+function InfoBox({
+  label,
+  value,
+  icon,
+}: {
+  label: string;
+  value: string;
+  icon?: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+      <div className="flex items-center gap-1.5 text-xs text-slate-500">
+        {icon}
+        <span>{label}</span>
+      </div>
+      <div className="mt-1 text-sm font-semibold text-slate-900">{value}</div>
+    </div>
+  );
+}
+
+function Metric({
+  label,
+  value,
+  tone = "slate",
+}: {
+  label: string;
+  value: string;
+  tone?: "slate" | "green" | "blue" | "amber";
+}) {
+  const colors: Record<"slate" | "green" | "blue" | "amber", string> = {
+    slate: "text-slate-900",
+    green: "text-emerald-700",
+    blue: "text-blue-700",
+    amber: "text-amber-700",
+  };
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-3">
+      <div className="text-xs text-slate-500">{label}</div>
+      <div className={`mt-1 text-base font-bold ${colors[tone]}`}>{value}</div>
+    </div>
   );
 }

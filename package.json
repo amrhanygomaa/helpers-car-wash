@@ -8,12 +8,12 @@
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite",
-    "electron:dev": "cross-env ELECTRON_RUN_AS_NODE= ELECTRON_RENDERER_URL=http://127.0.0.1:5173 concurrently -k \"vite --host 127.0.0.1\" \"wait-on http://127.0.0.1:5173 && electron .\"",
+    "electron:dev": "cross-env ELECTRON_RENDERER_URL=http://127.0.0.1:5173 concurrently -k \"vite --host 127.0.0.1 --strictPort\" \"wait-on http://127.0.0.1:5173 && node electron/run-electron.cjs .\"",
     "build": "tsc -b && vite build",
     "dist:win": "npm run build && electron-builder --win nsis",
-    "license:init": "node scripts/generate-license.cjs --init-keypair",
-    "license:generate": "node scripts/generate-license.cjs",
-    "license:studio": "node scripts/license-studio.cjs",
+    "license:init": "node ../helpers_sys_activate/scripts/generate-license.cjs --init-keypair",
+    "license:generate": "node ../helpers_sys_activate/scripts/generate-license.cjs",
+    "license:studio": "node ../helpers_sys_activate/scripts/license-studio.cjs",
     "lint": "eslint .",
     "preview": "vite preview"
   },
@@ -27,6 +27,7 @@
       "build/icon.ico",
       "dist/**/*",
       "electron/**/*",
+      "!electron/run-electron.cjs",
       "node_modules/**/*",
       "package.json",
       "!**/scripts/**",
@@ -42,13 +43,28 @@
       "node_modules/better-sqlite3-multiple-ciphers/**/*",
       "node_modules/argon2/**/*"
     ],
+    "electronFuses": {
+      "runAsNode": false,
+      "enableCookieEncryption": true,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "enableEmbeddedAsarIntegrityValidation": true,
+      "onlyLoadAppFromAsar": true,
+      "grantFileProtocolExtraPrivileges": true
+    },
+    "extraResources": [
+      {
+        "from": "build/icon.ico",
+        "to": "build/icon.ico"
+      }
+    ],
     "win": {
       "icon": "build/icon.ico",
       "target": [
         "nsis"
       ],
       "artifactName": "${productName}-${version}-Setup.${ext}",
-      "signAndEditExecutable": false
+      "signAndEditExecutable": true
     },
     "nsis": {
       "oneClick": false,
@@ -96,7 +112,7 @@
     "autoprefixer": "^10.5.0",
     "concurrently": "^9.2.1",
     "cross-env": "^10.1.0",
-    "electron": "^37.10.3",
+    "electron": "^39.8.5",
     "electron-builder": "^26.8.1",
     "eslint": "^9.39.4",
     "eslint-plugin-react-hooks": "^7.1.1",

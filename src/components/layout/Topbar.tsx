@@ -3,6 +3,7 @@ import { Search, Bell, ChevronDown, User } from "lucide-react";
 import { useApp } from "../../store/AppContext";
 import { useMemo, useState } from "react";
 import { formatDate } from "../../lib/format";
+import { hasPermission } from "../../lib/permissions";
 
 const TITLES: Record<string, string> = {
   "/": "لوحة التحكم",
@@ -15,16 +16,24 @@ const TITLES: Record<string, string> = {
   "/alerts": "التنبيهات",
   "/cashbox": "الخزينة",
   "/reports": "التقارير",
+  "/my-profile": "ملفي الشخصي",
   "/settings": "الإعدادات",
 };
 
 export function Topbar() {
   const loc = useLocation();
   const navigate = useNavigate();
-  const { auth, logout, products, customers, suppliers, purchaseInvoices, salesInvoices } =
+  const { auth, logout, products, customers, suppliers, purchaseInvoices, salesInvoices, currentUser } =
     useApp();
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
+  const canSearchProducts = hasPermission(currentUser, "products");
+  const canSearchCustomers = hasPermission(currentUser, "customers");
+  const canSearchSuppliers = hasPermission(currentUser, "suppliers");
+  const canSearchSales = hasPermission(currentUser, "salesInvoices");
+  const canSearchPurchases = hasPermission(currentUser, "purchaseInvoices");
+  const canViewAlerts = hasPermission(currentUser, "alerts");
+  const accountName = currentUser?.name || auth.username || "مدير";
 
   const title = useMemo(() => {
     for (const key of Object.keys(TITLES)) {
@@ -37,39 +46,61 @@ export function Topbar() {
     const term = q.trim().toLowerCase();
     if (!term) return [] as { label: string; sub: string; to: string }[];
     const out: { label: string; sub: string; to: string }[] = [];
-    products.forEach((p) => {
-      if (
-        p.name.toLowerCase().includes(term) ||
-        p.code.toLowerCase().includes(term)
-      )
-        out.push({ label: p.name, sub: `منتج — ${p.code}`, to: "/products" });
-    });
-    customers.forEach((c) => {
-      if (c.name.toLowerCase().includes(term))
-        out.push({ label: c.name, sub: "عميل", to: "/customers" });
-    });
-    suppliers.forEach((s) => {
-      if (s.name.toLowerCase().includes(term))
-        out.push({ label: s.name, sub: "مورد", to: "/suppliers" });
-    });
-    salesInvoices.forEach((s) => {
-      if (s.invoiceNumber.toLowerCase().includes(term))
-        out.push({
-          label: s.invoiceNumber,
-          sub: `فاتورة مبيعات — ${s.customerName}`,
-          to: `/sales/${s.id}`,
-        });
-    });
-    purchaseInvoices.forEach((p) => {
-      if (p.invoiceNumber.toLowerCase().includes(term))
-        out.push({
-          label: p.invoiceNumber,
-          sub: `فاتورة مشتريات — ${p.supplierName}`,
-          to: `/purchases/${p.id}`,
-        });
-    });
+    if (canSearchProducts) {
+      products.forEach((p) => {
+        if (
+          p.name.toLowerCase().includes(term) ||
+          p.code.toLowerCase().includes(term)
+        )
+          out.push({ label: p.name, sub: `منتج — ${p.code}`, to: "/products" });
+      });
+    }
+    if (canSearchCustomers) {
+      customers.forEach((c) => {
+        if (c.name.toLowerCase().includes(term))
+          out.push({ label: c.name, sub: "عميل", to: "/customers" });
+      });
+    }
+    if (canSearchSuppliers) {
+      suppliers.forEach((s) => {
+        if (s.name.toLowerCase().includes(term))
+          out.push({ label: s.name, sub: "مورد", to: "/suppliers" });
+      });
+    }
+    if (canSearchSales) {
+      salesInvoices.forEach((s) => {
+        if (s.invoiceNumber.toLowerCase().includes(term))
+          out.push({
+            label: s.invoiceNumber,
+            sub: `فاتورة مبيعات — ${s.customerName}`,
+            to: `/sales/${s.id}`,
+          });
+      });
+    }
+    if (canSearchPurchases) {
+      purchaseInvoices.forEach((p) => {
+        if (p.invoiceNumber.toLowerCase().includes(term))
+          out.push({
+            label: p.invoiceNumber,
+            sub: `فاتورة مشتريات — ${p.supplierName}`,
+            to: `/purchases/${p.id}`,
+          });
+      });
+    }
     return out.slice(0, 10);
-  }, [q, products, customers, suppliers, salesInvoices, purchaseInvoices]);
+  }, [
+    q,
+    products,
+    customers,
+    suppliers,
+    salesInvoices,
+    purchaseInvoices,
+    canSearchProducts,
+    canSearchCustomers,
+    canSearchSuppliers,
+    canSearchSales,
+    canSearchPurchases,
+  ]);
 
   return (
     <header className="sticky top-0 z-30 bg-white/90 backdrop-blur border-b border-slate-200 h-14 flex items-center gap-4 px-4">
@@ -107,13 +138,15 @@ export function Topbar() {
         ) : null}
       </div>
       <div className="flex items-center gap-2 ms-auto">
-        <button
-          onClick={() => navigate("/alerts")}
-          className="relative w-9 h-9 rounded-lg hover:bg-slate-100 grid place-items-center text-slate-600"
-        >
-          <Bell className="w-4 h-4" />
-          <span className="absolute top-1 end-1 w-2 h-2 rounded-full bg-red-500" />
-        </button>
+        {canViewAlerts ? (
+          <button
+            onClick={() => navigate("/alerts")}
+            className="relative w-9 h-9 rounded-lg hover:bg-slate-100 grid place-items-center text-slate-600"
+          >
+            <Bell className="w-4 h-4" />
+            <span className="absolute top-1 end-1 w-2 h-2 rounded-full bg-red-500" />
+          </button>
+        ) : null}
         <div className="relative">
           <button
             onClick={() => setOpen((v) => !v)}
@@ -123,7 +156,7 @@ export function Topbar() {
               <User className="w-3.5 h-3.5" />
             </div>
             <div className="text-sm text-slate-700">
-              {auth.username || "مدير"}
+              {accountName}
             </div>
             <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
           </button>
@@ -132,15 +165,27 @@ export function Topbar() {
               className="absolute top-11 end-0 bg-white border border-slate-200 rounded-lg shadow-lg w-48 py-1 z-30"
               onMouseLeave={() => setOpen(false)}
             >
-              <button
-                className="w-full text-right px-3 py-2 text-sm hover:bg-slate-50"
-                onClick={() => {
-                  setOpen(false);
-                  navigate("/settings");
-                }}
-              >
-                الإعدادات
-              </button>
+              {currentUser?.role === "employee" ? (
+                <button
+                  className="w-full text-right px-3 py-2 text-sm hover:bg-slate-50"
+                  onClick={() => {
+                    setOpen(false);
+                    navigate("/my-profile");
+                  }}
+                >
+                  ملفي الشخصي
+                </button>
+              ) : (
+                <button
+                  className="w-full text-right px-3 py-2 text-sm hover:bg-slate-50"
+                  onClick={() => {
+                    setOpen(false);
+                    navigate("/settings");
+                  }}
+                >
+                  الإعدادات
+                </button>
+              )}
               <button
                 className="w-full text-right px-3 py-2 text-sm hover:bg-slate-50 text-red-600"
                 onClick={() => {

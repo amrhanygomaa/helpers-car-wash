@@ -16,6 +16,7 @@ interface Props {
   remaining: number;
   notes?: string;
   paymentLabel?: string;
+  priceTypeLabel?: string;
 }
 
 export function InvoicePrintLayout(props: Props) {
@@ -95,9 +96,15 @@ export function InvoicePrintLayout(props: Props) {
             </div>
           </div>
           <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
-            <div className="text-xs text-slate-500">طريقة الدفع / السائق</div>
+            <div className="text-xs text-slate-500">طريقة الدفع / نوع السعر / السائق</div>
             <div className="font-semibold text-slate-900 mt-1">
               {props.paymentLabel ?? "—"}
+              {props.priceTypeLabel ? (
+                <span className="text-slate-500 text-sm">
+                  {" "}
+                  • نوع السعر: {props.priceTypeLabel}
+                </span>
+              ) : null}
               {props.driverName ? (
                 <span className="text-slate-500 text-sm">
                   {" "}
@@ -181,11 +188,6 @@ export function InvoicePrintLayout(props: Props) {
           {settings.invoiceFooter}
         </div>
 
-        <div className="mt-16 grid grid-cols-2 gap-6 text-sm">
-          <SignatureBlock label="توقيع المستلم" />
-          <SignatureBlock label="توقيع المسؤول" />
-        </div>
-
         {/* Developer Info */}
         <div className="mt-12 text-center text-[10px] text-slate-400 font-medium">
           برمجة وتطوير: شركة هلبرز تكنولوجي — واتساب: 01118445625
@@ -211,15 +213,6 @@ function Row({
     >
       <span>{label}</span>
       <span className="tabular-nums font-mono">{value}</span>
-    </div>
-  );
-}
-
-function SignatureBlock({ label }: { label: string }) {
-  return (
-    <div>
-      <div className="h-16 border-b border-slate-400" />
-      <div className="text-xs text-slate-500 mt-1 text-center">{label}</div>
     </div>
   );
 }

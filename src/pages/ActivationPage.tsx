@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { Copy, Download, KeyRound, ShieldAlert, ShieldCheck } from "lucide-react";
+import { Copy, KeyRound, ShieldAlert, ShieldCheck } from "lucide-react";
 import { useApp } from "../store/AppContext";
 import { Button } from "../components/ui/Button";
 import { Field, Input, Textarea } from "../components/ui/Input";
@@ -36,20 +36,6 @@ export function ActivationPage() {
     if (!licenseStatus?.machineCode) return;
     await navigator.clipboard.writeText(licenseStatus.machineCode);
     toast.success("تم نسخ كود الجهاز");
-  }
-
-  async function exportDesktopBackup() {
-    if (!window.desktopAPI?.storage) return;
-    const backup = await window.desktopAPI.storage.export();
-    const blob = new Blob([JSON.stringify(backup, null, 2)], {
-      type: "application/json",
-    });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `desktop_backup_${new Date().toISOString().slice(0, 10)}.json`;
-    link.click();
-    URL.revokeObjectURL(url);
   }
 
   if (!licenseStatus) {
@@ -144,9 +130,6 @@ export function ActivationPage() {
           <div className="flex flex-col sm:flex-row gap-2">
             <Button type="submit" size="lg" className="flex-1" disabled={submitting}>
               {submitting ? "جاري التفعيل..." : "تفعيل النسخة"}
-            </Button>
-            <Button type="button" variant="outline" size="lg" onClick={exportDesktopBackup}>
-              <Download className="w-4 h-4" /> نسخة احتياطية
             </Button>
           </div>
 

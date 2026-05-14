@@ -32,6 +32,7 @@ import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { useApp } from "../store/AppContext";
 import { formatCurrency, formatDate, formatNumber } from "../lib/format";
+import { hasPermission } from "../lib/permissions";
 import { daysUntil, isToday } from "../lib/utils";
 
 function StatCard({
@@ -90,7 +91,21 @@ export function DashboardPage() {
     currentCashBalance,
     customerBalance,
     supplierBalance,
+    currentUser,
   } = useApp();
+
+  const canViewProducts = hasPermission(currentUser, "products");
+  const canViewInventory = hasPermission(currentUser, "inventory");
+  const canViewAlerts = hasPermission(currentUser, "alerts");
+  const canViewSales = hasPermission(currentUser, "salesInvoices");
+  const canAddSalesInvoice = hasPermission(currentUser, "salesInvoices", "add");
+  const canViewPurchases = hasPermission(currentUser, "purchaseInvoices");
+  const canAddPurchaseInvoice = hasPermission(currentUser, "purchaseInvoices", "add");
+  const canViewCustomers = hasPermission(currentUser, "customers");
+  const canAddCustomer = hasPermission(currentUser, "customers", "add");
+  const canViewSuppliers = hasPermission(currentUser, "suppliers");
+  const canViewCashbox = hasPermission(currentUser, "cashbox");
+  const canAddProduct = hasPermission(currentUser, "products", "add");
 
   const stats = useMemo(() => {
     const totalStockUnits = products.reduce((a, p) => a + p.quantity, 0);
@@ -145,16 +160,20 @@ export function DashboardPage() {
       const d = new Date();
       d.setDate(d.getDate() - i);
       const iso = d.toISOString().slice(0, 10);
-      const sales = salesInvoices
-        .filter((s) => s.date.slice(0, 10) === iso && !s.cancelled)
-        .reduce((a, s) => a + s.total, 0);
-      const purchases = purchaseInvoices
-        .filter((p) => p.date.slice(0, 10) === iso)
-        .reduce((a, p) => a + p.total, 0);
+      const sales = canViewSales
+        ? salesInvoices
+            .filter((s) => s.date.slice(0, 10) === iso && !s.cancelled)
+            .reduce((a, s) => a + s.total, 0)
+        : 0;
+      const purchases = canViewPurchases
+        ? purchaseInvoices
+            .filter((p) => p.date.slice(0, 10) === iso)
+            .reduce((a, p) => a + p.total, 0)
+        : 0;
       days.push({ date: iso.slice(5), sales, purchases });
     }
     return days;
-  }, [salesInvoices, purchaseInvoices]);
+  }, [salesInvoices, purchaseInvoices, canViewSales, canViewPurchases]);
 
   const lowStockList = useMemo(
     () =>
@@ -182,336 +201,426 @@ export function DashboardPage() {
       tone: "blue" | "green" | "amber" | "red";
       to?: string;
     }[] = [];
-    salesInvoices.slice(0, 6).forEach((s) =>
-      items.push({
-        id: s.id,
-        title: `فاتورة مبيعات ${s.invoiceNumber}`,
-        sub: s.customerName,
-        amount: s.total,
-        date: s.date,
-        tone: "green",
-        to: `/sales/${s.id}`,
-      })
-    );
-    purchaseInvoices.slice(0, 4).forEach((p) =>
-      items.push({
-        id: p.id,
-        title: `فاتورة مشتريات ${p.invoiceNumber}`,
-        sub: p.supplierName,
-        amount: p.total,
-        date: p.date,
-        tone: "blue",
-        to: `/purchases/${p.id}`,
-      })
-    );
+    if (canViewSales) {
+      salesInvoices.slice(0, 6).forEach((s) =>
+        items.push({
+          id: s.id,
+          title: `فاتورة مبيعات ${s.invoiceNumber}`,
+          sub: s.customerName,
+          amount: s.total,
+          date: s.date,
+          tone: "green",
+          to: `/sales/${s.id}`,
+        })
+      );
+    }
+    if (canViewPurchases) {
+      purchaseInvoices.slice(0, 4).forEach((p) =>
+        items.push({
+          id: p.id,
+          title: `فاتورة مشتريات ${p.invoiceNumber}`,
+          sub: p.supplierName,
+          amount: p.total,
+          date: p.date,
+          tone: "blue",
+          to: `/purchases/${p.id}`,
+        })
+      );
+    }
     return items
       .sort((a, b) => (a.date < b.date ? 1 : -1))
       .slice(0, 8);
-  }, [salesInvoices, purchaseInvoices]);
+  }, [salesInvoices, purchaseInvoices, canViewSales, canViewPurchases]);
+
+  const showTrendChart = canViewSales || canViewPurchases;
+  const showStockChart = canViewInventory;
+  const showRecentActivity = canViewSales || canViewPurchases;
+  const showLowStockPanel = canViewInventory || canViewAlerts;
+  const trendChartTitle =
+    canViewSales && canViewPurchases
+      ? "المبيعات والمشتريات — آخر 14 يوم"
+      : canViewSales
+      ? "المبيعات — آخر 14 يوم"
+      : "المشتريات — آخر 14 يوم";
+  const recentActivityLink = canViewSales ? "/sales" : "/purchases";
+  const lowStockLink = canViewInventory ? "/inventory" : "/alerts";
+  const hasDashboardWidgets =
+    canViewProducts ||
+    canViewInventory ||
+    canViewAlerts ||
+    canViewSales ||
+    canViewPurchases ||
+    canViewCustomers ||
+    canViewSuppliers ||
+    canViewCashbox;
 
   return (
     <>
       <PageHeader
         title={`أهلاً بك في ${settings.companyNameAr}`}
-        description="ملخص عام لحالة المخزون، المبيعات، المشتريات والخزينة."
+        description="ملخص عام حسب الصلاحيات المتاحة لهذا المستخدم."
         actions={
-          <>
-            <Link to="/sales/new">
-              <Button>
-                <Plus className="w-4 h-4" />
-                فاتورة مبيعات
-              </Button>
-            </Link>
-            <Link to="/purchases/new">
-              <Button variant="outline">
-                <Plus className="w-4 h-4" />
-                فاتورة مشتريات
-              </Button>
-            </Link>
-          </>
+          canAddSalesInvoice || canAddPurchaseInvoice ? (
+            <>
+              {canAddSalesInvoice ? (
+                <Link to="/sales/new">
+                  <Button>
+                    <Plus className="w-4 h-4" />
+                    فاتورة مبيعات
+                  </Button>
+                </Link>
+              ) : null}
+              {canAddPurchaseInvoice ? (
+                <Link to="/purchases/new">
+                  <Button variant="outline">
+                    <Plus className="w-4 h-4" />
+                    فاتورة مشتريات
+                  </Button>
+                </Link>
+              ) : null}
+            </>
+          ) : null
         }
       />
 
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
-        <StatCard
-          title="إجمالي المنتجات"
-          value={formatNumber(stats.totalProducts)}
-          icon={<Package className="w-5 h-5" />}
-          tone="blue"
-        />
-        <StatCard
-          title="إجمالي الوحدات في المخزون"
-          value={formatNumber(stats.totalStockUnits)}
-          icon={<Warehouse className="w-5 h-5" />}
-          tone="indigo"
-        />
-        <StatCard
-          title="منتجات قليلة المخزون"
-          value={formatNumber(stats.lowStock)}
-          icon={<AlertTriangle className="w-5 h-5" />}
-          tone="amber"
-        />
-        <StatCard
-          title="قاربت على الانتهاء"
-          value={formatNumber(stats.expiringSoon)}
-          icon={<CalendarClock className="w-5 h-5" />}
-          tone="red"
-        />
-        <StatCard
-          title="مبيعات اليوم"
-          value={formatCurrency(stats.todaySales, settings.currency)}
-          icon={<TrendingUp className="w-5 h-5" />}
-          tone="green"
-        />
-        <StatCard
-          title="مشتريات اليوم"
-          value={formatCurrency(stats.todayPurchases, settings.currency)}
-          icon={<TrendingDown className="w-5 h-5" />}
-          tone="slate"
-        />
-        <StatCard
-          title="مستحقات العملاء"
-          value={formatCurrency(stats.receivables, settings.currency)}
-          icon={<HandCoins className="w-5 h-5" />}
-          tone="amber"
-        />
-        <StatCard
-          title="رصيد الخزينة الحالي"
-          value={formatCurrency(stats.cashBalance, settings.currency)}
-          icon={<Wallet className="w-5 h-5" />}
-          tone="green"
-        />
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <Card className="lg:col-span-2">
-          <CardHeader
-            title="المبيعات والمشتريات — آخر 14 يوم"
-            subtitle={`العملة: ${settings.currency}`}
-          />
-          <CardBody>
-            <div className="h-72">
-              <ResponsiveContainer>
-                <AreaChart data={chartData}>
-                  <defs>
-                    <linearGradient id="gS" x1="0" x2="0" y1="0" y2="1">
-                      <stop offset="0%" stopColor="#10b981" stopOpacity={0.4} />
-                      <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
-                    </linearGradient>
-                    <linearGradient id="gP" x1="0" x2="0" y1="0" y2="1">
-                      <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.35} />
-                      <stop offset="100%" stopColor="#3b82f6" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis dataKey="date" stroke="#94a3b8" fontSize={12} />
-                  <YAxis stroke="#94a3b8" fontSize={12} />
-                  <Tooltip
-                    contentStyle={{
-                      fontSize: 12,
-                      borderRadius: 8,
-                      border: "1px solid #e2e8f0",
-                    }}
-                    formatter={(v) => formatCurrency(Number(v), settings.currency) as string}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="sales"
-                    name="المبيعات"
-                    stroke="#10b981"
-                    fill="url(#gS)"
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="purchases"
-                    name="المشتريات"
-                    stroke="#3b82f6"
-                    fill="url(#gP)"
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </CardBody>
-        </Card>
-
+      {hasDashboardWidgets ? (
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
+          {canViewProducts ? (
+            <StatCard
+              title="إجمالي المنتجات"
+              value={formatNumber(stats.totalProducts)}
+              icon={<Package className="w-5 h-5" />}
+              tone="blue"
+            />
+          ) : null}
+          {canViewInventory ? (
+            <StatCard
+              title="إجمالي الوحدات في المخزون"
+              value={formatNumber(stats.totalStockUnits)}
+              icon={<Warehouse className="w-5 h-5" />}
+              tone="indigo"
+            />
+          ) : null}
+          {canViewAlerts ? (
+            <>
+              <StatCard
+                title="منتجات قليلة المخزون"
+                value={formatNumber(stats.lowStock)}
+                icon={<AlertTriangle className="w-5 h-5" />}
+                tone="amber"
+              />
+              <StatCard
+                title="قاربت على الانتهاء"
+                value={formatNumber(stats.expiringSoon)}
+                icon={<CalendarClock className="w-5 h-5" />}
+                tone="red"
+              />
+            </>
+          ) : null}
+          {canViewSales ? (
+            <StatCard
+              title="مبيعات اليوم"
+              value={formatCurrency(stats.todaySales, settings.currency)}
+              icon={<TrendingUp className="w-5 h-5" />}
+              tone="green"
+            />
+          ) : null}
+          {canViewPurchases ? (
+            <StatCard
+              title="مشتريات اليوم"
+              value={formatCurrency(stats.todayPurchases, settings.currency)}
+              icon={<TrendingDown className="w-5 h-5" />}
+              tone="slate"
+            />
+          ) : null}
+          {canViewCustomers ? (
+            <StatCard
+              title="مستحقات العملاء"
+              value={formatCurrency(stats.receivables, settings.currency)}
+              icon={<HandCoins className="w-5 h-5" />}
+              tone="amber"
+            />
+          ) : null}
+          {canViewSuppliers ? (
+            <StatCard
+              title="مستحقات الموردين"
+              value={formatCurrency(stats.payables, settings.currency)}
+              icon={<ShoppingBag className="w-5 h-5" />}
+              tone="slate"
+            />
+          ) : null}
+          {canViewCashbox ? (
+            <StatCard
+              title="رصيد الخزينة الحالي"
+              value={formatCurrency(stats.cashBalance, settings.currency)}
+              icon={<Wallet className="w-5 h-5" />}
+              tone="green"
+            />
+          ) : null}
+        </div>
+      ) : (
         <Card>
-          <CardHeader
-            title="أكثر المنتجات مخزوناً"
-            subtitle="أعلى 5 منتجات"
-          />
-          <CardBody>
-            <div className="h-72" dir="ltr">
-              <ResponsiveContainer>
-                <BarChart 
-                  data={topProductsByStock} 
-                  layout="vertical"
-                  margin={{ left: 10, right: 30, top: 0, bottom: 0 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" horizontal={false} />
-                  <XAxis type="number" fontSize={10} stroke="#94a3b8" />
-                  <YAxis
-                    type="category"
-                    dataKey="name"
-                    width={140}
-                    fontSize={12}
-                    stroke="#475569"
-                    tick={{ fill: "#475569", fontWeight: 500, fontFamily: 'Cairo' }}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <Tooltip
-                    cursor={{ fill: "#f8fafc" }}
-                    contentStyle={{ fontSize: 12, borderRadius: 12, border: "none", boxShadow: "0 10px 15px -3px rgb(0 0 0 / 0.1)" }}
-                    formatter={(v) => [formatNumber(Number(v)), "الكمية"]}
-                  />
-                  <Bar 
-                    dataKey="qty" 
-                    name="الكمية" 
-                    fill="url(#barGradient)" 
-                    radius={[0, 4, 4, 0]} 
-                    barSize={20}
-                  />
-                  <defs>
-                    <linearGradient id="barGradient" x1="0" y1="0" x2="1" y2="0">
-                      <stop offset="0%" stopColor="#6366f1" />
-                      <stop offset="100%" stopColor="#818cf8" />
-                    </linearGradient>
-                  </defs>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+          <CardBody className="py-10 text-center text-sm text-slate-500">
+            لا توجد عناصر متاحة في لوحة التحكم لهذا المستخدم. يمكن للمدير تعديل الصلاحيات من صفحة المستخدمين.
           </CardBody>
         </Card>
-      </div>
+      )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <Card className="lg:col-span-2">
-          <CardHeader
-            title="أحدث النشاط"
-            subtitle="أحدث الفواتير والحركات"
-            actions={
-              <Link to="/sales" className="text-xs text-brand-700 hover:underline">
-                عرض الكل
-              </Link>
-            }
-          />
-          <CardBody className="divide-y divide-slate-100 p-0">
-            {recentActivity.length === 0 ? (
-              <div className="p-8 text-center text-sm text-slate-500">
-                لا يوجد نشاط بعد
-              </div>
-            ) : (
-              recentActivity.map((a) => (
-                <Link
-                  key={a.id}
-                  to={a.to ?? "#"}
-                  className="flex items-center gap-3 p-3 hover:bg-slate-50 transition-colors"
-                >
-                  <div
-                    className={`w-9 h-9 rounded-lg grid place-items-center ${
-                      a.tone === "green"
-                        ? "bg-emerald-50 text-emerald-600"
-                        : a.tone === "blue"
-                        ? "bg-blue-50 text-blue-600"
-                        : a.tone === "amber"
-                        ? "bg-amber-50 text-amber-600"
-                        : "bg-red-50 text-red-600"
-                    }`}
-                  >
-                    {a.tone === "green" ? (
-                      <Receipt className="w-4 h-4" />
-                    ) : (
-                      <ShoppingBag className="w-4 h-4" />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm text-slate-900">{a.title}</div>
-                    <div className="text-xs text-slate-500 truncate">{a.sub}</div>
-                  </div>
-                  <div className="text-left">
-                    {a.amount !== undefined ? (
-                      <div className="text-sm font-medium text-slate-900">
-                        {formatCurrency(a.amount, settings.currency)}
-                      </div>
-                    ) : null}
-                    <div className="text-xs text-slate-400">{formatDate(a.date)}</div>
-                  </div>
-                  <ArrowLeft className="w-4 h-4 text-slate-300" />
-                </Link>
-              ))
-            )}
-          </CardBody>
-        </Card>
-
-        <Card>
-          <CardHeader
-            title="أقل المنتجات في المخزون"
-            subtitle="منتجات تحتاج إعادة توريد"
-            actions={
-              <Link to="/inventory" className="text-xs text-brand-700 hover:underline">
-                عرض الكل
-              </Link>
-            }
-          />
-          <CardBody className="divide-y divide-slate-100 p-0">
-            {lowStockList.length === 0 ? (
-              <div className="p-8 text-center text-sm text-slate-500">
-                لا توجد منتجات تحت حد الأمان
-              </div>
-            ) : (
-              lowStockList.map((p) => (
-                <div
-                  key={p.id}
-                  className="flex items-center gap-3 p-3"
-                >
-                  <div className="w-9 h-9 rounded-lg bg-amber-50 text-amber-600 grid place-items-center">
-                    <AlertTriangle className="w-4 h-4" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm text-slate-900 truncate">{p.name}</div>
-                    <div className="text-xs text-slate-500">
-                      الحد الأدنى: {p.minStock}
-                    </div>
-                  </div>
-                  <Badge tone={p.quantity === 0 ? "red" : "amber"}>
-                    {p.quantity} {p.unit}
-                  </Badge>
+      {showTrendChart || showStockChart ? (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {showTrendChart ? (
+            <Card className={showStockChart ? "lg:col-span-2" : "lg:col-span-3"}>
+              <CardHeader
+                title={trendChartTitle}
+                subtitle={`العملة: ${settings.currency}`}
+              />
+              <CardBody>
+                <div className="h-72">
+                  <ResponsiveContainer>
+                    <AreaChart data={chartData}>
+                      <defs>
+                        <linearGradient id="gS" x1="0" x2="0" y1="0" y2="1">
+                          <stop offset="0%" stopColor="#10b981" stopOpacity={0.4} />
+                          <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
+                        </linearGradient>
+                        <linearGradient id="gP" x1="0" x2="0" y1="0" y2="1">
+                          <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.35} />
+                          <stop offset="100%" stopColor="#3b82f6" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                      <XAxis dataKey="date" stroke="#94a3b8" fontSize={12} />
+                      <YAxis stroke="#94a3b8" fontSize={12} />
+                      <Tooltip
+                        contentStyle={{
+                          fontSize: 12,
+                          borderRadius: 8,
+                          border: "1px solid #e2e8f0",
+                        }}
+                        formatter={(v) => formatCurrency(Number(v), settings.currency) as string}
+                      />
+                      {canViewSales ? (
+                        <Area
+                          type="monotone"
+                          dataKey="sales"
+                          name="المبيعات"
+                          stroke="#10b981"
+                          fill="url(#gS)"
+                        />
+                      ) : null}
+                      {canViewPurchases ? (
+                        <Area
+                          type="monotone"
+                          dataKey="purchases"
+                          name="المشتريات"
+                          stroke="#3b82f6"
+                          fill="url(#gP)"
+                        />
+                      ) : null}
+                    </AreaChart>
+                  </ResponsiveContainer>
                 </div>
-              ))
-            )}
+              </CardBody>
+            </Card>
+          ) : null}
+
+          {showStockChart ? (
+            <Card>
+              <CardHeader
+                title="أكثر المنتجات مخزوناً"
+                subtitle="أعلى 5 منتجات"
+              />
+              <CardBody>
+                <div className="h-72" dir="ltr">
+                  <ResponsiveContainer>
+                    <BarChart 
+                      data={topProductsByStock} 
+                      layout="vertical"
+                      margin={{ left: 10, right: 30, top: 0, bottom: 0 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" horizontal={false} />
+                      <XAxis type="number" fontSize={10} stroke="#94a3b8" />
+                      <YAxis
+                        type="category"
+                        dataKey="name"
+                        width={140}
+                        fontSize={12}
+                        stroke="#475569"
+                        tick={{ fill: "#475569", fontWeight: 500, fontFamily: 'Cairo' }}
+                        axisLine={false}
+                        tickLine={false}
+                      />
+                      <Tooltip
+                        cursor={{ fill: "#f8fafc" }}
+                        contentStyle={{ fontSize: 12, borderRadius: 12, border: "none", boxShadow: "0 10px 15px -3px rgb(0 0 0 / 0.1)" }}
+                        formatter={(v) => [formatNumber(Number(v)), "الكمية"]}
+                      />
+                      <Bar 
+                        dataKey="qty" 
+                        name="الكمية" 
+                        fill="url(#barGradient)" 
+                        radius={[0, 4, 4, 0]} 
+                        barSize={20}
+                      />
+                      <defs>
+                        <linearGradient id="barGradient" x1="0" y1="0" x2="1" y2="0">
+                          <stop offset="0%" stopColor="#6366f1" />
+                          <stop offset="100%" stopColor="#818cf8" />
+                        </linearGradient>
+                      </defs>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </CardBody>
+            </Card>
+          ) : null}
+        </div>
+      ) : null}
+
+      {showRecentActivity || showLowStockPanel ? (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {showRecentActivity ? (
+            <Card className={showLowStockPanel ? "lg:col-span-2" : "lg:col-span-3"}>
+              <CardHeader
+                title="أحدث النشاط"
+                subtitle="أحدث الفواتير والحركات حسب الصلاحيات"
+                actions={
+                  <Link to={recentActivityLink} className="text-xs text-brand-700 hover:underline">
+                    عرض الكل
+                  </Link>
+                }
+              />
+              <CardBody className="divide-y divide-slate-100 p-0">
+                {recentActivity.length === 0 ? (
+                  <div className="p-8 text-center text-sm text-slate-500">
+                    لا يوجد نشاط بعد
+                  </div>
+                ) : (
+                  recentActivity.map((a) => (
+                    <Link
+                      key={a.id}
+                      to={a.to ?? "#"}
+                      className="flex items-center gap-3 p-3 hover:bg-slate-50 transition-colors"
+                    >
+                      <div
+                        className={`w-9 h-9 rounded-lg grid place-items-center ${
+                          a.tone === "green"
+                            ? "bg-emerald-50 text-emerald-600"
+                            : a.tone === "blue"
+                            ? "bg-blue-50 text-blue-600"
+                            : a.tone === "amber"
+                            ? "bg-amber-50 text-amber-600"
+                            : "bg-red-50 text-red-600"
+                        }`}
+                      >
+                        {a.tone === "green" ? (
+                          <Receipt className="w-4 h-4" />
+                        ) : (
+                          <ShoppingBag className="w-4 h-4" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm text-slate-900">{a.title}</div>
+                        <div className="text-xs text-slate-500 truncate">{a.sub}</div>
+                      </div>
+                      <div className="text-left">
+                        {a.amount !== undefined ? (
+                          <div className="text-sm font-medium text-slate-900">
+                            {formatCurrency(a.amount, settings.currency)}
+                          </div>
+                        ) : null}
+                        <div className="text-xs text-slate-400">{formatDate(a.date)}</div>
+                      </div>
+                      <ArrowLeft className="w-4 h-4 text-slate-300" />
+                    </Link>
+                  ))
+                )}
+              </CardBody>
+            </Card>
+          ) : null}
+
+          {showLowStockPanel ? (
+            <Card>
+              <CardHeader
+                title="أقل المنتجات في المخزون"
+                subtitle="منتجات تحتاج إعادة توريد"
+                actions={
+                  <Link to={lowStockLink} className="text-xs text-brand-700 hover:underline">
+                    عرض الكل
+                  </Link>
+                }
+              />
+              <CardBody className="divide-y divide-slate-100 p-0">
+                {lowStockList.length === 0 ? (
+                  <div className="p-8 text-center text-sm text-slate-500">
+                    لا توجد منتجات تحت حد الأمان
+                  </div>
+                ) : (
+                  lowStockList.map((p) => (
+                    <div
+                      key={p.id}
+                      className="flex items-center gap-3 p-3"
+                    >
+                      <div className="w-9 h-9 rounded-lg bg-amber-50 text-amber-600 grid place-items-center">
+                        <AlertTriangle className="w-4 h-4" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm text-slate-900 truncate">{p.name}</div>
+                        <div className="text-xs text-slate-500">
+                          الحد الأدنى: {p.minStock}
+                        </div>
+                      </div>
+                      <Badge tone={p.quantity === 0 ? "red" : "amber"}>
+                        {p.quantity} {p.unit}
+                      </Badge>
+                    </div>
+                  ))
+                )}
+              </CardBody>
+            </Card>
+          ) : null}
+        </div>
+      ) : null}
+
+      {canAddSalesInvoice || canAddPurchaseInvoice || canAddProduct || canAddCustomer ? (
+        <Card>
+          <CardHeader title="إجراءات سريعة" />
+          <CardBody className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {canAddSalesInvoice ? (
+              <Link to="/sales/new">
+                <Button variant="outline" className="w-full justify-start">
+                  <Receipt className="w-4 h-4" />
+                  فاتورة مبيعات جديدة
+                </Button>
+              </Link>
+            ) : null}
+            {canAddPurchaseInvoice ? (
+              <Link to="/purchases/new">
+                <Button variant="outline" className="w-full justify-start">
+                  <ShoppingBag className="w-4 h-4" />
+                  فاتورة مشتريات جديدة
+                </Button>
+              </Link>
+            ) : null}
+            {canAddProduct ? (
+              <Link to="/products">
+                <Button variant="outline" className="w-full justify-start">
+                  <Package className="w-4 h-4" />
+                  إضافة منتج
+                </Button>
+              </Link>
+            ) : null}
+            {canAddCustomer ? (
+              <Link to="/customers">
+                <Button variant="outline" className="w-full justify-start">
+                  <Users className="w-4 h-4" />
+                  إضافة عميل
+                </Button>
+              </Link>
+            ) : null}
           </CardBody>
         </Card>
-      </div>
-
-      <Card>
-        <CardHeader title="إجراءات سريعة" />
-        <CardBody className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <Link to="/sales/new">
-            <Button variant="outline" className="w-full justify-start">
-              <Receipt className="w-4 h-4" />
-              فاتورة مبيعات جديدة
-            </Button>
-          </Link>
-          <Link to="/purchases/new">
-            <Button variant="outline" className="w-full justify-start">
-              <ShoppingBag className="w-4 h-4" />
-              فاتورة مشتريات جديدة
-            </Button>
-          </Link>
-          <Link to="/products">
-            <Button variant="outline" className="w-full justify-start">
-              <Package className="w-4 h-4" />
-              إضافة منتج
-            </Button>
-          </Link>
-          <Link to="/customers">
-            <Button variant="outline" className="w-full justify-start">
-              <Users className="w-4 h-4" />
-              إضافة عميل
-            </Button>
-          </Link>
-        </CardBody>
-      </Card>
+      ) : null}
     </>
   );
 }

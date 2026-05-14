@@ -24,6 +24,7 @@ import { daysUntil } from "../lib/utils";
 import { formatDate } from "../lib/format";
 import { formatStockMovementReference } from "../lib/stockMovement";
 import type { Product } from "../types";
+import { hasPermission } from "../lib/permissions";
 
 export function InventoryPage() {
   const {
@@ -36,8 +37,10 @@ export function InventoryPage() {
     purchaseInvoices,
     salesReturns,
     purchaseReturns,
+    currentUser,
   } = useApp();
   const toast = useToast();
+  const canAdjustStock = hasPermission(currentUser, "inventory", "adjust");
   const [q, setQ] = useState("");
   const [category, setCategory] = useState("");
   const [supplier, setSupplier] = useState("");
@@ -104,6 +107,10 @@ export function InventoryPage() {
     }
     if (!adjReason.trim()) {
       toast.error("السبب مطلوب");
+      return;
+    }
+    if (!canAdjustStock) {
+      toast.error("ليس لديك صلاحية", "لا تملك صلاحية ضبط المخزون");
       return;
     }
     const delta = adjType === "in" ? adjQty : -adjQty;
@@ -236,7 +243,7 @@ export function InventoryPage() {
                   <TH className="text-end">الحد الأدنى</TH>
                   <TH>الصلاحية</TH>
                   <TH>الحالة</TH>
-                  <TH className="text-end">ضبط المخزون</TH>
+                  {canAdjustStock ? <TH className="text-end">ضبط المخزون</TH> : null}
                 </TR>
               </THead>
               <TBody>
@@ -268,32 +275,34 @@ export function InventoryPage() {
                           )}
                         </div>
                       </TD>
-                      <TD className="text-end">
-                        <div className="inline-flex items-center gap-1">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              setAdjustTarget(p);
-                              setAdjType("in");
-                            }}
-                          >
-                            <Plus className="w-3.5 h-3.5" />
-                            إضافة
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              setAdjustTarget(p);
-                              setAdjType("out");
-                            }}
-                          >
-                            <Minus className="w-3.5 h-3.5" />
-                            خصم
-                          </Button>
-                        </div>
-                      </TD>
+                      {canAdjustStock ? (
+                        <TD className="text-end">
+                          <div className="inline-flex items-center gap-1">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setAdjustTarget(p);
+                                setAdjType("in");
+                              }}
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                              إضافة
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setAdjustTarget(p);
+                                setAdjType("out");
+                              }}
+                            >
+                              <Minus className="w-3.5 h-3.5" />
+                              خصم
+                            </Button>
+                          </div>
+                        </TD>
+                      ) : null}
                     </TR>
                   );
                 })}

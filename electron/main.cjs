@@ -1,43 +1,104 @@
-const { app, BrowserWindow, dialog, ipcMain, shell, session } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
 const os = require("node:os");
 const crypto = require("node:crypto");
+const childProcess = require("node:child_process");
+const electronRuntime = require("electron");
 const Database = require("better-sqlite3-multiple-ciphers");
 const argon2 = require("argon2");
 const { machineIdSync } = require("node-machine-id");
 const { z } = require("zod");
 const { LICENSE_PUBLIC_KEY } = require("./license-public-key.cjs");
 
+if (!electronRuntime.app) {
+  const env = { ...process.env };
+  delete env.ELECTRON_RUN_AS_NODE;
+  const electronPath = typeof electronRuntime === "string" ? electronRuntime : process.execPath;
+  const result = childProcess.spawnSync(
+    electronPath,
+    [path.join(__dirname, ".."), ...process.argv.slice(2)],
+    { env, stdio: "inherit" }
+  );
+  process.exit(result.status ?? 0);
+}
+
+const { app, BrowserWindow, dialog, ipcMain, shell, session } = electronRuntime;
+
+const APP_ID = "com.helperstechnologies.inventory";
 const STORE_PREFIX = "helpers_inventory_v1::";
 const LICENSE_TOKEN_KEY = "__license_token";
 const LICENSE_LAST_SEEN_KEY = "__license_last_seen_at";
+const AUTH_STATE_KEY = `${STORE_PREFIX}auth`;
 const APP_SALT = "helpers-inventory-system-v1-local-license";
 const CLOCK_SKEW_MS = 5 * 60 * 1000;
+const MAX_TOKEN_LENGTH = 8192;
+const MAX_USERNAME_LENGTH = 80;
+const MAX_PASSWORD_LENGTH = 256;
+const REDACTED_PASSWORD_HASH = "[REDACTED]";
 
 // ── SECURITY: Protected keys that cannot be written via renderer IPC ────
 const PROTECTED_KEYS = new Set([
   LICENSE_TOKEN_KEY,
   LICENSE_LAST_SEEN_KEY,
+  AUTH_STATE_KEY,
 ]);
 
 // ── SECURITY: Login brute-force protection ──────────────────────────────
 const LOGIN_MAX_ATTEMPTS = 5;
 const LOGIN_LOCKOUT_MS = 60 * 1000; // 60 seconds
 const loginAttempts = new Map(); // key: username → { count, lockedUntil }
+const SUPPORT_MAX_ATTEMPTS = 5;
+const SUPPORT_LOCKOUT_MS = 10 * 60 * 1000;
+const supportAttempts = new Map(); // key: sender id → { count, lockedUntil }
 
 let db = null;
 const printDocumentNames = new Map();
+const rendererSessions = new Map(); // key: webContents id → { userId, role }
+
+function isSmokeTestRun() {
+  return process.argv.includes("--smoke-test") || process.env.HELPERS_SMOKE_TEST === "1";
+}
+
+function exitForSmokeTest() {
+  try {
+    db?.close();
+  } catch {
+    // Ignore shutdown cleanup errors in smoke mode.
+  } finally {
+    db = null;
+    app.exit(0);
+  }
+}
 
 const permissionTemplate = {
   products: { view: true, add: true, edit: true, delete: true },
-  purchaseInvoices: { view: true, add: true },
-  salesInvoices: { view: true, add: true },
-  customers: { view: true, add: true, edit: true },
-  suppliers: { view: true, add: true, edit: true },
-  cashbox: { view: true },
+  inventory: { view: true, adjust: true },
+  purchaseInvoices: { view: true, add: true, pay: true, delete: true },
+  salesInvoices: { view: true, add: true, receive: true, cancel: true, delete: true },
+  customers: { view: true, add: true, edit: true, delete: true },
+  suppliers: { view: true, add: true, edit: true, delete: true, commissions: true },
+  drivers: { view: true, add: true, edit: true, delete: true },
+  returns: { view: true, add: true },
+  alerts: { view: true },
+  cashbox: { view: true, add: true, spend: true, editOpeningBalance: true },
   reports: { view: true },
 };
+
+if (process.platform === "win32") {
+  app.setAppUserModelId(APP_ID);
+}
+
+function getAppIconPath() {
+  const iconCandidates = app.isPackaged
+    ? [
+        path.join(process.resourcesPath, "build", "icon.ico"),
+        path.join(process.resourcesPath, "app.asar", "build", "icon.ico"),
+        path.join(process.resourcesPath, "app", "build", "icon.ico"),
+      ]
+    : [path.join(__dirname, "..", "build", "icon.ico")];
+
+  return iconCandidates.find((candidate) => fs.existsSync(candidate)) || iconCandidates[0];
+}
 
 const licenseSchema = z.object({
   licenseId: z.string().min(1),
@@ -62,6 +123,60 @@ const supportSchema = z.object({
 
 function sha256(value) {
   return crypto.createHash("sha256").update(String(value)).digest("hex");
+}
+
+function normalizeUsername(username) {
+  return String(username || "").trim().slice(0, MAX_USERNAME_LENGTH);
+}
+
+function normalizePassword(password) {
+  return String(password ?? "");
+}
+
+function isPasswordLengthAllowed(password, minLength = 0) {
+  const cleanPassword = normalizePassword(password);
+  return cleanPassword.length >= minLength && cleanPassword.length <= MAX_PASSWORD_LENGTH;
+}
+
+function parseDateMs(value) {
+  const ms = new Date(value).getTime();
+  return Number.isNaN(ms) ? null : ms;
+}
+
+function isArgonPasswordHash(value) {
+  return typeof value === "string" && value.startsWith("$argon2");
+}
+
+function safeUserForRenderer(user) {
+  if (!user || typeof user !== "object") return user;
+  return {
+    ...user,
+    passwordHash: REDACTED_PASSWORD_HASH,
+  };
+}
+
+function safeUsersForRenderer(users) {
+  return Array.isArray(users) ? users.map(safeUserForRenderer) : [];
+}
+
+function getSession(event) {
+  return rendererSessions.get(event.sender.id) || null;
+}
+
+function setSession(event, user) {
+  if (!user?.id) return;
+  rendererSessions.set(event.sender.id, {
+    userId: user.id,
+    role: user.role,
+  });
+}
+
+function clearSession(event) {
+  rendererSessions.delete(event.sender.id);
+}
+
+function hasOwnerSession(event) {
+  return getSession(event)?.role === "owner";
 }
 
 function canonicalStringify(value) {
@@ -124,6 +239,7 @@ function openDatabase() {
   db.prepare(
     "CREATE TABLE IF NOT EXISTS kv_store (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL)"
   ).run();
+  db.prepare("DELETE FROM kv_store WHERE key = ?").run(AUTH_STATE_KEY);
   return db;
 }
 
@@ -169,7 +285,11 @@ function writeJsonKey(key, value) {
 
 function getUsers() {
   const users = readJsonKey(`${STORE_PREFIX}users`, []);
-  return Array.isArray(users) ? users : [];
+  if (!Array.isArray(users)) return [];
+  return users.map((user) => ({
+    ...user,
+    name: String(user.name || user.username || "").trim(),
+  }));
 }
 
 function setUsers(users) {
@@ -181,7 +301,10 @@ function getPublicKey() {
 }
 
 function parseSignedPayload(token, prefix, schema) {
-  const normalized = String(token || "").trim();
+  const normalized = String(token || "").replace(/\s+/g, "").trim();
+  if (normalized.length > MAX_TOKEN_LENGTH) {
+    throw new Error("Token too large");
+  }
   if (!normalized.startsWith(prefix)) {
     throw new Error("Invalid token prefix");
   }
@@ -235,15 +358,18 @@ function evaluateLicense(serial, persistSeen) {
   const now = new Date();
   const lastSeenRaw = storageGet(LICENSE_LAST_SEEN_KEY);
   if (lastSeenRaw) {
-    const lastSeen = new Date(lastSeenRaw);
-    if (!Number.isNaN(lastSeen.getTime()) && now.getTime() + CLOCK_SKEW_MS < lastSeen.getTime()) {
+    const lastSeenMs = parseDateMs(lastSeenRaw);
+    if (lastSeenMs !== null && now.getTime() + CLOCK_SKEW_MS < lastSeenMs) {
       return buildLicenseStatus("clock_tampered", { license });
     }
   }
 
+  const subscriptionExpiresMs = license.subscriptionExpiresAt
+    ? parseDateMs(license.subscriptionExpiresAt)
+    : null;
   if (
     license.subscriptionType === "limited" &&
-    (!license.subscriptionExpiresAt || now.getTime() > new Date(license.subscriptionExpiresAt).getTime())
+    (!license.subscriptionExpiresAt || subscriptionExpiresMs === null || now.getTime() > subscriptionExpiresMs)
   ) {
     return buildLicenseStatus("expired", { license });
   }
@@ -260,7 +386,11 @@ function getLicenseStatus() {
 }
 
 async function hashPassword(password) {
-  return argon2.hash(String(password), {
+  const cleanPassword = normalizePassword(password);
+  if (!isPasswordLengthAllowed(cleanPassword)) {
+    throw new Error("invalid_password_length");
+  }
+  return argon2.hash(cleanPassword, {
     type: argon2.argon2id,
     memoryCost: 65536,
     timeCost: 3,
@@ -269,17 +399,19 @@ async function hashPassword(password) {
 }
 
 async function verifyPassword(storedHash, password) {
+  const cleanPassword = normalizePassword(password);
+  if (!isPasswordLengthAllowed(cleanPassword)) return false;
   if (!storedHash) return false;
   if (String(storedHash).startsWith("$argon2")) {
-    return argon2.verify(storedHash, String(password));
+    return argon2.verify(storedHash, cleanPassword);
   }
   // SECURITY: Legacy base64 fallback — auto-upgrade on next successful login
-  return storedHash === Buffer.from(String(password), "utf8").toString("base64");
+  return storedHash === Buffer.from(cleanPassword, "utf8").toString("base64");
 }
 
 async function createOwner(username, password) {
-  const cleanUsername = String(username || "").trim();
-  if (!cleanUsername || String(password || "").length < 6) {
+  const cleanUsername = normalizeUsername(username);
+  if (!cleanUsername || !isPasswordLengthAllowed(password, 6)) {
     return { ok: false, error: "invalid_input" };
   }
 
@@ -293,6 +425,7 @@ async function createOwner(username, password) {
 
   const user = {
     id: `usr_${crypto.randomUUID()}`,
+    name: cleanUsername,
     username: cleanUsername,
     passwordHash: await hashPassword(password),
     role: "owner",
@@ -305,14 +438,23 @@ async function createOwner(username, password) {
 }
 
 async function login(username, password) {
-  const cleanUsername = String(username || "").trim();
+  const cleanUsername = normalizeUsername(username);
+  const attemptKey = cleanUsername.toLowerCase();
 
   // ── SECURITY: Rate-limiting ──────────────────────────────────────
   const now = Date.now();
-  const entry = loginAttempts.get(cleanUsername);
+  const entry = loginAttempts.get(attemptKey);
   if (entry && entry.lockedUntil > now) {
     const remainSec = Math.ceil((entry.lockedUntil - now) / 1000);
-    return { ok: false, error: "rate_limited", remainSeconds: remainSec };
+    return {
+      ok: false,
+      error: "rate_limited",
+      remainSeconds: remainSec,
+      attemptsRemaining: 0,
+    };
+  }
+  if (entry && entry.lockedUntil > 0 && entry.lockedUntil <= now) {
+    loginAttempts.delete(attemptKey);
   }
   // ────────────────────────────────────────────────────────────────
 
@@ -326,18 +468,43 @@ async function login(username, password) {
 
   if (!user || !ok) {
     // ── Increment failed attempts ──
-    const current = loginAttempts.get(cleanUsername) || { count: 0, lockedUntil: 0 };
+    const latestNow = Date.now();
+    const latestEntry = loginAttempts.get(attemptKey);
+    if (latestEntry && latestEntry.lockedUntil > latestNow) {
+      return {
+        ok: false,
+        error: "rate_limited",
+        remainSeconds: Math.ceil((latestEntry.lockedUntil - latestNow) / 1000),
+        attemptsRemaining: 0,
+      };
+    }
+    if (latestEntry && latestEntry.lockedUntil > 0 && latestEntry.lockedUntil <= latestNow) {
+      loginAttempts.delete(attemptKey);
+    }
+
+    const current = loginAttempts.get(attemptKey) || { count: 0, lockedUntil: 0 };
     current.count += 1;
     if (current.count >= LOGIN_MAX_ATTEMPTS) {
-      current.lockedUntil = now + LOGIN_LOCKOUT_MS;
+      current.lockedUntil = latestNow + LOGIN_LOCKOUT_MS;
       current.count = 0;
+      loginAttempts.set(attemptKey, current);
+      return {
+        ok: false,
+        error: "rate_limited",
+        remainSeconds: Math.ceil(LOGIN_LOCKOUT_MS / 1000),
+        attemptsRemaining: 0,
+      };
     }
-    loginAttempts.set(cleanUsername, current);
-    return { ok: false };
+    loginAttempts.set(attemptKey, current);
+    return {
+      ok: false,
+      error: "invalid_credentials",
+      attemptsRemaining: Math.max(0, LOGIN_MAX_ATTEMPTS - current.count),
+    };
   }
 
   // ── Success — clear attempts ──
-  loginAttempts.delete(cleanUsername);
+  loginAttempts.delete(attemptKey);
 
   // Auto-upgrade legacy password hashes to argon2id
   if (!String(user.passwordHash || "").startsWith("$argon2")) {
@@ -346,6 +513,86 @@ async function login(username, password) {
   }
 
   return { ok: true, user };
+}
+
+async function changePassword({ userId, currentPassword, newPassword }) {
+  const cleanUserId = String(userId || "").trim();
+  if (!cleanUserId || !isPasswordLengthAllowed(newPassword, 6)) {
+    return { ok: false, error: "invalid_input" };
+  }
+
+  const users = getUsers();
+  const user = users.find((item) => item.id === cleanUserId);
+  if (!user) {
+    return { ok: false, error: "user_missing" };
+  }
+
+  const ok = await verifyPassword(user.passwordHash, currentPassword);
+  if (!ok) {
+    return { ok: false, error: "invalid_current_password" };
+  }
+
+  user.passwordHash = await hashPassword(newPassword);
+  setUsers(users);
+  return { ok: true, user };
+}
+
+async function updateOwnProfile({ userId, name, currentPassword, newPassword }) {
+  const cleanUserId = String(userId || "").trim();
+  const cleanName = String(name || "").trim().slice(0, MAX_USERNAME_LENGTH);
+  const wantsPasswordChange = Boolean(newPassword);
+  if (!cleanUserId || !cleanName) {
+    return { ok: false, error: "invalid_input" };
+  }
+  if (wantsPasswordChange && !isPasswordLengthAllowed(newPassword, 6)) {
+    return { ok: false, error: "invalid_input" };
+  }
+
+  const users = getUsers();
+  const user = users.find((item) => item.id === cleanUserId);
+  if (!user) {
+    return { ok: false, error: "user_missing" };
+  }
+
+  if (wantsPasswordChange) {
+    const ok = await verifyPassword(user.passwordHash, currentPassword);
+    if (!ok) {
+      return { ok: false, error: "invalid_current_password" };
+    }
+    user.passwordHash = await hashPassword(newPassword);
+  }
+
+  user.name = cleanName;
+  setUsers(users);
+  return { ok: true, user };
+}
+
+function getSupportRateLimitResult(key) {
+  const now = Date.now();
+  const entry = supportAttempts.get(key);
+  if (!entry) return null;
+  if (entry.lockedUntil > now) {
+    return {
+      ok: false,
+      error: "rate_limited",
+      remainSeconds: Math.ceil((entry.lockedUntil - now) / 1000),
+    };
+  }
+  if (entry.lockedUntil > 0 && entry.lockedUntil <= now) {
+    supportAttempts.delete(key);
+  }
+  return null;
+}
+
+function registerFailedSupportAttempt(key) {
+  const current = supportAttempts.get(key) || { count: 0, lockedUntil: 0 };
+  current.count += 1;
+  if (current.count >= SUPPORT_MAX_ATTEMPTS) {
+    current.count = 0;
+    current.lockedUntil = Date.now() + SUPPORT_LOCKOUT_MS;
+  }
+  supportAttempts.set(key, current);
+  return getSupportRateLimitResult(key);
 }
 
 async function resetOwnerPassword({ supportCode, username, password }) {
@@ -359,7 +606,8 @@ async function resetOwnerPassword({ supportCode, username, password }) {
   if (support.machineHash !== getMachineHash()) {
     return { ok: false, error: "machine_mismatch" };
   }
-  if (new Date().getTime() > new Date(support.expiresAt).getTime()) {
+  const supportExpiresMs = parseDateMs(support.expiresAt);
+  if (supportExpiresMs === null || new Date().getTime() > supportExpiresMs) {
     return { ok: false, error: "support_code_expired" };
   }
 
@@ -367,8 +615,8 @@ async function resetOwnerPassword({ supportCode, username, password }) {
   const owner = users.find((user) => user.role === "owner");
   if (!owner) return { ok: false, error: "owner_missing" };
 
-  const cleanUsername = String(username || owner.username).trim();
-  if (!cleanUsername || String(password || "").length < 6) {
+  const cleanUsername = normalizeUsername(username || owner.username);
+  if (!cleanUsername || !isPasswordLengthAllowed(password, 6)) {
     return { ok: false, error: "invalid_input" };
   }
 
@@ -380,9 +628,15 @@ async function resetOwnerPassword({ supportCode, username, password }) {
 
 function createWindow() {
   const isDev = Boolean(process.env.ELECTRON_RENDERER_URL);
-  const iconPath = app.isPackaged
-    ? path.join(process.resourcesPath, "app", "build", "icon.ico")
-    : path.join(__dirname, "..", "build", "icon.ico");
+  const devRendererOrigin = (() => {
+    if (!isDev) return null;
+    try {
+      return new URL(process.env.ELECTRON_RENDERER_URL).origin;
+    } catch {
+      return null;
+    }
+  })();
+  const iconPath = getAppIconPath();
   const win = new BrowserWindow({
     width: 1366,
     height: 860,
@@ -402,19 +656,33 @@ function createWindow() {
       allowRunningInsecureContent: false,
     },
   });
+  win.webContents.on("destroyed", () => {
+    rendererSessions.delete(win.webContents.id);
+  });
 
   // SECURITY: Block all navigation away from the app
   win.webContents.on("will-navigate", (event, navigationUrl) => {
-    if (isDev && navigationUrl.startsWith(process.env.ELECTRON_RENDERER_URL)) return;
-    const parsed = new URL(navigationUrl);
-    if (parsed.protocol !== "file:") {
+    let parsed;
+    try {
+      parsed = new URL(navigationUrl);
+    } catch {
       event.preventDefault();
+      return;
     }
+    if (isDev && devRendererOrigin && parsed.origin === devRendererOrigin) return;
+    if (!isDev && parsed.protocol === "file:") return;
+    event.preventDefault();
   });
 
+  const allowedExternalHosts = new Set(["wa.me", "helpers-tech.com", "www.helpers-tech.com"]);
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https?:\/\//i.test(url)) {
-      shell.openExternal(url);
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol === "https:" && allowedExternalHosts.has(parsed.hostname.toLowerCase())) {
+        shell.openExternal(parsed.toString());
+      }
+    } catch {
+      // Deny malformed popups.
     }
     return { action: "deny" };
   });
@@ -492,6 +760,18 @@ function sanitizeFileName(value) {
     .replace(/-+/g, "-")
     .trim()
     .slice(0, 140) || "invoice";
+}
+
+function sanitizeImageSrc(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (/^data:image\/(?:png|jpe?g|gif|webp);base64,[a-z0-9+/=\s]+$/i.test(raw)) {
+    return raw;
+  }
+  if (/^\.\/[a-z0-9._/%-]+$/i.test(raw) && !raw.includes("..")) {
+    return raw;
+  }
+  return "";
 }
 
 function ensurePdfExtension(filePath) {
@@ -582,8 +862,9 @@ function buildInvoicePrintHtml(route) {
         ? "جزئي"
         : "آجل";
   const companyName = settings.arabicLabels ? settings.companyNameAr : settings.companyName;
-  const logo = settings.logoImage
-    ? `<img src="${escapeHtml(settings.logoImage)}" alt="Logo" />`
+  const logoImage = sanitizeImageSrc(settings.logoImage);
+  const logo = logoImage
+    ? `<img src="${escapeHtml(logoImage)}" alt="Logo" />`
     : escapeHtml(settings.logoText || "HD");
 
   const rows = (invoice.lines || [])
@@ -607,6 +888,7 @@ function buildInvoicePrintHtml(route) {
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob: file:; style-src 'unsafe-inline'; script-src 'none'; connect-src 'none'; base-uri 'none'; form-action 'none';" />
   <title>${escapeHtml(title)} ${escapeHtml(invoice.invoiceNumber)}</title>
   <style>
     @page { size: A4 landscape; margin: 10mm; }
@@ -745,18 +1027,6 @@ function buildInvoicePrintHtml(route) {
       white-space: pre-line;
       margin-bottom: 26px;
     }
-    .signatures {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 60px;
-      margin-top: 50px;
-    }
-    .signature-line {
-      height: 50px;
-      border-bottom: 1px solid #64748b;
-      margin-bottom: 6px;
-    }
-    .signature-label { text-align: center; color: #667085; font-size: 11px; }
     .developer-info {
       margin-top: 30px;
       padding-top: 10px;
@@ -773,9 +1043,9 @@ function buildInvoicePrintHtml(route) {
 </head>
 <body>
   <div class="print-toolbar">
-    <button type="button" onclick="printNow()">طباعة الآن</button>
-    <button type="button" onclick="savePdf()">حفظ PDF</button>
-    <button type="button" class="secondary" onclick="window.close()">إغلاق</button>
+    <button type="button" id="print-now-button">طباعة الآن</button>
+    <button type="button" id="save-pdf-button">حفظ PDF</button>
+    <button type="button" class="secondary" id="close-window-button">إغلاق</button>
     <span id="print-status" class="print-status"></span>
   </div>
   <div class="page">
@@ -834,39 +1104,10 @@ function buildInvoicePrintHtml(route) {
 
     ${invoice.notes ? `<div class="notes"><strong>ملاحظات: </strong>${escapeHtml(invoice.notes)}</div>` : ""}
     <div class="footer">${escapeHtml(settings.invoiceFooter || "")}</div>
-    <div class="signatures">
-      <div><div class="signature-line"></div><div class="signature-label">توقيع المستلم</div></div>
-      <div><div class="signature-line"></div><div class="signature-label">توقيع المسؤول</div></div>
-    </div>
     <div class="developer-info">
       برمجة وتطوير: م/ عمرو هاني — واتساب: 01118445625
     </div>
   </div>
-  <script>
-    const statusEl = document.getElementById("print-status");
-    function setStatus(message) {
-      if (statusEl) statusEl.textContent = message || "";
-    }
-    async function printNow() {
-      setStatus("جاري فتح نافذة الطباعة...");
-      if (window.invoicePrint && window.invoicePrint.printNow) {
-        const result = await window.invoicePrint.printNow();
-        setStatus(result && result.ok ? "" : "تعذر فتح الطباعة");
-      } else {
-        window.print();
-        setStatus("");
-      }
-    }
-    async function savePdf() {
-      setStatus("جاري حفظ PDF...");
-      if (!window.invoicePrint || !window.invoicePrint.savePdf) {
-        setStatus("حفظ PDF غير متاح");
-        return;
-      }
-      const result = await window.invoicePrint.savePdf();
-      setStatus(result && result.ok ? "تم حفظ PDF" : "");
-    }
-  </script>
 </body>
 </html>`;
 }
@@ -891,16 +1132,23 @@ function printRoute(route) {
         show: true,
         autoHideMenuBar: true,
         title: meta.windowTitle,
+        icon: getAppIconPath(),
         webPreferences: {
           preload: path.join(__dirname, "print-preload.cjs"),
           contextIsolation: true,
           nodeIntegration: false,
           sandbox: true,
           devTools: isDev,
+          webSecurity: true,
+          allowRunningInsecureContent: false,
         },
       });
       const webContentsId = printWindow.webContents.id;
       printDocumentNames.set(webContentsId, meta.fileBaseName);
+      printWindow.webContents.on("will-navigate", (event) => {
+        event.preventDefault();
+      });
+      printWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
       printWindow.on("closed", () => {
         printDocumentNames.delete(webContentsId);
         printWindow = null;
@@ -946,50 +1194,164 @@ function printRoute(route) {
 }
 
 function registerIpc() {
-  // ── SECURITY: Validate storage keys — block protected internal keys ──
-  function isKeyAllowed(key) {
-    return !PROTECTED_KEYS.has(String(key));
+  // ── SECURITY: Validate storage keys exposed to the renderer ─────────
+  function isRendererStorageKey(key) {
+    const cleanKey = String(key || "");
+    return cleanKey.startsWith(STORE_PREFIX) && !PROTECTED_KEYS.has(cleanKey);
+  }
+
+  function ownerExistsInStore() {
+    return getUsers().some((user) => user.role === "owner");
+  }
+
+  function canReadRendererStorage(event) {
+    return !ownerExistsInStore() || Boolean(getSession(event));
+  }
+
+  function canMutateRendererStorage(event, key) {
+    if (!ownerExistsInStore()) return false;
+    if (!getSession(event)) return false;
+    if (String(key) === `${STORE_PREFIX}users`) return hasOwnerSession(event);
+    return true;
+  }
+
+  function redactUsersForExport(value) {
+    try {
+      const users = JSON.parse(value);
+      if (!Array.isArray(users)) return value;
+      return JSON.stringify(safeUsersForRenderer(users));
+    } catch {
+      return value;
+    }
+  }
+
+  function redactBackupUsersForExport(value) {
+    try {
+      const backup = JSON.parse(value);
+      if (!Array.isArray(backup?.state?.users)) return value;
+      return JSON.stringify({
+        ...backup,
+        state: {
+          ...backup.state,
+          users: safeUsersForRenderer(backup.state.users),
+        },
+      });
+    } catch {
+      return value;
+    }
+  }
+
+  function redactStorageRowForExport(row) {
+    if (row.key === `${STORE_PREFIX}users`) {
+      return { ...row, value: redactUsersForExport(row.value) };
+    }
+    return { ...row, value: redactBackupUsersForExport(row.value) };
+  }
+
+  function storageValueForRenderer(key, value) {
+    if (String(key) === `${STORE_PREFIX}users`) return redactUsersForExport(value);
+    return value;
+  }
+
+  function mergeRendererUsersValue(value) {
+    const incoming = JSON.parse(String(value));
+    if (!Array.isArray(incoming)) throw new Error("invalid_users_payload");
+    const existing = getUsers();
+    const existingById = new Map(existing.map((user) => [user.id, user]));
+    const existingByUsername = new Map(existing.map((user) => [String(user.username).toLowerCase(), user]));
+
+    return JSON.stringify(
+      incoming.map((user) => {
+        const cleanUsername = normalizeUsername(user?.username);
+        if (!cleanUsername) {
+          throw new Error("invalid_username");
+        }
+        const existingUser =
+          existingById.get(user?.id) || existingByUsername.get(cleanUsername.toLowerCase());
+        const incomingHash = user?.passwordHash;
+        const passwordHash =
+          incomingHash === REDACTED_PASSWORD_HASH
+            ? existingUser?.passwordHash
+            : incomingHash;
+        if (!isArgonPasswordHash(passwordHash)) {
+          throw new Error("invalid_password_hash");
+        }
+        return {
+          ...user,
+          name: String(user?.name || cleanUsername).trim(),
+          username: cleanUsername,
+          passwordHash,
+          role: user?.role === "owner" ? "owner" : "employee",
+        };
+      })
+    );
+  }
+
+  function normalizeRendererStorageValue(key, value) {
+    if (String(key) === `${STORE_PREFIX}users`) return mergeRendererUsersValue(value);
+    return String(value);
   }
 
   ipcMain.on("storage:get", (event, key) => {
-    event.returnValue = storageGet(String(key));
+    if (!isRendererStorageKey(key) || !canReadRendererStorage(event)) {
+      event.returnValue = null;
+      return;
+    }
+    const raw = storageGet(String(key));
+    event.returnValue = raw === null ? null : storageValueForRenderer(key, raw);
   });
   ipcMain.on("storage:set", (event, key, value) => {
-    if (!isKeyAllowed(key)) {
+    if (!isRendererStorageKey(key) || !canMutateRendererStorage(event, key)) {
       event.returnValue = false;
       return;
     }
-    event.returnValue = storageSet(String(key), String(value));
+    try {
+      event.returnValue = storageSet(String(key), normalizeRendererStorageValue(key, value));
+    } catch {
+      event.returnValue = false;
+    }
   });
   ipcMain.on("storage:remove", (event, key) => {
-    if (!isKeyAllowed(key)) {
+    if (!isRendererStorageKey(key) || !canMutateRendererStorage(event, key)) {
       event.returnValue = false;
       return;
     }
     event.returnValue = storageRemove(String(key));
   });
   ipcMain.on("storage:clear-prefix", (event, prefix) => {
+    if (String(prefix) !== STORE_PREFIX || !hasOwnerSession(event)) {
+      event.returnValue = false;
+      return;
+    }
     event.returnValue = storageClearPrefix(String(prefix));
   });
 
-  ipcMain.handle("storage:export", () => {
-    // SECURITY: Exclude sensitive internal keys from export
+  ipcMain.handle("storage:export", (event) => {
+    if (!hasOwnerSession(event)) {
+      return { version: 1, timestamp: new Date().toISOString(), rows: [] };
+    }
+    // SECURITY: Export only renderer-owned app data and redact credential hashes.
     const rows = openDatabase()
-      .prepare("SELECT key, value, updated_at FROM kv_store WHERE key NOT LIKE '\_%' ESCAPE '\\' ORDER BY key")
-      .all();
+      .prepare("SELECT key, value, updated_at FROM kv_store WHERE key LIKE ? ORDER BY key")
+      .all(`${STORE_PREFIX}%`)
+      .filter((row) => isRendererStorageKey(row.key))
+      .map(redactStorageRowForExport);
     return { version: 1, timestamp: new Date().toISOString(), rows };
   });
-  ipcMain.handle("storage:import", (_event, payload) => {
-    if (!payload || !Array.isArray(payload.rows)) return { ok: false };
+  ipcMain.handle("storage:import", (event, payload) => {
+    if (!hasOwnerSession(event) || !payload || !Array.isArray(payload.rows)) return { ok: false };
     const insert = openDatabase().prepare(
       "INSERT INTO kv_store (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at"
     );
     const tx = openDatabase().transaction((rows) => {
       for (const row of rows) {
         if (typeof row.key === "string" && typeof row.value === "string") {
-          // SECURITY: Never allow importing protected keys (license, etc.)
-          if (PROTECTED_KEYS.has(row.key)) continue;
-          insert.run(row.key, row.value, row.updated_at || new Date().toISOString());
+          if (!isRendererStorageKey(row.key)) continue;
+          insert.run(
+            row.key,
+            normalizeRendererStorageValue(row.key, row.value),
+            row.updated_at || new Date().toISOString()
+          );
         }
       }
     });
@@ -1010,12 +1372,72 @@ function registerIpc() {
   });
 
   ipcMain.handle("setup:has-owner", () => getUsers().some((user) => user.role === "owner"));
-  ipcMain.handle("setup:create-owner", (_event, payload) =>
-    createOwner(payload?.username, payload?.password)
-  );
-  ipcMain.handle("auth:hash-password", (_event, password) => hashPassword(password));
-  ipcMain.handle("auth:login", (_event, payload) => login(payload?.username, payload?.password));
-  ipcMain.handle("support:reset-owner-password", (_event, payload) => resetOwnerPassword(payload));
+  ipcMain.handle("setup:create-owner", async (event, payload) => {
+    const result = await createOwner(payload?.username, payload?.password);
+    if (result.ok && result.user) {
+      setSession(event, result.user);
+      return { ...result, user: safeUserForRenderer(result.user) };
+    }
+    return result;
+  });
+  ipcMain.handle("auth:hash-password", (event, password) => {
+    if (ownerExistsInStore() && !hasOwnerSession(event)) {
+      throw new Error("not_authorized");
+    }
+    return hashPassword(password);
+  });
+  ipcMain.handle("auth:login", async (event, payload) => {
+    const result = await login(payload?.username, payload?.password);
+    if (result.ok && result.user) {
+      setSession(event, result.user);
+      return { ...result, user: safeUserForRenderer(result.user) };
+    }
+    return result;
+  });
+  ipcMain.handle("auth:logout", (event) => {
+    clearSession(event);
+    return { ok: true };
+  });
+  ipcMain.handle("auth:change-password", async (event, payload) => {
+    const sessionInfo = getSession(event);
+    const targetUserId = String(payload?.userId || "").trim();
+    if (!sessionInfo || (sessionInfo.userId !== targetUserId && sessionInfo.role !== "owner")) {
+      return { ok: false, error: "not_authorized" };
+    }
+    const result = await changePassword(payload);
+    if (result.ok && result.user) {
+      return { ...result, user: safeUserForRenderer(result.user) };
+    }
+    return result;
+  });
+  ipcMain.handle("auth:update-profile", async (event, payload) => {
+    const sessionInfo = getSession(event);
+    const targetUserId = String(payload?.userId || "").trim();
+    if (!sessionInfo || (sessionInfo.userId !== targetUserId && sessionInfo.role !== "owner")) {
+      return { ok: false, error: "not_authorized" };
+    }
+    const result = await updateOwnProfile(payload);
+    if (result.ok && result.user) {
+      return { ...result, user: safeUserForRenderer(result.user) };
+    }
+    return result;
+  });
+  ipcMain.handle("support:reset-owner-password", async (event, payload) => {
+    const key = String(event.sender.id);
+    const rateLimited = getSupportRateLimitResult(key);
+    if (rateLimited) return rateLimited;
+
+    const result = await resetOwnerPassword(payload);
+    if (result.ok && result.user) {
+      supportAttempts.delete(key);
+      return { ...result, user: safeUserForRenderer(result.user) };
+    }
+    if (result.error === "invalid_support_code" || result.error === "machine_mismatch") {
+      const nextRateLimit = registerFailedSupportAttempt(key);
+      if (nextRateLimit) return nextRateLimit;
+    }
+    return result;
+  });
   ipcMain.handle("print:route", (_event, route) => printRoute(route));
   ipcMain.handle("print:current-window", (event) =>
     new Promise((resolve) => {
@@ -1053,6 +1475,14 @@ function registerIpc() {
     shell.showItemInFolder(pdfPath);
     return { ok: true, path: pdfPath };
   });
+  ipcMain.handle("print:close-current-window", (event) => {
+    const ownerWindow = BrowserWindow.fromWebContents(event.sender);
+    if (ownerWindow && !ownerWindow.isDestroyed()) {
+      ownerWindow.close();
+      return { ok: true };
+    }
+    return { ok: false, error: "window_not_found" };
+  });
 
   ipcMain.handle("dialog:select-directory", async (event) => {
     const ownerWindow = BrowserWindow.fromWebContents(event.sender);
@@ -1089,9 +1519,9 @@ app.whenReady().then(() => {
   registerIpc();
   openDatabase();
 
-  if (process.argv.includes("--smoke-test")) {
+  if (isSmokeTestRun()) {
     // SECURITY: Removed console.log of license status
-    app.quit();
+    exitForSmokeTest();
     return;
   }
   createWindow();

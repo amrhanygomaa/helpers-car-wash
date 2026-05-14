@@ -9,7 +9,7 @@ import { Table, TBody, TD, TH, THead, TR } from "../components/ui/Table";
 import { useApp } from "../store/AppContext";
 import { useToast } from "../components/ui/Toast";
 import { uid } from "../lib/utils";
-import type { InvoiceLine, Product, SalesPaymentType } from "../types";
+import type { InvoiceLine, Product, SalesPaymentType, SalesPriceType } from "../types";
 import { formatCurrency } from "../lib/format";
 import { Badge } from "../components/ui/Badge";
 import { DriverDialog } from "../features/drivers/DriverDialog";
@@ -42,6 +42,8 @@ export function SalesInvoiceNewPage() {
   const [customerId, setCustomerId] = useState(customers[0]?.id ?? "");
   const [driverId, setDriverId] = useState("");
   const [paymentType, setPaymentType] = useState<SalesPaymentType>("cash");
+  const [priceType, setPriceType] = useState<SalesPriceType>("wholesale");
+  const [paymentDueDate, setPaymentDueDate] = useState("");
   const [amountReceived, setAmountReceived] = useState<number>(0);
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<LineDraft[]>([]);
@@ -55,10 +57,17 @@ export function SalesInvoiceNewPage() {
     () => lines.reduce((a, l) => a + (l.quantity || 0) * (l.price || 0), 0),
     [lines]
   );
+  const receivedForInvoice = Math.min(amountReceived, total);
+  const remainingDue = Math.max(0, total - amountReceived);
+  const customerChange = Math.max(0, amountReceived - total);
 
   useEffect(() => {
     if (paymentType === "cash") setAmountReceived(total);
   }, [paymentType, total]);
+
+  useEffect(() => {
+    if (paymentType === "cash") setPaymentDueDate("");
+  }, [paymentType]);
 
   const stockWarnings = useMemo(() => {
     const map = new Map<string, number>();
@@ -77,6 +86,10 @@ export function SalesInvoiceNewPage() {
     return out;
   }, [lines, products]);
 
+  function productPrice(product: Product, selectedPriceType = priceType) {
+    return selectedPriceType === "retail" ? product.retailPrice : product.wholesalePrice;
+  }
+
   function addLine(productId?: string) {
     const p = productId ? products.find((x) => x.id === productId) : undefined;
     setLines((l) => [
@@ -85,9 +98,25 @@ export function SalesInvoiceNewPage() {
         id: uid("line"),
         productId: p?.id ?? "",
         quantity: 1,
-        price: p?.sellingPrice ?? 0,
+        price: p ? productPrice(p) : 0,
       },
     ]);
+  }
+
+  function changePriceType(nextPriceType: SalesPriceType) {
+    if (nextPriceType === priceType) return;
+    if (lines.length > 0) {
+      const ok = confirm("تغيير نوع السعر سيحدّث أسعار جميع الأصناف، هل تريد المتابعة؟");
+      if (!ok) return;
+    }
+    setPriceType(nextPriceType);
+    setLines((arr) =>
+      arr.map((line) => {
+        const product = products.find((p) => p.id === line.productId);
+        if (!product) return line;
+        return { ...line, price: productPrice(product, nextPriceType) };
+      })
+    );
   }
 
   function updateLine(id: string, patch: Partial<LineDraft>) {
@@ -98,7 +127,7 @@ export function SalesInvoiceNewPage() {
         if (patch.productId) {
           const p = products.find((x) => x.id === patch.productId);
           if (p) {
-            next.price = next.price || p.sellingPrice;
+            next.price = productPrice(p);
           }
         }
         return next;
@@ -133,7 +162,7 @@ export function SalesInvoiceNewPage() {
       );
       return;
     }
-    if (amountReceived < 0 || amountReceived > total) {
+    if (amountReceived < 0) {
       toast.error("المبلغ المستلم غير صحيح");
       return;
     }
@@ -162,8 +191,11 @@ export function SalesInvoiceNewPage() {
       driverName: driverId ? drivers.find(d => d.id === driverId)?.name : undefined,
       lines: invLines,
       total,
-      amountReceived,
+      amountReceived: receivedForInvoice,
       paymentType,
+      priceType,
+      paymentDueDate:
+        paymentType === "account" && paymentDueDate ? paymentDueDate : undefined,
       notes: notes.trim() || undefined,
     });
     toast.success("تم حفظ الفاتورة", `رقم ${inv.invoiceNumber}`);
@@ -257,6 +289,27 @@ export function SalesInvoiceNewPage() {
           }
         />
         <CardBody>
+          <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+              <div>
+                <div className="text-xs font-medium text-slate-600">نوع السعر</div>
+              </div>
+              <div className="grid grid-cols-2 gap-2 md:w-80">
+                <PriceTypeOption
+                  label="جملة"
+                  hint="سعر البيع للتجار"
+                  active={priceType === "wholesale"}
+                  onClick={() => changePriceType("wholesale")}
+                />
+                <PriceTypeOption
+                  label="تجزئة"
+                  hint="سعر البيع للعميل"
+                  active={priceType === "retail"}
+                  onClick={() => changePriceType("retail")}
+                />
+              </div>
+            </div>
+          </div>
           {lines.length === 0 ? (
             <div className="text-center py-8 text-sm text-slate-500">
               لا توجد بنود — ابدأ بإضافة منتج.
@@ -273,7 +326,7 @@ export function SalesInvoiceNewPage() {
                   <TH>المنتج</TH>
                   <TH className="w-20 text-center">متاح</TH>
                   <TH className="w-24">الكمية</TH>
-                  <TH className="w-28">سعر البيع</TH>
+                  <TH className="w-28">السعر</TH>
                   <TH className="w-28 text-end">الإجمالي</TH>
                   <TH className="w-10"></TH>
                 </TR>
@@ -369,12 +422,20 @@ export function SalesInvoiceNewPage() {
                 </label>
               </div>
             </Field>
+            {paymentType === "account" ? (
+              <Field label="تاريخ الاستحقاق" hint="اختياري">
+                <Input
+                  type="date"
+                  value={paymentDueDate}
+                  onChange={(e) => setPaymentDueDate(e.target.value)}
+                />
+              </Field>
+            ) : null}
             <Field label="المبلغ المستلم">
               <Input
                 type="number"
                 min={0}
                 step="0.01"
-                max={total}
                 value={amountReceived}
                 onChange={(e) => setAmountReceived(Number(e.target.value))}
               />
@@ -395,15 +456,18 @@ export function SalesInvoiceNewPage() {
           <CardBody className="space-y-2">
             <Row label="إجمالي الفاتورة" value={formatCurrency(total, settings.currency)} />
             <Row
-              label="المستلم"
+              label="المبلغ المدفوع"
               value={formatCurrency(amountReceived, settings.currency)}
             />
             <div className="border-t border-slate-200 pt-2">
               <Row
                 label="المتبقي"
                 bold
-                value={formatCurrency(Math.max(0, total - amountReceived), settings.currency)}
-                tone="amber"
+                value={formatCurrency(
+                  customerChange > 0 ? customerChange : remainingDue,
+                  settings.currency
+                )}
+                tone={remainingDue > 0 ? "amber" : "green"}
               />
             </div>
             <div className="pt-2">
@@ -445,6 +509,44 @@ function ProductCombo({
   );
 }
 
+function PriceTypeOption({
+  label,
+  hint,
+  active,
+  onClick,
+}: {
+  label: string;
+  hint: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`h-14 rounded-lg border px-3 text-right transition-colors ${
+        active
+          ? "border-brand-600 bg-brand-50 text-brand-800 shadow-sm"
+          : "border-slate-200 bg-white text-slate-600 hover:border-brand-200 hover:bg-white"
+      }`}
+    >
+      <span className="flex items-center justify-between gap-2">
+        <span>
+          <span className="block text-sm font-semibold">{label}</span>
+          <span className="block text-[11px] text-slate-400 mt-0.5">{hint}</span>
+        </span>
+        <span
+          className={`grid h-5 w-5 place-items-center rounded-full border ${
+            active ? "border-brand-600 bg-brand-600" : "border-slate-300 bg-white"
+          }`}
+        >
+          {active ? <span className="h-2 w-2 rounded-full bg-white" /> : null}
+        </span>
+      </span>
+    </button>
+  );
+}
+
 function Row({
   label,
   value,
@@ -454,13 +556,20 @@ function Row({
   label: string;
   value: string;
   bold?: boolean;
-  tone?: "amber";
+  tone?: "amber" | "green";
 }) {
+  const toneClass =
+    tone === "amber"
+      ? "text-amber-700"
+      : tone === "green"
+      ? "text-emerald-700"
+      : "text-slate-700";
+
   return (
     <div
       className={`flex items-center justify-between ${
         bold ? "text-lg font-bold" : "text-sm"
-      } ${tone === "amber" ? "text-amber-700" : "text-slate-700"}`}
+      } ${toneClass}`}
     >
       <span>{label}</span>
       <span>{value}</span>

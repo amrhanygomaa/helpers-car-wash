@@ -6,7 +6,9 @@ import {
   TrendingDown,
   Package,
   Coins,
+  UserRound,
 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import {
   BarChart,
   Bar,
@@ -41,6 +43,7 @@ export function ReportsPage() {
     products,
     customers,
     suppliers,
+    users,
     salesInvoices,
     purchaseInvoices,
     settings,
@@ -48,8 +51,10 @@ export function ReportsPage() {
     supplierBalance,
     calculateSupplierCommission,
     exportToCSV,
+    currentUser,
   } = useApp();
   const toast = useToast();
+  const navigate = useNavigate();
 
   const [from, setFrom] = useState<string>(() => {
     const d = new Date();
@@ -58,6 +63,7 @@ export function ReportsPage() {
   });
   const [to, setTo] = useState<string>(() => new Date().toISOString().slice(0, 10));
   const [printMode, setPrintMode] = useState<PrintMode>("full");
+  const canViewEmployeeBonuses = currentUser?.role === "owner";
 
   const salesInRange = useMemo(
     () => salesInvoices.filter((s) => !s.cancelled && inRange(s.date, from, to)),
@@ -70,6 +76,12 @@ export function ReportsPage() {
 
   const totalSales = salesInRange.reduce((a, s) => a + s.total, 0);
   const totalPurchases = purchasesInRange.reduce((a, p) => a + p.total, 0);
+  const wholesaleSalesTotal = salesInRange
+    .filter((s) => s.priceType === "wholesale")
+    .reduce((a, s) => a + s.total, 0);
+  const retailSalesTotal = salesInRange
+    .filter((s) => s.priceType === "retail")
+    .reduce((a, s) => a + s.total, 0);
 
   const totalCommissions = useMemo(() => {
     return suppliers.reduce((sum, s) => {
@@ -90,6 +102,44 @@ export function ReportsPage() {
     });
     return p;
   }, [salesInRange, products]);
+
+  const employeeBonusRows = useMemo(() => {
+    return users
+      .filter((user) => user.role === "employee")
+      .map((employee) => {
+        const invoices = salesInRange.filter((invoice) => invoice.createdByUserId === employee.id);
+        const employeeTotalSales = invoices.reduce((sum, invoice) => sum + invoice.total, 0);
+        const commissionPct = employee.salesCommissionPct ?? 0;
+        const bonus = (employeeTotalSales * commissionPct) / 100;
+        const salary = employee.monthlySalary ?? 0;
+        const target = employee.monthlySalesTarget ?? 0;
+        const remainingTarget = target > 0 ? Math.max(0, target - employeeTotalSales) : 0;
+        const exceededTarget = target > 0 ? Math.max(0, employeeTotalSales - target) : 0;
+
+        return {
+          employee,
+          invoiceCount: invoices.length,
+          totalSales: employeeTotalSales,
+          commissionPct,
+          bonus,
+          salary,
+          target,
+          remainingTarget,
+          exceededTarget,
+          achievedTarget: target > 0 && employeeTotalSales >= target,
+          totalEarnings: salary + bonus,
+        };
+      })
+      .sort((a, b) => b.bonus - a.bonus || b.totalSales - a.totalSales);
+  }, [users, salesInRange]);
+
+  const totalEmployeeBonuses = employeeBonusRows.reduce((sum, row) => sum + row.bonus, 0);
+  const totalEmployeeSales = employeeBonusRows.reduce((sum, row) => sum + row.totalSales, 0);
+  const employeesWithSales = employeeBonusRows.filter((row) => row.invoiceCount > 0).length;
+  const employeesTargetAchieved = employeeBonusRows.filter((row) => row.achievedTarget).length;
+  const unattributedEmployeeInvoices = salesInRange.filter((invoice) => !invoice.createdByUserId);
+  const unattributedEmployeeSales = unattributedEmployeeInvoices.reduce((sum, invoice) => sum + invoice.total, 0);
+  const estimatedProfitAfterBonuses = estimatedProfit - totalCommissions - totalEmployeeBonuses;
 
   const dailyData = useMemo(() => {
     const map = new Map<string, { date: string; sales: number; purchases: number }>();
@@ -152,18 +202,25 @@ export function ReportsPage() {
           title="التقارير"
           description="تقارير عملية لأداء الأعمال"
           actions={
-            <Button 
-              variant="outline" 
-              onClick={() => {
-                if (printMode === "full") {
-                  toast.info("تصدير", "يرجى اختيار تقرير محدد (مبيعات، مشتريات، إلخ) للتصدير إلى Excel");
-                } else {
-                  exportToCSV(printMode);
-                }
-              }}
-            >
-              <Download className="w-4 h-4" /> تصدير
-            </Button>
+            <>
+              {currentUser?.role === "owner" ? (
+                <Button variant="outline" onClick={() => navigate("/reports/employees")}>
+                  <UserRound className="w-4 h-4" /> تقرير الموظفين
+                </Button>
+              ) : null}
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  if (printMode === "full") {
+                    toast.info("تصدير", "يرجى اختيار تقرير محدد (مبيعات، مشتريات، إلخ) للتصدير إلى Excel");
+                  } else {
+                    exportToCSV(printMode);
+                  }
+                }}
+              >
+                <Download className="w-4 h-4" /> تصدير
+              </Button>
+            </>
           }
         />
       </div>
@@ -210,11 +267,14 @@ export function ReportsPage() {
         </Card>
       </div>
 
-      <div className="no-print grid grid-cols-2 md:grid-cols-5 gap-3">
+      <div className="no-print grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
         <Stat icon={<TrendingUp className="w-5 h-5" />} tone="green" label="إجمالي المبيعات" value={formatCurrency(totalSales, settings.currency)} />
         <Stat icon={<TrendingDown className="w-5 h-5" />} tone="blue" label="إجمالي المشتريات" value={formatCurrency(totalPurchases, settings.currency)} />
         <Stat icon={<Coins className="w-5 h-5" />} tone="amber" label="الربح التقديري" value={formatCurrency(estimatedProfit, settings.currency)} />
         <Stat icon={<TrendingUp className="w-5 h-5" />} tone="emerald" label="بونص الموردين" value={formatCurrency(totalCommissions, settings.currency)} />
+        {canViewEmployeeBonuses ? (
+          <Stat icon={<UserRound className="w-5 h-5" />} tone="rose" label="بونص الموظفين" value={formatCurrency(totalEmployeeBonuses, settings.currency)} />
+        ) : null}
         <Stat icon={<Package className="w-5 h-5" />} tone="indigo" label="عدد الفواتير" value={`${salesInRange.length} / ${purchasesInRange.length}`} />
       </div>
 
@@ -228,6 +288,7 @@ export function ReportsPage() {
           <TabsTrigger value="customers">أرصدة العملاء</TabsTrigger>
           <TabsTrigger value="suppliers">أرصدة الموردين</TabsTrigger>
           <TabsTrigger value="commissions">عمولات الموردين</TabsTrigger>
+          {canViewEmployeeBonuses ? <TabsTrigger value="employeeBonuses">بونص الموظفين</TabsTrigger> : null}
         </TabsList>
 
         <TabsContent value="sales">
@@ -291,6 +352,25 @@ export function ReportsPage() {
               </CardBody>
             </Card>
           </div>
+          <Card className="mt-4">
+            <CardHeader title="تفصيل المبيعات حسب نوع السعر" />
+            <CardBody>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <div className="text-xs text-slate-500">مبيعات الجملة</div>
+                  <div className="text-lg font-bold text-slate-900 mt-1">
+                    {formatCurrency(wholesaleSalesTotal, settings.currency)}
+                  </div>
+                </div>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <div className="text-xs text-slate-500">مبيعات التجزئة</div>
+                  <div className="text-lg font-bold text-slate-900 mt-1">
+                    {formatCurrency(retailSalesTotal, settings.currency)}
+                  </div>
+                </div>
+              </div>
+            </CardBody>
+          </Card>
           <Card className="mt-4">
             <CardHeader title="أعلى المنتجات مبيعاً" />
             <CardBody>
@@ -397,7 +477,7 @@ export function ReportsPage() {
                       <TD className="text-slate-600">{p.category}</TD>
                       <TD className="text-end">{p.quantity} {p.unit}</TD>
                       <TD className="text-end">{formatCurrency(p.quantity * p.purchasePrice, settings.currency)}</TD>
-                      <TD className="text-end">{formatCurrency(p.quantity * p.sellingPrice, settings.currency)}</TD>
+                      <TD className="text-end">{formatCurrency(p.quantity * p.retailPrice, settings.currency)}</TD>
                     </TR>
                   ))}
                 </TBody>
@@ -562,6 +642,120 @@ export function ReportsPage() {
             </CardBody>
           </Card>
         </TabsContent>
+        {canViewEmployeeBonuses ? (
+          <TabsContent value="employeeBonuses">
+            <Card>
+              <CardHeader
+                title="بونص الموظفين"
+                subtitle="حساب البونص من فواتير البيع داخل الفترة المختارة"
+              />
+              <CardBody className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <div className="text-xs text-slate-500">إجمالي بونص الموظفين</div>
+                    <div className="text-lg font-bold text-rose-700 mt-1">
+                      {formatCurrency(totalEmployeeBonuses, settings.currency)}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <div className="text-xs text-slate-500">مبيعات الموظفين</div>
+                    <div className="text-lg font-bold text-slate-900 mt-1">
+                      {formatCurrency(totalEmployeeSales, settings.currency)}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <div className="text-xs text-slate-500">موظفون لديهم مبيعات</div>
+                    <div className="text-lg font-bold text-slate-900 mt-1">
+                      {employeesWithSales} / {employeeBonusRows.length}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <div className="text-xs text-slate-500">محققين التارجت</div>
+                    <div className="text-lg font-bold text-emerald-700 mt-1">
+                      {employeesTargetAchieved}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <div className="text-xs text-slate-500">صافي تقديري بعد البونصات</div>
+                    <div className="text-lg font-bold text-slate-900 mt-1">
+                      {formatCurrency(estimatedProfitAfterBonuses, settings.currency)}
+                    </div>
+                  </div>
+                </div>
+
+                {unattributedEmployeeInvoices.length > 0 ? (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                    توجد {unattributedEmployeeInvoices.length} فواتير بيع بدون موظف مسجل بقيمة{" "}
+                    <span className="font-bold">{formatCurrency(unattributedEmployeeSales, settings.currency)}</span>.
+                    هذه الفواتير لا تدخل في بونص أي موظف.
+                  </div>
+                ) : null}
+
+                <Table>
+                  <THead>
+                    <TR>
+                      <TH>الموظف</TH>
+                      <TH className="text-end">عدد الفواتير</TH>
+                      <TH className="text-end">إجمالي المبيعات</TH>
+                      <TH className="text-end">نسبة العمولة</TH>
+                      <TH className="text-end">البونص</TH>
+                      <TH className="text-end">الراتب الشهري</TH>
+                      <TH className="text-end">التارجت الشهري</TH>
+                      <TH>الحالة</TH>
+                      <TH className="text-end">إجمالي مستحقات تقديري</TH>
+                    </TR>
+                  </THead>
+                  <TBody>
+                    {employeeBonusRows.length === 0 ? (
+                      <TR>
+                        <TD colSpan={9} className="text-center py-8 text-slate-500">
+                          لا يوجد موظفون مسجلون
+                        </TD>
+                      </TR>
+                    ) : (
+                      employeeBonusRows.map((row) => (
+                        <TR key={row.employee.id}>
+                          <TD className="font-medium text-slate-900">
+                            {row.employee.name || row.employee.username}
+                          </TD>
+                          <TD className="text-end tabular-nums">{row.invoiceCount}</TD>
+                          <TD className="text-end">{formatCurrency(row.totalSales, settings.currency)}</TD>
+                          <TD className="text-end tabular-nums">{row.commissionPct}%</TD>
+                          <TD className="text-end font-bold text-rose-700">
+                            {formatCurrency(row.bonus, settings.currency)}
+                          </TD>
+                          <TD className="text-end">{formatCurrency(row.salary, settings.currency)}</TD>
+                          <TD className="text-end">
+                            {row.target > 0 ? formatCurrency(row.target, settings.currency) : "—"}
+                          </TD>
+                          <TD>
+                            {row.target <= 0 ? (
+                              <Badge tone="slate">بدون تارجت</Badge>
+                            ) : row.achievedTarget ? (
+                              <Badge tone="green">
+                                محقق
+                                {row.exceededTarget > 0
+                                  ? ` +${formatCurrency(row.exceededTarget, settings.currency)}`
+                                  : ""}
+                              </Badge>
+                            ) : (
+                              <Badge tone="amber">
+                                متبقي {formatCurrency(row.remainingTarget, settings.currency)}
+                              </Badge>
+                            )}
+                          </TD>
+                          <TD className="text-end font-bold text-slate-900">
+                            {formatCurrency(row.totalEarnings, settings.currency)}
+                          </TD>
+                        </TR>
+                      ))
+                    )}
+                  </TBody>
+                </Table>
+              </CardBody>
+            </Card>
+          </TabsContent>
+        ) : null}
       </Tabs>
       </div>
 
@@ -605,6 +799,12 @@ export function ReportsPage() {
                     <TR_Print label="إجمالي مرتجعات البيع" value={formatCurrency(salesInRange.reduce((a, s) => a + (s.total < 0 ? s.total : 0), 0), settings.currency)} />
                     <TR_Print label="الربح التشغيلي التقديري" value={formatCurrency(estimatedProfit, settings.currency)} highlight />
                     <TR_Print label="إجمالي العمولات المستحقة" value={formatCurrency(totalCommissions, settings.currency)} highlight />
+                    {canViewEmployeeBonuses ? (
+                      <>
+                        <TR_Print label="إجمالي بونص الموظفين" value={formatCurrency(totalEmployeeBonuses, settings.currency)} highlight />
+                        <TR_Print label="صافي تقديري بعد البونصات" value={formatCurrency(estimatedProfitAfterBonuses, settings.currency)} highlight />
+                      </>
+                    ) : null}
                   </tbody>
                 </table>
               </section>
@@ -901,7 +1101,7 @@ function Stat({
   icon: React.ReactNode;
   label: string;
   value: string;
-  tone: "green" | "blue" | "amber" | "indigo" | "emerald";
+  tone: "green" | "blue" | "amber" | "indigo" | "emerald" | "rose";
 }) {
   const colors: Record<string, string> = {
     green: "bg-emerald-50 text-emerald-600",
@@ -909,6 +1109,7 @@ function Stat({
     amber: "bg-amber-50 text-amber-600",
     indigo: "bg-indigo-50 text-indigo-600",
     emerald: "bg-emerald-50 text-emerald-600",
+    rose: "bg-rose-50 text-rose-600",
   };
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-4 flex items-center gap-4 hover:shadow-md transition-shadow">

@@ -1,20 +1,82 @@
-import { forwardRef, type InputHTMLAttributes, type TextareaHTMLAttributes, type SelectHTMLAttributes } from "react";
+import {
+  forwardRef,
+  useState,
+  type ChangeEvent,
+  type FocusEvent,
+  type InputHTMLAttributes,
+  type SelectHTMLAttributes,
+  type TextareaHTMLAttributes,
+} from "react";
 import { cn } from "../../lib/utils";
 
+function isZeroLikeInputValue(value: InputHTMLAttributes<HTMLInputElement>["value"]) {
+  if (value === 0) return true;
+  if (typeof value !== "string") return false;
+  const trimmed = value.trim();
+  return trimmed !== "" && Number(trimmed) === 0;
+}
+
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
-  ({ className, ...props }, ref) => (
-    <input
-      ref={ref}
-      className={cn(
-        "w-full h-9 px-3 text-sm rounded-lg border border-slate-300 bg-white",
-        "placeholder:text-slate-400",
-        "focus-ring",
-        "disabled:bg-slate-50 disabled:text-slate-400",
-        className
-      )}
-      {...props}
-    />
-  )
+  (
+    {
+      className,
+      type,
+      value,
+      placeholder,
+      onChange,
+      onFocus,
+      onBlur,
+      ...props
+    },
+    ref
+  ) => {
+    const isControlledNumber = type === "number" && value !== undefined;
+    const [draftValue, setDraftValue] = useState<string | null>(null);
+    const showZeroAsPlaceholder = isControlledNumber && isZeroLikeInputValue(value);
+    const inputValue =
+      isControlledNumber && draftValue !== null
+        ? draftValue
+        : showZeroAsPlaceholder
+        ? ""
+        : value;
+
+    function handleChange(event: ChangeEvent<HTMLInputElement>) {
+      if (isControlledNumber) setDraftValue(event.target.value);
+      onChange?.(event);
+    }
+
+    function handleFocus(event: FocusEvent<HTMLInputElement>) {
+      if (isControlledNumber) {
+        setDraftValue(showZeroAsPlaceholder ? "" : String(value ?? ""));
+      }
+      onFocus?.(event);
+    }
+
+    function handleBlur(event: FocusEvent<HTMLInputElement>) {
+      if (isControlledNumber) setDraftValue(null);
+      onBlur?.(event);
+    }
+
+    return (
+      <input
+        ref={ref}
+        type={type}
+        value={inputValue}
+        placeholder={showZeroAsPlaceholder ? placeholder ?? "0" : placeholder}
+        onChange={handleChange}
+        onFocus={handleFocus}
+        onBlur={handleBlur}
+        className={cn(
+          "w-full h-9 px-3 text-sm rounded-lg border border-slate-300 bg-white",
+          "placeholder:text-slate-400",
+          "focus-ring",
+          "disabled:bg-slate-50 disabled:text-slate-400",
+          className
+        )}
+        {...props}
+      />
+    );
+  }
 );
 Input.displayName = "Input";
 

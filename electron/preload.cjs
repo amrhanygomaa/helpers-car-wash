@@ -20,7 +20,21 @@ contextBridge.exposeInMainWorld("desktopAPI", {
   auth: {
     login: (username, password) =>
       ipcRenderer.invoke("auth:login", { username, password }),
+    logout: () => ipcRenderer.invoke("auth:logout"),
     hashPassword: (password) => ipcRenderer.invoke("auth:hash-password", password),
+    changePassword: (userId, currentPassword, newPassword) =>
+      ipcRenderer.invoke("auth:change-password", {
+        userId,
+        currentPassword,
+        newPassword,
+      }),
+    updateProfile: (userId, name, currentPassword, newPassword) =>
+      ipcRenderer.invoke("auth:update-profile", {
+        userId,
+        name,
+        currentPassword,
+        newPassword,
+      }),
     resetOwnerPassword: (supportCode, username, password) =>
       ipcRenderer.invoke("support:reset-owner-password", {
         supportCode,

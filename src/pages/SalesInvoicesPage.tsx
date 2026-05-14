@@ -13,11 +13,13 @@ import { useToast } from "../components/ui/Toast";
 import { formatCurrency, formatDate } from "../lib/format";
 import { inRange } from "../lib/utils";
 import { printAppRoute } from "../lib/print";
+import { hasPermission } from "../lib/permissions";
 
 export function SalesInvoicesPage() {
-  const { salesInvoices, customers, settings } = useApp();
+  const { salesInvoices, customers, settings, currentUser } = useApp();
   const navigate = useNavigate();
   const toast = useToast();
+  const canAddSalesInvoice = hasPermission(currentUser, "salesInvoices", "add");
   const [q, setQ] = useState("");
   const [customerId, setCustomerId] = useState("");
   const [status, setStatus] = useState("");
@@ -62,10 +64,12 @@ export function SalesInvoicesPage() {
         title="فواتير المبيعات"
         description={`إدارة فواتير العملاء (${salesInvoices.length})`}
         actions={
-          <Button onClick={() => navigate("/sales/new")}>
-            <Plus className="w-4 h-4" />
-            فاتورة جديدة
-          </Button>
+          canAddSalesInvoice ? (
+            <Button onClick={() => navigate("/sales/new")}>
+              <Plus className="w-4 h-4" />
+              فاتورة جديدة
+            </Button>
+          ) : null
         }
       />
 
@@ -138,9 +142,11 @@ export function SalesInvoicesPage() {
               title="لا توجد فواتير"
               description="لم تُنشَأ أي فاتورة مبيعات بعد."
               action={
-                <Button onClick={() => navigate("/sales/new")}>
-                  <Plus className="w-4 h-4" /> إنشاء فاتورة
-                </Button>
+                canAddSalesInvoice ? (
+                  <Button onClick={() => navigate("/sales/new")}>
+                    <Plus className="w-4 h-4" /> إنشاء فاتورة
+                  </Button>
+                ) : undefined
               }
             />
           ) : (

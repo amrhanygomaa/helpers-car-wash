@@ -14,6 +14,7 @@ import { useToast } from "../components/ui/Toast";
 import { formatCurrency, formatDate } from "../lib/format";
 import type { Customer } from "../types";
 import { Link } from "react-router-dom";
+import { hasPermission } from "../lib/permissions";
 
 export function CustomersPage() {
   const {
@@ -24,8 +25,12 @@ export function CustomersPage() {
     customerBalance,
     salesInvoices,
     settings,
+    currentUser,
   } = useApp();
   const toast = useToast();
+  const canAddCustomer = hasPermission(currentUser, "customers", "add");
+  const canEditCustomer = hasPermission(currentUser, "customers", "edit");
+  const canDeleteCustomer = hasPermission(currentUser, "customers", "delete");
 
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
@@ -97,10 +102,12 @@ export function CustomersPage() {
         title="العملاء"
         description={`إدارة العملاء وأرصدتهم (${customers.length})`}
         actions={
-          <Button onClick={openNew}>
-            <Plus className="w-4 h-4" />
-            إضافة عميل
-          </Button>
+          canAddCustomer ? (
+            <Button onClick={openNew}>
+              <Plus className="w-4 h-4" />
+              إضافة عميل
+            </Button>
+          ) : null
         }
       />
 
@@ -121,7 +128,11 @@ export function CustomersPage() {
               icon={<Users className="w-5 h-5" />}
               title="لا يوجد عملاء"
               description="ابدأ بإضافة أول عميل."
-              action={<Button onClick={openNew}><Plus className="w-4 h-4" /> إضافة عميل</Button>}
+              action={
+                canAddCustomer ? (
+                  <Button onClick={openNew}><Plus className="w-4 h-4" /> إضافة عميل</Button>
+                ) : undefined
+              }
             />
           ) : (
             <Table>
@@ -156,17 +167,21 @@ export function CustomersPage() {
                           <Button size="icon" variant="ghost" onClick={() => setViewing(c)}>
                             <Eye className="w-4 h-4" />
                           </Button>
-                          <Button size="icon" variant="ghost" onClick={() => openEdit(c)}>
-                            <Pencil className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="text-red-600 hover:bg-red-50"
-                            onClick={() => setToDelete(c)}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
+                          {canEditCustomer ? (
+                            <Button size="icon" variant="ghost" onClick={() => openEdit(c)}>
+                              <Pencil className="w-4 h-4" />
+                            </Button>
+                          ) : null}
+                          {canDeleteCustomer ? (
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="text-red-600 hover:bg-red-50"
+                              onClick={() => setToDelete(c)}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          ) : null}
                         </div>
                       </TD>
                     </TR>

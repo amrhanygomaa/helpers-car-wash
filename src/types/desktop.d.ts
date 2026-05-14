@@ -1,4 +1,4 @@
-import type { AppUser, LicenseStatus } from "./index";
+import type { AppUser, LicenseStatus, LoginResult } from "./index";
 
 export {};
 
@@ -23,13 +23,44 @@ declare global {
         login: (
           username: string,
           password: string
-        ) => Promise<{ ok: boolean; user?: AppUser }>;
+        ) => Promise<LoginResult & { user?: AppUser }>;
+        logout: () => Promise<{ ok: boolean }>;
         hashPassword: (password: string) => Promise<string>;
+        changePassword: (
+          userId: string,
+          currentPassword: string,
+          newPassword: string
+        ) => Promise<{
+          ok: boolean;
+          user?: AppUser;
+          error?: "invalid_input" | "user_missing" | "invalid_current_password" | "not_authorized";
+        }>;
+        updateProfile: (
+          userId: string,
+          name: string,
+          currentPassword?: string,
+          newPassword?: string
+        ) => Promise<{
+          ok: boolean;
+          user?: AppUser;
+          error?: "invalid_input" | "user_missing" | "invalid_current_password" | "not_authorized";
+        }>;
         resetOwnerPassword: (
           supportCode: string,
           username: string,
           password: string
-        ) => Promise<{ ok: boolean; user?: AppUser; error?: string }>;
+        ) => Promise<{
+          ok: boolean;
+          user?: AppUser;
+          error?:
+            | "invalid_support_code"
+            | "machine_mismatch"
+            | "support_code_expired"
+            | "owner_missing"
+            | "invalid_input"
+            | "rate_limited";
+          remainSeconds?: number;
+        }>;
       };
       print: {
         route: (route: string) => Promise<{ ok: boolean; error?: string }>;

@@ -13,6 +13,7 @@ import { ConfirmDialog, Dialog } from "../components/ui/Dialog";
 import { Field, Input } from "../components/ui/Input";
 import { SalesReturnDialog } from "../features/returns/SalesReturnDialog";
 import { printAppRoute } from "../lib/print";
+import { hasPermission } from "../lib/permissions";
 
 export function SalesInvoiceDetailPage() {
   const { id } = useParams();
@@ -25,8 +26,13 @@ export function SalesInvoiceDetailPage() {
     recordSalesReceipt,
     cancelSalesInvoice,
     deleteSalesInvoice,
+    currentUser,
   } = useApp();
   const inv = salesInvoices.find((s) => s.id === id);
+  const canReceiveSales = hasPermission(currentUser, "salesInvoices", "receive");
+  const canCancelSales = hasPermission(currentUser, "salesInvoices", "cancel");
+  const canDeleteSales = hasPermission(currentUser, "salesInvoices", "delete");
+  const canAddReturn = hasPermission(currentUser, "returns", "add");
   const [payOpen, setPayOpen] = useState(false);
   const [payAmount, setPayAmount] = useState(0);
   const [cancelOpen, setCancelOpen] = useState(false);
@@ -49,6 +55,15 @@ export function SalesInvoiceDetailPage() {
   }
 
   const customer = customers.find((c) => c.id === inv.customerId);
+  const priceTypeLabel = inv.priceType === "retail" ? "تجزئة" : "جملة";
+  const dueDatePassed = (() => {
+    if (!inv.paymentDueDate || inv.remaining <= 0) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const due = new Date(inv.paymentDueDate);
+    due.setHours(0, 0, 0, 0);
+    return due.getTime() < today.getTime();
+  })();
 
   return (
     <>
@@ -72,24 +87,30 @@ export function SalesInvoiceDetailPage() {
             >
               <Printer className="w-4 h-4" /> طباعة
             </Button>
-            {!inv.cancelled && inv.remaining > 0 ? (
+            {!inv.cancelled && inv.remaining > 0 && canReceiveSales ? (
               <Button onClick={() => { setPayAmount(inv.remaining); setPayOpen(true); }}>
                 <HandCoins className="w-4 h-4" /> تسجيل دفعة
               </Button>
             ) : null}
-            {!inv.cancelled ? (
+            {!inv.cancelled && (canAddReturn || canCancelSales) ? (
               <>
-                <Button variant="outline" onClick={() => setReturnOpen(true)}>
-                  <ArrowRight className="w-4 h-4" /> إنشاء مرتجع
-                </Button>
-                <Button variant="outline" onClick={() => setCancelOpen(true)}>
-                  <Ban className="w-4 h-4" /> إلغاء
-                </Button>
+                {canAddReturn ? (
+                  <Button variant="outline" onClick={() => setReturnOpen(true)}>
+                    <ArrowRight className="w-4 h-4" /> إنشاء مرتجع
+                  </Button>
+                ) : null}
+                {canCancelSales ? (
+                  <Button variant="outline" onClick={() => setCancelOpen(true)}>
+                    <Ban className="w-4 h-4" /> إلغاء
+                  </Button>
+                ) : null}
               </>
             ) : null}
-            <Button variant="danger" onClick={() => setDelOpen(true)}>
-              <Trash2 className="w-4 h-4" /> حذف
-            </Button>
+            {canDeleteSales ? (
+              <Button variant="danger" onClick={() => setDelOpen(true)}>
+                <Trash2 className="w-4 h-4" /> حذف
+              </Button>
+            ) : null}
           </>
         }
       />
@@ -100,11 +121,19 @@ export function SalesInvoiceDetailPage() {
         </div>
       ) : null}
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
         <Stat label="الإجمالي" value={formatCurrency(inv.total, settings.currency)} />
         <Stat label="المستلم" value={formatCurrency(inv.amountReceived, settings.currency)} tone="green" />
         <Stat label="المتبقي" value={formatCurrency(inv.remaining, settings.currency)} tone={inv.remaining > 0 ? "amber" : "slate"} />
         <Stat label="الحالة" value={inv.cancelled ? "ملغاة" : inv.status === "paid" ? "مسددة" : inv.status === "partial" ? "جزئي" : "غير مسددة"} tone={inv.cancelled ? "slate" : inv.status === "paid" ? "green" : inv.status === "partial" ? "amber" : "red"} />
+        <Stat label="نوع السعر" value={priceTypeLabel} />
+        {inv.paymentDueDate ? (
+          <Stat
+            label="تاريخ الاستحقاق"
+            value={formatDate(inv.paymentDueDate)}
+            tone={dueDatePassed ? "red" : "slate"}
+          />
+        ) : null}
       </div>
 
       <Card>

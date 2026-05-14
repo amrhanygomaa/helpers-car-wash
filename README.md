@@ -106,7 +106,7 @@ release/Helpers Warehouse System-1.0.0-Setup.exe
 npm run license:init
 ```
 
-> ⚠️ المفتاح الخاص يُحفظ في `.license/private-key.pem` — **لا يُرفع على Git ولا يُشحن مع البرنامج.**
+> ⚠️ أدوات إصدار التراخيص موجودة خارج تطبيق العميل في `../helpers_sys_activate`، والمفتاح الخاص يُحفظ هناك في `.license/private-key.pem` — **لا يُرفع على Git ولا يُشحن مع البرنامج.**
 
 ### إصدار سيريال لعميل
 

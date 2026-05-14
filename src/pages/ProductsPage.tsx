@@ -15,12 +15,16 @@ import { daysUntil } from "../lib/utils";
 import { ProductFormDialog } from "../features/products/ProductForm";
 import { ProductDetailsDrawer } from "../features/products/ProductDetailsDrawer";
 import type { Product } from "../types";
+import { hasPermission } from "../lib/permissions";
 
-type SortKey = "name" | "quantity" | "sellingPrice" | "purchasePrice";
+type SortKey = "name" | "quantity" | "wholesalePrice" | "retailPrice" | "purchasePrice";
 
 export function ProductsPage() {
-  const { products, suppliers, deleteProduct, settings } = useApp();
+  const { products, suppliers, deleteProduct, settings, currentUser } = useApp();
   const toast = useToast();
+  const canAddProduct = hasPermission(currentUser, "products", "add");
+  const canEditProduct = hasPermission(currentUser, "products", "edit");
+  const canDeleteProduct = hasPermission(currentUser, "products", "delete");
   const [q, setQ] = useState("");
   const [category, setCategory] = useState("");
   const [supplier, setSupplier] = useState("");
@@ -90,15 +94,17 @@ export function ProductsPage() {
         title="المنتجات"
         description={`إدارة كل المنتجات والأسعار والمخزون (${products.length})`}
         actions={
-          <Button
-            onClick={() => {
-              setEditing(null);
-              setFormOpen(true);
-            }}
-          >
-            <Plus className="w-4 h-4" />
-            إضافة منتج
-          </Button>
+          canAddProduct ? (
+            <Button
+              onClick={() => {
+                setEditing(null);
+                setFormOpen(true);
+              }}
+            >
+              <Plus className="w-4 h-4" />
+              إضافة منتج
+            </Button>
+          ) : null
         }
       />
 
@@ -152,7 +158,8 @@ export function ProductsPage() {
               >
                 <option value="name">الاسم</option>
                 <option value="quantity">الكمية</option>
-                <option value="sellingPrice">سعر البيع</option>
+                <option value="wholesalePrice">سعر الجملة</option>
+                <option value="retailPrice">سعر التجزئة</option>
                 <option value="purchasePrice">سعر الشراء</option>
               </Select>
               <Button
@@ -180,7 +187,8 @@ export function ProductsPage() {
                   <TH>الوحدة</TH>
                   <TH className="text-end">الكمية</TH>
                   <TH className="text-end">سعر الشراء</TH>
-                  <TH className="text-end">سعر البيع</TH>
+                  <TH className="text-end">سعر الجملة</TH>
+                  <TH className="text-end">سعر التجزئة</TH>
                   <TH>الصلاحية</TH>
                   <TH>المورد</TH>
                   <TH className="text-end">إجراءات</TH>
@@ -214,7 +222,10 @@ export function ProductsPage() {
                         {formatCurrency(p.purchasePrice, settings.currency)}
                       </TD>
                       <TD className="text-end font-medium">
-                        {formatCurrency(p.sellingPrice, settings.currency)}
+                        {formatCurrency(p.wholesalePrice, settings.currency)}
+                      </TD>
+                      <TD className="text-end font-medium">
+                        {formatCurrency(p.retailPrice, settings.currency)}
                       </TD>
                       <TD>
                         {p.hasExpiry && p.expiryDate ? (
@@ -236,26 +247,30 @@ export function ProductsPage() {
                           >
                             <Eye className="w-4 h-4" />
                           </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={() => {
-                              setEditing(p);
-                              setFormOpen(true);
-                            }}
-                            title="تعديل"
-                          >
-                            <Pencil className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="text-red-600 hover:bg-red-50"
-                            onClick={() => setToDelete(p)}
-                            title="حذف"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
+                          {canEditProduct ? (
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              onClick={() => {
+                                setEditing(p);
+                                setFormOpen(true);
+                              }}
+                              title="تعديل"
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </Button>
+                          ) : null}
+                          {canDeleteProduct ? (
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="text-red-600 hover:bg-red-50"
+                              onClick={() => setToDelete(p)}
+                              title="حذف"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          ) : null}
                         </div>
                       </TD>
                     </TR>

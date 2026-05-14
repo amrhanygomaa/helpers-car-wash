@@ -23,9 +23,12 @@ import type {
   CommissionTier,
   CommissionType,
   LicenseStatus,
+  ID,
+  LoginResult,
 } from "../types";
-import { lsClearAll, lsGet, lsSet } from "../lib/storage";
-import { verifyFallbackPassword } from "../lib/auth";
+import { lsClearAll, lsGet, lsRemove, lsSet } from "../lib/storage";
+import { hashPassword, verifyFallbackPassword } from "../lib/auth";
+import { normalizeUser } from "../lib/permissions";
 import {
   seedCashEntries,
   seedCustomers,
@@ -41,6 +44,7 @@ import { uid } from "../lib/utils";
 
 interface AuthState {
   isAuthenticated: boolean;
+  userId?: string;
   username?: string;
 }
 
@@ -49,6 +53,7 @@ interface AppState {
   licenseStatus: LicenseStatus | null;
   isDesktop: boolean;
   ownerExists: boolean;
+  ownerCheckPending: boolean;
   settings: Settings;
   products: Product[];
   suppliers: Supplier[];
@@ -65,8 +70,18 @@ interface AppState {
   drivers: Driver[];
 }
 
+type UpdateCurrentUserProfileResult = {
+  ok: boolean;
+  error?:
+    | "not_authenticated"
+    | "invalid_name"
+    | "invalid_current_password"
+    | "password_too_short"
+    | "user_missing";
+};
+
 interface AppActions {
-  login: (username: string, password: string) => Promise<boolean>;
+  login: (username: string, password: string) => Promise<LoginResult>;
   logout: () => void;
   refreshLicenseStatus: () => Promise<LicenseStatus | null>;
   activateLicense: (serial: string) => Promise<{ ok: boolean; status: LicenseStatus }>;
@@ -77,6 +92,11 @@ interface AppActions {
   // Users
   addUser: (u: Omit<AppUser, "id" | "createdAt">) => AppUser;
   updateUser: (id: string, patch: Partial<AppUser>) => void;
+  updateCurrentUserProfile: (patch: {
+    name: string;
+    currentPassword?: string;
+    newPassword?: string;
+  }) => Promise<UpdateCurrentUserProfileResult>;
   deleteUser: (id: string) => boolean;
 
   // Products
@@ -148,6 +168,15 @@ interface AppActions {
     commissionType: CommissionType;
     commissionValue: number;
   }[];
+  employeeSalesStats: (userId: ID, month: string) => {
+    totalSales: number;
+    target: number;
+    remaining: number;
+    achieved: boolean;
+    commissionEarned: number;
+    salary: number;
+    totalEarnings: number;
+  };
 
   // Backup & Import
   exportBackup: () => void;
@@ -196,6 +225,100 @@ function applyLicenseSettings(settings: Settings, status: LicenseStatus | null):
   };
 }
 
+function redactUserPasswordHashes(users: AppUser[]): AppUser[] {
+  return users.map(({ passwordHash: _passwordHash, ...user }) => ({
+    ...user,
+    passwordHash: "[REDACTED]",
+  }));
+}
+
+const LOGIN_MAX_ATTEMPTS = 5;
+const LOGIN_LOCKOUT_MS = 60 * 1000;
+const fallbackLoginAttempts = new Map<string, { count: number; lockedUntil: number }>();
+
+function loginAttemptKey(username: string) {
+  return username.trim().toLowerCase();
+}
+
+function getRateLimitResult(key: string): LoginResult | null {
+  const now = Date.now();
+  const entry = fallbackLoginAttempts.get(key);
+  if (!entry) return null;
+  if (entry.lockedUntil > now) {
+    return {
+      ok: false,
+      error: "rate_limited",
+      remainSeconds: Math.ceil((entry.lockedUntil - now) / 1000),
+      attemptsRemaining: 0,
+    };
+  }
+  if (entry.lockedUntil > 0 && entry.lockedUntil <= now) {
+    fallbackLoginAttempts.delete(key);
+  }
+  return null;
+}
+
+function registerFailedLogin(key: string): LoginResult {
+  const rateLimited = getRateLimitResult(key);
+  if (rateLimited) return rateLimited;
+
+  const current = fallbackLoginAttempts.get(key) || { count: 0, lockedUntil: 0 };
+  current.count += 1;
+  if (current.count >= LOGIN_MAX_ATTEMPTS) {
+    current.count = 0;
+    current.lockedUntil = Date.now() + LOGIN_LOCKOUT_MS;
+    fallbackLoginAttempts.set(key, current);
+    return {
+      ok: false,
+      error: "rate_limited",
+      remainSeconds: Math.ceil(LOGIN_LOCKOUT_MS / 1000),
+      attemptsRemaining: 0,
+    };
+  }
+
+  fallbackLoginAttempts.set(key, current);
+  return {
+    ok: false,
+    error: "invalid_credentials",
+    attemptsRemaining: Math.max(0, LOGIN_MAX_ATTEMPTS - current.count),
+  };
+}
+
+type LegacyProduct = Omit<Product, "wholesalePrice" | "retailPrice"> &
+  Partial<Pick<Product, "wholesalePrice" | "retailPrice">> & {
+    sellingPrice?: number;
+  };
+
+function normalizeProduct(product: LegacyProduct): Product {
+  const wholesalePrice = product.wholesalePrice ?? product.sellingPrice ?? 0;
+  const retailPrice =
+    product.retailPrice ?? Math.round(wholesalePrice * 1.12 * 100) / 100;
+  const {
+    sellingPrice: _legacySellingPrice,
+    wholesalePrice: _wholesalePrice,
+    retailPrice: _retailPrice,
+    ...rest
+  } = product;
+  void _legacySellingPrice;
+  void _wholesalePrice;
+  void _retailPrice;
+  return {
+    ...rest,
+    wholesalePrice,
+    retailPrice,
+  };
+}
+
+type LegacySalesInvoice = Omit<SalesInvoice, "priceType"> &
+  Partial<Pick<SalesInvoice, "priceType">>;
+
+function normalizeSalesInvoice(invoice: LegacySalesInvoice): SalesInvoice {
+  return {
+    ...invoice,
+    priceType: invoice.priceType === "retail" ? "retail" : "wholesale",
+  };
+}
+
 export function AppProvider({ children }: { children: ReactNode }) {
   const isDesktop = Boolean(window.desktopAPI);
   const [licenseStatus, setLicenseStatus] = useState<LicenseStatus | null>(
@@ -208,14 +331,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
             machineHash: "WEB-DEVELOPMENT",
           }
   );
-  const [auth, setAuth] = useState<AuthState>(() =>
-    lsGet<AuthState>("auth", { isAuthenticated: false })
+  const [auth, setAuth] = useState<AuthState>({ isAuthenticated: false });
+  const [desktopOwnerExists, setDesktopOwnerExists] = useState<boolean | null>(
+    () => (isDesktop ? null : false)
   );
   const [settings, setSettings] = useState<Settings>(() =>
     lsGet<Settings>("settings", seedSettings)
   );
   const [products, setProducts] = useState<Product[]>(() =>
-    lsGet<Product[]>("products", seedProducts)
+    lsGet<LegacyProduct[]>("products", seedProducts).map(normalizeProduct)
   );
   const [suppliers, setSuppliers] = useState<Supplier[]>(() =>
     lsGet<Supplier[]>("suppliers", seedSuppliers)
@@ -227,7 +351,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     () => lsGet<PurchaseInvoice[]>("purchaseInvoices", seedPurchaseInvoices)
   );
   const [salesInvoices, setSalesInvoices] = useState<SalesInvoice[]>(() =>
-    lsGet<SalesInvoice[]>("salesInvoices", seedSalesInvoices)
+    lsGet<LegacySalesInvoice[]>("salesInvoices", seedSalesInvoices).map(
+      normalizeSalesInvoice
+    )
   );
   const [stockMovements, setStockMovements] = useState<StockMovement[]>(() =>
     lsGet<StockMovement[]>("stockMovements", seedStockMovements)
@@ -239,7 +365,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     lsGet<number>("nextProductCode", 1000)
   );
   const [users, setUsers] = useState<AppUser[]>(() =>
-    lsGet<AppUser[]>("users", seedUsers)
+    lsGet<AppUser[]>("users", seedUsers).map(normalizeUser)
   );
   const [salesReturns, setSalesReturns] = useState<SalesReturn[]>(() =>
     lsGet<SalesReturn[]>("salesReturns", [])
@@ -248,6 +374,43 @@ export function AppProvider({ children }: { children: ReactNode }) {
     lsGet<PurchaseReturn[]>("purchaseReturns", [])
   );
   const [drivers, setDrivers] = useState<Driver[]>(() => lsGet("drivers", []));
+
+  const loadStoredStateFromDesktop = useCallback(() => {
+    const storedSettings = lsGet<Settings>("settings", seedSettings);
+    setSettings(applyLicenseSettings(storedSettings, licenseStatus));
+    setProducts(lsGet<LegacyProduct[]>("products", seedProducts).map(normalizeProduct));
+    setSuppliers(lsGet<Supplier[]>("suppliers", seedSuppliers));
+    setCustomers(lsGet<Customer[]>("customers", seedCustomers));
+    setPurchaseInvoices(lsGet<PurchaseInvoice[]>("purchaseInvoices", seedPurchaseInvoices));
+    setSalesInvoices(
+      lsGet<LegacySalesInvoice[]>("salesInvoices", seedSalesInvoices).map(
+        normalizeSalesInvoice
+      )
+    );
+    setStockMovements(lsGet<StockMovement[]>("stockMovements", seedStockMovements));
+    setCashEntries(lsGet<CashEntry[]>("cashEntries", seedCashEntries));
+    setNextProductCode(lsGet<number>("nextProductCode", 1000));
+    setUsers(lsGet<AppUser[]>("users", []).map(normalizeUser));
+    setSalesReturns(lsGet<SalesReturn[]>("salesReturns", []));
+    setPurchaseReturns(lsGet<PurchaseReturn[]>("purchaseReturns", []));
+    setDrivers(lsGet<Driver[]>("drivers", []));
+  }, [licenseStatus]);
+
+  const clearDesktopRendererState = useCallback(() => {
+    setSettings(applyLicenseSettings(seedSettings, licenseStatus));
+    setProducts(seedProducts.map(normalizeProduct));
+    setSuppliers(seedSuppliers);
+    setCustomers(seedCustomers);
+    setPurchaseInvoices(seedPurchaseInvoices);
+    setSalesInvoices(seedSalesInvoices.map(normalizeSalesInvoice));
+    setStockMovements(seedStockMovements);
+    setCashEntries(seedCashEntries);
+    setNextProductCode(1000);
+    setUsers([]);
+    setSalesReturns([]);
+    setPurchaseReturns([]);
+    setDrivers([]);
+  }, [licenseStatus]);
 
   const refreshLicenseStatus = useCallback(async () => {
     if (!window.desktopAPI?.license) return null;
@@ -265,6 +428,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }, 60_000);
     return () => window.clearInterval(timer);
   }, [refreshLicenseStatus]);
+
+  useEffect(() => {
+    if (!window.desktopAPI?.setup) return;
+    let cancelled = false;
+    void window.desktopAPI.setup
+      .hasOwner()
+      .then((exists) => {
+        if (!cancelled) setDesktopOwnerExists(exists);
+      })
+      .catch(() => {
+        if (!cancelled) setDesktopOwnerExists(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // --- Auto Backup Logic ---
   useEffect(() => {
@@ -287,12 +466,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
 
     if (shouldBackup) {
+      const safeUsers = redactUserPasswordHashes(users);
       const data = {
         version: "1.0",
         timestamp: now.toISOString(),
         state: {
           settings, products, suppliers, customers, purchaseInvoices, salesInvoices,
-          stockMovements, cashEntries, nextProductCode, users, salesReturns, purchaseReturns, drivers
+          stockMovements, cashEntries, nextProductCode, users: safeUsers, salesReturns, purchaseReturns, drivers
         }
       };
       lsSet("inventory_auto_backup_internal", data);
@@ -305,12 +485,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Session backup
   useEffect(() => {
     const handleBeforeUnload = () => {
+      const safeUsers = redactUserPasswordHashes(users);
       const data = {
         version: "1.0",
         timestamp: new Date().toISOString(),
         state: {
           settings, products, suppliers, customers, purchaseInvoices, salesInvoices,
-          stockMovements, cashEntries, nextProductCode, users, salesReturns, purchaseReturns, drivers
+          stockMovements, cashEntries, nextProductCode, users: safeUsers, salesReturns, purchaseReturns, drivers
         }
       };
       lsSet("inventory_last_session_backup", data);
@@ -320,12 +501,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [settings, products, suppliers, customers, purchaseInvoices, salesInvoices, stockMovements, cashEntries, nextProductCode, users, salesReturns, purchaseReturns, drivers]);
   
   const currentUser = useMemo(() => {
-    if (!auth.isAuthenticated || !auth.username) return null;
+    if (!auth.isAuthenticated) return null;
+    if (auth.userId) {
+      const byId = users.find((u) => u.id === auth.userId);
+      if (byId) return byId;
+    }
+    if (!auth.username) return null;
     return users.find((u) => u.username === auth.username) || null;
   }, [users, auth]);
-  const ownerExists = useMemo(() => users.some((u) => u.role === "owner"), [users]);
+  const localOwnerExists = useMemo(() => users.some((u) => u.role === "owner"), [users]);
+  const ownerExists = isDesktop ? desktopOwnerExists === true : localOwnerExists;
+  const ownerCheckPending = isDesktop && desktopOwnerExists === null;
 
-  useEffect(() => lsSet("auth", auth), [auth]);
+  useEffect(() => {
+    lsRemove("auth");
+  }, []);
   useEffect(() => lsSet("settings", settings), [settings]);
   useEffect(() => lsSet("products", products), [products]);
   useEffect(() => lsSet("suppliers", suppliers), [suppliers]);
@@ -344,28 +534,41 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => lsSet("drivers", drivers), [drivers]);
 
   const login = useCallback(async (username: string, passwordRaw: string) => {
+    const attemptKey = loginAttemptKey(username);
     if (window.desktopAPI?.auth) {
       const result = await window.desktopAPI.auth.login(username, passwordRaw);
-      if (!result.ok) return false;
+      if (!result.ok) return result;
+      loadStoredStateFromDesktop();
       if (result.user) {
-        const updatedUser = result.user;
+        const updatedUser = normalizeUser(result.user);
         setUsers((list) =>
-          list.map((u) => (u.id === updatedUser.id ? updatedUser : u))
+          list.some((u) => u.id === updatedUser.id)
+            ? list.map((u) => (u.id === updatedUser.id ? updatedUser : u))
+            : [updatedUser, ...list]
         );
       }
-      setAuth({ isAuthenticated: true, username });
-      return true;
+      setAuth({ isAuthenticated: true, username, userId: result.user?.id });
+      return { ok: true };
     }
 
+    const rateLimited = getRateLimitResult(attemptKey);
+    if (rateLimited) return rateLimited;
     const user = users.find((u) => u.username === username);
-    if (!user) return false;
-    if (!(await verifyFallbackPassword(user.passwordHash, passwordRaw))) return false;
-    setAuth({ isAuthenticated: true, username });
-    return true;
-  }, [users]);
+    if (!user) return registerFailedLogin(attemptKey);
+    if (!(await verifyFallbackPassword(user.passwordHash, passwordRaw))) {
+      return registerFailedLogin(attemptKey);
+    }
+    fallbackLoginAttempts.delete(attemptKey);
+    setAuth({ isAuthenticated: true, username, userId: user.id });
+    return { ok: true };
+  }, [loadStoredStateFromDesktop, users]);
   const logout = useCallback(() => {
+    if (window.desktopAPI?.auth.logout) {
+      void window.desktopAPI.auth.logout();
+      clearDesktopRendererState();
+    }
     setAuth({ isAuthenticated: false });
-  }, []);
+  }, [clearDesktopRendererState]);
 
   const activateLicense = useCallback(async (serial: string) => {
     if (!window.desktopAPI?.license) {
@@ -387,13 +590,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (window.desktopAPI?.setup) {
       const result = await window.desktopAPI.setup.createOwner(username, password);
       if (!result.ok || !result.user) return false;
-      const owner = result.user;
+      setDesktopOwnerExists(true);
+      loadStoredStateFromDesktop();
+      const owner = normalizeUser(result.user);
       setUsers((list) => [owner, ...list.filter((u) => u.id !== owner.id)]);
-      setAuth({ isAuthenticated: true, username: owner.username });
+      setAuth({
+        isAuthenticated: true,
+        username: owner.username,
+        userId: owner.id,
+      });
       return true;
     }
     return false;
-  }, []);
+  }, [loadStoredStateFromDesktop]);
 
   const resetDemo = useCallback(() => {
     lsClearAll();
@@ -407,7 +616,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setStockMovements(seedStockMovements);
     setCashEntries(seedCashEntries);
     setNextProductCode(1000);
-    setUsers(seedUsers);
+    setUsers(seedUsers.map(normalizeUser));
     setSalesReturns([]);
     setPurchaseReturns([]);
     setDrivers([]);
@@ -439,7 +648,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Users
   const addUser: AppActions["addUser"] = (u) => {
     const user: AppUser = {
-      ...u,
+      ...normalizeUser(u as AppUser),
+      permissions: normalizeUser(u as AppUser).permissions,
       id: uid("usr"),
       createdAt: new Date().toISOString(),
     };
@@ -448,8 +658,101 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
   const updateUser: AppActions["updateUser"] = (id, patch) => {
     setUsers((list) =>
-      list.map((u) => (u.id === id ? { ...u, ...patch } : u))
+      list.map((u) =>
+        u.id === id
+          ? normalizeUser({ ...u, ...patch, permissions: patch.permissions ?? u.permissions })
+          : u
+      )
     );
+  };
+  const updateCurrentUserProfile: AppActions["updateCurrentUserProfile"] = async ({
+    name,
+    currentPassword,
+    newPassword,
+  }) => {
+    if (!currentUser) return { ok: false, error: "not_authenticated" };
+
+    const cleanName = name.trim();
+    if (!cleanName) return { ok: false, error: "invalid_name" };
+
+    if (window.desktopAPI?.auth.updateProfile) {
+      const result = await window.desktopAPI.auth.updateProfile(
+        currentUser.id,
+        cleanName,
+        currentPassword || "",
+        newPassword || ""
+      );
+      if (!result.ok) {
+        return {
+          ok: false,
+          error:
+            result.error === "invalid_current_password"
+              ? "invalid_current_password"
+              : result.error === "user_missing"
+              ? "user_missing"
+              : result.error === "not_authorized"
+              ? "not_authenticated"
+              : "password_too_short",
+        };
+      }
+      if (result.user) {
+        const updatedUser = normalizeUser(result.user);
+        setUsers((list) =>
+          list.map((user) => (user.id === updatedUser.id ? updatedUser : user))
+        );
+      }
+      return { ok: true };
+    }
+
+    let nextPasswordHash: string | undefined;
+    const wantsPasswordChange = Boolean(newPassword);
+    if (wantsPasswordChange) {
+      if (!newPassword || newPassword.length < 6) {
+        return { ok: false, error: "password_too_short" };
+      }
+      if (window.desktopAPI?.auth.changePassword) {
+        const result = await window.desktopAPI.auth.changePassword(
+          currentUser.id,
+          currentPassword || "",
+          newPassword
+        );
+        if (!result.ok) {
+          return {
+            ok: false,
+            error:
+              result.error === "invalid_current_password"
+                ? "invalid_current_password"
+                : result.error === "user_missing"
+                ? "user_missing"
+                : "password_too_short",
+          };
+        }
+        nextPasswordHash = result.user?.passwordHash;
+      } else {
+        const validCurrentPassword = await verifyFallbackPassword(
+          currentUser.passwordHash,
+          currentPassword || ""
+        );
+        if (!validCurrentPassword) {
+          return { ok: false, error: "invalid_current_password" };
+        }
+        nextPasswordHash = await hashPassword(newPassword);
+      }
+    }
+
+    setUsers((list) =>
+      list.map((user) =>
+        user.id === currentUser.id
+          ? normalizeUser({
+              ...user,
+              name: cleanName,
+              passwordHash: nextPasswordHash ?? user.passwordHash,
+            })
+          : user
+      )
+    );
+
+    return { ok: true };
   };
   const deleteUser: AppActions["deleteUser"] = (id) => {
     const u = users.find((x) => x.id === id);
@@ -724,6 +1027,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const full: SalesInvoice = {
       ...inv,
       id,
+      priceType: inv.priceType ?? "wholesale",
+      createdByUserId: inv.createdByUserId ?? currentUser?.id,
       status,
       remaining,
       createdAt: new Date().toISOString(),
@@ -1019,11 +1324,43 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   }, [suppliers, purchaseInvoices, purchaseReturns]);
 
+  const employeeSalesStats: AppActions["employeeSalesStats"] = useCallback(
+    (userId, month) => {
+      const employee = users.find((u) => u.id === userId);
+      const monthKey = month || new Date().toISOString().slice(0, 7);
+      const totalSales = salesInvoices
+        .filter(
+          (inv) =>
+            inv.createdByUserId === userId &&
+            !inv.cancelled &&
+            inv.date.slice(0, 7) === monthKey
+        )
+        .reduce((sum, inv) => sum + inv.total, 0);
+      const target = employee?.monthlySalesTarget ?? 0;
+      const remaining = target > 0 ? Math.max(0, target - totalSales) : 0;
+      const achieved = target > 0 && totalSales >= target;
+      const commissionPct = employee?.salesCommissionPct ?? 0;
+      const commissionEarned = (totalSales * commissionPct) / 100;
+      const salary = employee?.monthlySalary ?? 0;
+
+      return {
+        totalSales,
+        target,
+        remaining,
+        achieved,
+        commissionEarned,
+        salary,
+        totalEarnings: salary + commissionEarned,
+      };
+    },
+    [users, salesInvoices]
+  );
+
   // --- Backup & Export ---
 
   const exportBackup: AppActions["exportBackup"] = useCallback(() => {
     // SECURITY: Strip passwordHash from exported user data
-    const safeUsers = users.map(({ passwordHash: _pw, ...rest }) => ({ ...rest, passwordHash: "[REDACTED]" }));
+    const safeUsers = redactUserPasswordHashes(users);
     const data = {
       version: "1.0",
       timestamp: new Date().toISOString(),
@@ -1053,18 +1390,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (!requiredKeys.some(k => Array.isArray(s[k]))) return false;
 
       if (s.settings) setSettings(s.settings);
-      if (Array.isArray(s.products)) setProducts(s.products);
+      if (Array.isArray(s.products)) setProducts(s.products.map(normalizeProduct));
       if (Array.isArray(s.suppliers)) setSuppliers(s.suppliers);
       if (Array.isArray(s.customers)) setCustomers(s.customers);
       if (Array.isArray(s.purchaseInvoices)) setPurchaseInvoices(s.purchaseInvoices);
-      if (Array.isArray(s.salesInvoices)) setSalesInvoices(s.salesInvoices);
+      if (Array.isArray(s.salesInvoices)) {
+        setSalesInvoices(s.salesInvoices.map(normalizeSalesInvoice));
+      }
       if (Array.isArray(s.stockMovements)) setStockMovements(s.stockMovements);
       if (Array.isArray(s.cashEntries)) setCashEntries(s.cashEntries);
       if (typeof s.nextProductCode === "number") setNextProductCode(s.nextProductCode);
       // SECURITY: Users with [REDACTED] passwords are NOT imported — keep current users
       if (Array.isArray(s.users)) {
         const hasValidPasswords = s.users.every((u: Record<string, unknown>) => typeof u.passwordHash === "string" && u.passwordHash !== "[REDACTED]");
-        if (hasValidPasswords) setUsers(s.users);
+        if (hasValidPasswords) setUsers(s.users.map(normalizeUser));
       }
       if (Array.isArray(s.salesReturns)) setSalesReturns(s.salesReturns);
       if (Array.isArray(s.purchaseReturns)) setPurchaseReturns(s.purchaseReturns);
@@ -1081,8 +1420,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     let headers: string[] = [];
     
     if (type === "products") {
-      headers = ["الكود", "الاسم", "الفئة", "الكمية", "سعر الشراء", "سعر البيع"];
-      rows = products.map(p => [p.code, p.name, p.category, p.quantity, p.purchasePrice, p.sellingPrice]);
+      headers = ["الكود", "الاسم", "الفئة", "الكمية", "سعر الشراء", "سعر الجملة", "سعر التجزئة"];
+      rows = products.map(p => [p.code, p.name, p.category, p.quantity, p.purchasePrice, p.wholesalePrice, p.retailPrice]);
     } else if (type === "customers") {
       headers = ["الاسم", "الهاتف", "العنوان", "الرصيد"];
       rows = customers.map(c => [c.name, c.phone, c.address, customerBalance(c.id)]);
@@ -1124,6 +1463,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       licenseStatus,
       isDesktop,
       ownerExists,
+      ownerCheckPending,
       settings,
       products,
       suppliers,
@@ -1147,6 +1487,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       updateSettings,
       addUser,
       updateUser,
+      updateCurrentUserProfile,
       deleteUser,
       addProduct,
       updateProduct,
@@ -1178,6 +1519,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       customerBalance,
       supplierBalance,
       calculateSupplierCommission,
+      employeeSalesStats,
       exportBackup,
       importBackup,
       exportToCSV,
@@ -1188,6 +1530,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       licenseStatus,
       isDesktop,
       ownerExists,
+      ownerCheckPending,
       settings,
       products,
       suppliers,
@@ -1206,7 +1549,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       refreshLicenseStatus,
       activateLicense,
       createOwner,
+      updateCurrentUserProfile,
       calculateSupplierCommission,
+      employeeSalesStats,
       exportBackup,
       importBackup,
       exportToCSV,

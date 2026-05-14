@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Users, Plus, Shield, Trash2, Edit } from "lucide-react";
 import { useApp } from "../store/AppContext";
 import { Button } from "../components/ui/Button";
@@ -7,16 +7,14 @@ import { Field, Input } from "../components/ui/Input";
 import { useToast } from "../components/ui/Toast";
 import type { AppUser, UserPermissions } from "../types";
 import { hashPassword } from "../lib/auth";
-
-const DEFAULT_PERMISSIONS: UserPermissions = {
-  products: { view: false, add: false, edit: false, delete: false },
-  purchaseInvoices: { view: false, add: false },
-  salesInvoices: { view: false, add: false },
-  customers: { view: false, add: false, edit: false },
-  suppliers: { view: false, add: false, edit: false },
-  cashbox: { view: false },
-  reports: { view: false },
-};
+import {
+  PERMISSION_GROUPS,
+  areAllPermissionsEnabled,
+  createPermissions,
+  normalizePermissions,
+  setPermission,
+  setPermissionGroup,
+} from "../lib/permissions";
 
 function UserFormDialog({
   open,
@@ -27,38 +25,85 @@ function UserFormDialog({
   onClose: () => void;
   editing?: AppUser | null;
 }) {
-  const { addUser, updateUser } = useApp();
+  const { addUser, updateUser, users } = useApp();
   const toast = useToast();
 
+  const [name, setName] = useState(editing?.name || editing?.username || "");
   const [username, setUsername] = useState(editing?.username || "");
   const [password, setPassword] = useState("");
   const [permissions, setPermissions] = useState<UserPermissions>(
-    editing?.permissions || DEFAULT_PERMISSIONS
+    normalizePermissions(editing?.permissions)
+  );
+  const [monthlySalary, setMonthlySalary] = useState(
+    editing?.monthlySalary === undefined ? "" : String(editing.monthlySalary)
+  );
+  const [salesCommissionPct, setSalesCommissionPct] = useState(
+    editing?.salesCommissionPct === undefined ? "" : String(editing.salesCommissionPct)
+  );
+  const [monthlySalesTarget, setMonthlySalesTarget] = useState(
+    editing?.monthlySalesTarget === undefined ? "" : String(editing.monthlySalesTarget)
   );
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  const allPermissionsSelected = useMemo(
+    () => areAllPermissionsEnabled(permissions),
+    [permissions]
+  );
+
+  function optionalNumber(value: string) {
+    return value.trim() === "" ? undefined : Number(value);
+  }
 
   async function handleSave() {
     const e: Record<string, string> = {};
+    if (!name.trim()) e.name = "مطلوب";
     if (!username.trim()) e.username = "مطلوب";
+    const normalizedUsername = username.trim().toLowerCase();
+    const usernameExists = users.some(
+      (user) => user.id !== editing?.id && user.username.toLowerCase() === normalizedUsername
+    );
+    if (usernameExists) e.username = "اسم الدخول مستخدم بالفعل";
     if (!editing && !password) e.password = "مطلوب";
+    const salary = optionalNumber(monthlySalary);
+    const commission = optionalNumber(salesCommissionPct);
+    const target = optionalNumber(monthlySalesTarget);
+    if (salary !== undefined && salary < 0) e.monthlySalary = "يجب أن يكون موجباً";
+    if (commission !== undefined && (commission < 0 || commission > 100)) {
+      e.salesCommissionPct = "النسبة يجب أن تكون بين 0 و 100";
+    }
+    if (target !== undefined && target < 0) e.monthlySalesTarget = "يجب أن يكون موجباً";
     if (Object.keys(e).length > 0) {
       setErrors(e);
       return;
     }
 
     setSaving(true);
+    const employeeFields =
+      editing?.role !== "owner"
+        ? {
+            monthlySalary: salary,
+            salesCommissionPct: commission,
+            monthlySalesTarget: target,
+          }
+        : {};
     if (editing) {
-      const patch: Partial<AppUser> = { username: username.trim(), permissions };
+      const patch: Partial<AppUser> = {
+        name: name.trim(),
+        username: username.trim(),
+        permissions,
+        ...employeeFields,
+      };
       if (password) patch.passwordHash = await hashPassword(password);
       updateUser(editing.id, patch);
       toast.success("تم تحديث المستخدم");
     } else {
       addUser({
+        name: name.trim(),
         username: username.trim(),
         passwordHash: await hashPassword(password),
         role: "employee",
         permissions,
+        ...employeeFields,
       });
       toast.success("تم إضافة المستخدم");
     }
@@ -83,7 +128,14 @@ function UserFormDialog({
     >
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-4">
-          <Field label="اسم المستخدم" required error={errors.username}>
+          <Field label="اسم الموظف" required error={errors.name}>
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="مثال: أحمد محمد"
+            />
+          </Field>
+          <Field label="اسم الدخول" required error={errors.username}>
             <Input
               value={username}
               onChange={(e) => setUsername(e.target.value)}
@@ -101,69 +153,97 @@ function UserFormDialog({
 
         {editing?.role !== "owner" && (
           <div className="border border-slate-200 rounded-xl p-4 bg-slate-50 space-y-4">
-            <h3 className="font-semibold text-slate-800 flex items-center gap-2 mb-2">
-              <Shield className="w-5 h-5 text-brand-600" /> الصلاحيات
-            </h3>
-            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <Field label="الراتب الشهري" error={errors.monthlySalary}>
+                <Input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={monthlySalary}
+                  onChange={(e) => setMonthlySalary(e.target.value)}
+                  placeholder="جنيه"
+                />
+              </Field>
+              <Field label="نسبة العمولة على المبيعات" error={errors.salesCommissionPct}>
+                <Input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step="0.01"
+                  value={salesCommissionPct}
+                  onChange={(e) => setSalesCommissionPct(e.target.value)}
+                  placeholder="%"
+                />
+              </Field>
+              <Field label="التارجت الشهري" error={errors.monthlySalesTarget}>
+                <Input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={monthlySalesTarget}
+                  onChange={(e) => setMonthlySalesTarget(e.target.value)}
+                  placeholder="جنيه"
+                />
+              </Field>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h3 className="font-semibold text-slate-800 flex items-center gap-2">
+                <Shield className="w-5 h-5 text-brand-600" /> الصلاحيات
+              </h3>
+              <label className="inline-flex items-center gap-2 rounded-lg border border-brand-200 bg-white px-3 py-2 text-sm font-medium text-brand-700">
+                <input
+                  type="checkbox"
+                  checked={allPermissionsSelected}
+                  onChange={(e) => setPermissions(createPermissions(e.target.checked))}
+                />
+                اختيار الكل
+              </label>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Products */}
-              <div className="space-y-2 bg-white p-3 rounded-lg border border-slate-200">
-                <div className="font-medium text-sm text-slate-700">المنتجات</div>
-                <div className="flex gap-4 text-sm">
-                  <label className="flex items-center gap-1"><input type="checkbox" checked={permissions.products.view} onChange={(e) => setPermissions(p => ({...p, products: {...p.products, view: e.target.checked}}))} /> عرض</label>
-                  <label className="flex items-center gap-1"><input type="checkbox" checked={permissions.products.add} onChange={(e) => setPermissions(p => ({...p, products: {...p.products, add: e.target.checked}}))} /> إضافة</label>
-                  <label className="flex items-center gap-1"><input type="checkbox" checked={permissions.products.edit} onChange={(e) => setPermissions(p => ({...p, products: {...p.products, edit: e.target.checked}}))} /> تعديل</label>
-                  <label className="flex items-center gap-1"><input type="checkbox" checked={permissions.products.delete} onChange={(e) => setPermissions(p => ({...p, products: {...p.products, delete: e.target.checked}}))} /> حذف</label>
-                </div>
-              </div>
+              {PERMISSION_GROUPS.map((group) => {
+                const groupSelected = areAllPermissionsEnabled(permissions, group.key);
+                const groupPermissions = permissions[group.key] as Record<string, boolean>;
 
-              {/* Purchase Invoices */}
-              <div className="space-y-2 bg-white p-3 rounded-lg border border-slate-200">
-                <div className="font-medium text-sm text-slate-700">مشتريات</div>
-                <div className="flex gap-4 text-sm">
-                  <label className="flex items-center gap-1"><input type="checkbox" checked={permissions.purchaseInvoices.view} onChange={(e) => setPermissions(p => ({...p, purchaseInvoices: {...p.purchaseInvoices, view: e.target.checked}}))} /> عرض</label>
-                  <label className="flex items-center gap-1"><input type="checkbox" checked={permissions.purchaseInvoices.add} onChange={(e) => setPermissions(p => ({...p, purchaseInvoices: {...p.purchaseInvoices, add: e.target.checked}}))} /> إضافة</label>
-                </div>
-              </div>
-
-              {/* Sales Invoices */}
-              <div className="space-y-2 bg-white p-3 rounded-lg border border-slate-200">
-                <div className="font-medium text-sm text-slate-700">مبيعات</div>
-                <div className="flex gap-4 text-sm">
-                  <label className="flex items-center gap-1"><input type="checkbox" checked={permissions.salesInvoices.view} onChange={(e) => setPermissions(p => ({...p, salesInvoices: {...p.salesInvoices, view: e.target.checked}}))} /> عرض</label>
-                  <label className="flex items-center gap-1"><input type="checkbox" checked={permissions.salesInvoices.add} onChange={(e) => setPermissions(p => ({...p, salesInvoices: {...p.salesInvoices, add: e.target.checked}}))} /> إضافة</label>
-                </div>
-              </div>
-
-              {/* Customers */}
-              <div className="space-y-2 bg-white p-3 rounded-lg border border-slate-200">
-                <div className="font-medium text-sm text-slate-700">عملاء</div>
-                <div className="flex gap-4 text-sm">
-                  <label className="flex items-center gap-1"><input type="checkbox" checked={permissions.customers.view} onChange={(e) => setPermissions(p => ({...p, customers: {...p.customers, view: e.target.checked}}))} /> عرض</label>
-                  <label className="flex items-center gap-1"><input type="checkbox" checked={permissions.customers.add} onChange={(e) => setPermissions(p => ({...p, customers: {...p.customers, add: e.target.checked}}))} /> إضافة</label>
-                  <label className="flex items-center gap-1"><input type="checkbox" checked={permissions.customers.edit} onChange={(e) => setPermissions(p => ({...p, customers: {...p.customers, edit: e.target.checked}}))} /> تعديل</label>
-                </div>
-              </div>
-
-              {/* Suppliers */}
-              <div className="space-y-2 bg-white p-3 rounded-lg border border-slate-200">
-                <div className="font-medium text-sm text-slate-700">موردين</div>
-                <div className="flex gap-4 text-sm">
-                  <label className="flex items-center gap-1"><input type="checkbox" checked={permissions.suppliers.view} onChange={(e) => setPermissions(p => ({...p, suppliers: {...p.suppliers, view: e.target.checked}}))} /> عرض</label>
-                  <label className="flex items-center gap-1"><input type="checkbox" checked={permissions.suppliers.add} onChange={(e) => setPermissions(p => ({...p, suppliers: {...p.suppliers, add: e.target.checked}}))} /> إضافة</label>
-                  <label className="flex items-center gap-1"><input type="checkbox" checked={permissions.suppliers.edit} onChange={(e) => setPermissions(p => ({...p, suppliers: {...p.suppliers, edit: e.target.checked}}))} /> تعديل</label>
-                </div>
-              </div>
-
-              {/* Cashbox & Reports */}
-              <div className="space-y-2 bg-white p-3 rounded-lg border border-slate-200">
-                <div className="font-medium text-sm text-slate-700">أخرى</div>
-                <div className="flex gap-4 text-sm">
-                  <label className="flex items-center gap-1"><input type="checkbox" checked={permissions.cashbox.view} onChange={(e) => setPermissions(p => ({...p, cashbox: { view: e.target.checked}}))} /> عرض الخزينة</label>
-                  <label className="flex items-center gap-1"><input type="checkbox" checked={permissions.reports.view} onChange={(e) => setPermissions(p => ({...p, reports: { view: e.target.checked}}))} /> التقارير</label>
-                </div>
-              </div>
-
+                return (
+                  <div key={group.key} className="space-y-3 bg-white p-3 rounded-lg border border-slate-200">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="font-medium text-sm text-slate-800">{group.label}</div>
+                        <div className="text-[11px] text-slate-500 mt-0.5">{group.description}</div>
+                      </div>
+                      <label className="inline-flex items-center gap-1.5 text-xs text-slate-600 whitespace-nowrap">
+                        <input
+                          type="checkbox"
+                          checked={groupSelected}
+                          onChange={(e) =>
+                            setPermissions((current) =>
+                              setPermissionGroup(current, group.key, e.target.checked)
+                            )
+                          }
+                        />
+                        كل القسم
+                      </label>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      {group.actions.map((action) => (
+                        <label key={action.key} className="flex items-center gap-2 text-slate-700">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(groupPermissions[action.key])}
+                            onChange={(e) =>
+                              setPermissions((current) =>
+                                setPermission(current, group.key, action.key, e.target.checked)
+                              )
+                            }
+                          />
+                          {action.label}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
@@ -195,7 +275,8 @@ export function UsersPage() {
         <table className="w-full text-sm text-right">
           <thead className="bg-slate-50 border-b border-slate-200 text-slate-600">
             <tr>
-              <th className="px-4 py-3 font-medium">اسم المستخدم</th>
+              <th className="px-4 py-3 font-medium">الاسم</th>
+              <th className="px-4 py-3 font-medium">اسم الدخول</th>
               <th className="px-4 py-3 font-medium">الدور</th>
               <th className="px-4 py-3 font-medium w-32">إجراءات</th>
             </tr>
@@ -203,6 +284,7 @@ export function UsersPage() {
           <tbody className="divide-y divide-slate-100">
             {users.map((user) => (
               <tr key={user.id} className="hover:bg-slate-50 transition-colors">
+                <td className="px-4 py-3 font-medium text-slate-900">{user.name || user.username}</td>
                 <td className="px-4 py-3 font-medium text-slate-900">{user.username}</td>
                 <td className="px-4 py-3 text-slate-600">
                   {user.role === "owner" ? (

@@ -13,6 +13,7 @@ import { ConfirmDialog, Dialog } from "../components/ui/Dialog";
 import { Field, Input } from "../components/ui/Input";
 import { PurchaseReturnDialog } from "../features/returns/PurchaseReturnDialog";
 import { printAppRoute } from "../lib/print";
+import { hasPermission } from "../lib/permissions";
 
 export function PurchaseInvoiceDetailPage() {
   const { id } = useParams();
@@ -24,8 +25,12 @@ export function PurchaseInvoiceDetailPage() {
     settings,
     recordPurchasePayment,
     deletePurchaseInvoice,
+    currentUser,
   } = useApp();
   const inv = purchaseInvoices.find((s) => s.id === id);
+  const canPayPurchase = hasPermission(currentUser, "purchaseInvoices", "pay");
+  const canDeletePurchase = hasPermission(currentUser, "purchaseInvoices", "delete");
+  const canAddReturn = hasPermission(currentUser, "returns", "add");
   const [payOpen, setPayOpen] = useState(false);
   const [payAmount, setPayAmount] = useState(0);
   const [delOpen, setDelOpen] = useState(false);
@@ -70,17 +75,21 @@ export function PurchaseInvoiceDetailPage() {
             >
               <Printer className="w-4 h-4" /> طباعة
             </Button>
-            {inv.remaining > 0 ? (
+            {inv.remaining > 0 && canPayPurchase ? (
               <Button onClick={() => { setPayAmount(inv.remaining); setPayOpen(true); }}>
                 <HandCoins className="w-4 h-4" /> تسجيل دفعة
               </Button>
             ) : null}
-            <Button variant="outline" onClick={() => setReturnOpen(true)}>
-              <ArrowRight className="w-4 h-4" /> إنشاء مرتجع
-            </Button>
-            <Button variant="danger" onClick={() => setDelOpen(true)}>
-              <Trash2 className="w-4 h-4" /> حذف
-            </Button>
+            {canAddReturn ? (
+              <Button variant="outline" onClick={() => setReturnOpen(true)}>
+                <ArrowRight className="w-4 h-4" /> إنشاء مرتجع
+              </Button>
+            ) : null}
+            {canDeletePurchase ? (
+              <Button variant="danger" onClick={() => setDelOpen(true)}>
+                <Trash2 className="w-4 h-4" /> حذف
+              </Button>
+            ) : null}
           </>
         }
       />

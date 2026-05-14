@@ -13,11 +13,13 @@ import { useToast } from "../components/ui/Toast";
 import { formatCurrency, formatDate } from "../lib/format";
 import { inRange } from "../lib/utils";
 import { printAppRoute } from "../lib/print";
+import { hasPermission } from "../lib/permissions";
 
 export function PurchaseInvoicesPage() {
-  const { purchaseInvoices, suppliers, settings } = useApp();
+  const { purchaseInvoices, suppliers, settings, currentUser } = useApp();
   const navigate = useNavigate();
   const toast = useToast();
+  const canAddPurchaseInvoice = hasPermission(currentUser, "purchaseInvoices", "add");
   const [q, setQ] = useState("");
   const [supplierId, setSupplierId] = useState("");
   const [status, setStatus] = useState("");
@@ -53,10 +55,12 @@ export function PurchaseInvoicesPage() {
         title="فواتير المشتريات"
         description={`إدارة فواتير الموردين (${purchaseInvoices.length})`}
         actions={
-          <Button onClick={() => navigate("/purchases/new")}>
-            <Plus className="w-4 h-4" />
-            فاتورة جديدة
-          </Button>
+          canAddPurchaseInvoice ? (
+            <Button onClick={() => navigate("/purchases/new")}>
+              <Plus className="w-4 h-4" />
+              فاتورة جديدة
+            </Button>
+          ) : null
         }
       />
 
@@ -123,9 +127,11 @@ export function PurchaseInvoicesPage() {
               title="لا توجد فواتير"
               description="لم تُنشَأ أي فاتورة مشتريات بعد."
               action={
-                <Button onClick={() => navigate("/purchases/new")}>
-                  <Plus className="w-4 h-4" /> إنشاء فاتورة
-                </Button>
+                canAddPurchaseInvoice ? (
+                  <Button onClick={() => navigate("/purchases/new")}>
+                    <Plus className="w-4 h-4" /> إنشاء فاتورة
+                  </Button>
+                ) : undefined
               }
             />
           ) : (

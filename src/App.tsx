@@ -20,18 +20,31 @@ import { SalesInvoicePrintPage } from "./pages/SalesInvoicePrintPage";
 import { AlertsPage } from "./pages/AlertsPage";
 import { CashboxPage } from "./pages/CashboxPage";
 import { ReportsPage } from "./pages/ReportsPage";
+import { EmployeeReportPage } from "./pages/EmployeeReportPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { UsersPage } from "./pages/UsersPage";
 import { ReturnsPage } from "./pages/ReturnsPage";
 import { DriversPage } from "./pages/DriversPage";
+import { EmployeeProfilePage } from "./pages/EmployeeProfilePage";
 import { useToast } from "./components/ui/Toast";
 import type { UserPermissions } from "./types";
+import { hasPermission } from "./lib/permissions";
 
-function ProtectedShell({ children, permission, ownerOnly }: { children: React.ReactNode, permission?: keyof UserPermissions, ownerOnly?: boolean }) {
+function ProtectedShell({
+  children,
+  permission,
+  permissionAction = "view",
+  ownerOnly,
+}: {
+  children: React.ReactNode;
+  permission?: keyof UserPermissions;
+  permissionAction?: string;
+  ownerOnly?: boolean;
+}) {
   const { auth, currentUser } = useApp();
   const loc = useLocation();
   const toast = useToast();
-  if (!auth.isAuthenticated) {
+  if (!auth.isAuthenticated || !currentUser) {
     return <Navigate to="/login" state={{ from: loc.pathname }} replace />;
   }
   
@@ -40,7 +53,7 @@ function ProtectedShell({ children, permission, ownerOnly }: { children: React.R
       setTimeout(() => toast.error("ليس لديك صلاحية", "هذه الصفحة مخصصة للمدير فقط"), 0);
       return <Navigate to="/" replace />;
     }
-    if (permission && !currentUser.permissions[permission]?.view) {
+    if (permission && !hasPermission(currentUser, permission, permissionAction)) {
       setTimeout(() => toast.error("ليس لديك صلاحية", "لا تملك صلاحية لفتح هذه الصفحة"), 0);
       return <Navigate to="/" replace />;
     }
@@ -50,11 +63,18 @@ function ProtectedShell({ children, permission, ownerOnly }: { children: React.R
 }
 
 export default function App() {
-  const { auth, isDesktop, licenseStatus, ownerExists } = useApp();
+  const { auth, isDesktop, licenseStatus, ownerExists, ownerCheckPending } = useApp();
 
   if (isDesktop) {
     if (!licenseStatus || licenseStatus.state !== "active") {
       return <ActivationPage />;
+    }
+    if (ownerCheckPending) {
+      return (
+        <div className="min-h-screen grid place-items-center bg-slate-50" dir="rtl">
+          <div className="text-sm text-slate-500">جاري فحص حساب المدير...</div>
+        </div>
+      );
     }
     if (!ownerExists) {
       return <FirstRunSetupPage />;
@@ -90,7 +110,7 @@ export default function App() {
       <Route
         path="/inventory"
         element={
-          <ProtectedShell permission="products">
+          <ProtectedShell permission="inventory">
             <InventoryPage />
           </ProtectedShell>
         }
@@ -122,7 +142,7 @@ export default function App() {
       <Route
         path="/purchases/new"
         element={
-          <ProtectedShell permission="purchaseInvoices">
+          <ProtectedShell permission="purchaseInvoices" permissionAction="add">
             <PurchaseInvoiceNewPage />
           </ProtectedShell>
         }
@@ -146,7 +166,7 @@ export default function App() {
       <Route
         path="/sales/new"
         element={
-          <ProtectedShell permission="salesInvoices">
+          <ProtectedShell permission="salesInvoices" permissionAction="add">
             <SalesInvoiceNewPage />
           </ProtectedShell>
         }
@@ -162,7 +182,7 @@ export default function App() {
       <Route
         path="/returns"
         element={
-          <ProtectedShell>
+          <ProtectedShell permission="returns">
             <ReturnsPage />
           </ProtectedShell>
         }
@@ -170,7 +190,7 @@ export default function App() {
       <Route
         path="/alerts"
         element={
-          <ProtectedShell permission="products">
+          <ProtectedShell permission="alerts">
             <AlertsPage />
           </ProtectedShell>
         }
@@ -178,7 +198,7 @@ export default function App() {
       <Route
         path="/drivers"
         element={
-          <ProtectedShell permission="salesInvoices">
+          <ProtectedShell permission="drivers">
             <DriversPage />
           </ProtectedShell>
         }
@@ -200,6 +220,14 @@ export default function App() {
         }
       />
       <Route
+        path="/reports/employees"
+        element={
+          <ProtectedShell ownerOnly>
+            <EmployeeReportPage />
+          </ProtectedShell>
+        }
+      />
+      <Route
         path="/settings"
         element={
           <ProtectedShell ownerOnly>
@@ -212,6 +240,14 @@ export default function App() {
         element={
           <ProtectedShell ownerOnly>
             <UsersPage />
+          </ProtectedShell>
+        }
+      />
+      <Route
+        path="/my-profile"
+        element={
+          <ProtectedShell>
+            <EmployeeProfilePage />
           </ProtectedShell>
         }
       />

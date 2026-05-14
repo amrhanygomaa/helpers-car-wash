@@ -15,6 +15,7 @@ import { useToast } from "../components/ui/Toast";
 import { formatCurrency, formatDate } from "../lib/format";
 import type { Supplier, CommissionTier, CommissionType } from "../types";
 import { Select } from "../components/ui/Input";
+import { hasPermission } from "../lib/permissions";
 
 export function SuppliersPage() {
   const {
@@ -32,6 +33,10 @@ export function SuppliersPage() {
     currentUser,
   } = useApp();
   const toast = useToast();
+  const canAddSupplier = hasPermission(currentUser, "suppliers", "add");
+  const canEditSupplier = hasPermission(currentUser, "suppliers", "edit");
+  const canDeleteSupplier = hasPermission(currentUser, "suppliers", "delete");
+  const canManageCommissions = hasPermission(currentUser, "suppliers", "commissions");
 
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
@@ -114,10 +119,12 @@ export function SuppliersPage() {
         title="الموردين / المصانع"
         description={`إدارة الموردين وأرصدتهم (${suppliers.length})`}
         actions={
-          <Button onClick={openNew}>
-            <Plus className="w-4 h-4" />
-            إضافة مورد
-          </Button>
+          canAddSupplier ? (
+            <Button onClick={openNew}>
+              <Plus className="w-4 h-4" />
+              إضافة مورد
+            </Button>
+          ) : null
         }
       />
 
@@ -138,7 +145,11 @@ export function SuppliersPage() {
               icon={<Factory className="w-5 h-5" />}
               title="لا يوجد موردون"
               description="ابدأ بإضافة أول مورد لشركتك."
-              action={<Button onClick={openNew}><Plus className="w-4 h-4" /> إضافة مورد</Button>}
+              action={
+                canAddSupplier ? (
+                  <Button onClick={openNew}><Plus className="w-4 h-4" /> إضافة مورد</Button>
+                ) : undefined
+              }
             />
           ) : (
             <Table>
@@ -177,17 +188,21 @@ export function SuppliersPage() {
                           <Button size="icon" variant="ghost" onClick={() => setViewing(s)}>
                             <Eye className="w-4 h-4" />
                           </Button>
-                          <Button size="icon" variant="ghost" onClick={() => openEdit(s)}>
-                            <Pencil className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="text-red-600 hover:bg-red-50"
-                            onClick={() => setToDelete(s)}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
+                          {canEditSupplier ? (
+                            <Button size="icon" variant="ghost" onClick={() => openEdit(s)}>
+                              <Pencil className="w-4 h-4" />
+                            </Button>
+                          ) : null}
+                          {canDeleteSupplier ? (
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="text-red-600 hover:bg-red-50"
+                              onClick={() => setToDelete(s)}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          ) : null}
                         </div>
                       </TD>
                     </TR>
@@ -321,7 +336,7 @@ export function SuppliersPage() {
             <div className="pt-4 border-t border-slate-100">
               <div className="flex items-center justify-between mb-3">
                 <div className="text-sm font-medium">نظام العمولات والبونص</div>
-                {currentUser?.role === "owner" && (
+                {canManageCommissions && (
                   <Button size="sm" variant="outline" onClick={() => {
                     setEditingTier(null);
                     setTierForm({ threshold: 0, commissionType: "percentage", commissionValue: 0, periodDays: 30 });
@@ -349,7 +364,7 @@ export function SuppliersPage() {
                             العمولة: {res.commissionType === "percentage" ? `${res.commissionValue}%` : formatCurrency(res.commissionValue, settings.currency)}
                           </div>
                         </div>
-                        {currentUser?.role === "owner" && (
+                        {canManageCommissions && (
                           <div className="flex gap-1">
                             <button onClick={() => {
                               const t = viewing.commissionTiers?.find(x => x.id === res.tierId);

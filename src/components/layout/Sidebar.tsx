@@ -15,10 +15,12 @@ import {
   LogOut,
   ArrowLeftRight,
   Truck,
+  UserRound,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useApp } from "../../store/AppContext";
 import type { UserPermissions } from "../../types";
+import { hasPermission } from "../../lib/permissions";
 
 type NavItem = {
   to: string;
@@ -26,22 +28,25 @@ type NavItem = {
   icon: ComponentType<{ className?: string }>;
   permission?: keyof UserPermissions;
   ownerOnly?: boolean;
+  employeeOnly?: boolean;
 };
 
 const NAV: NavItem[] = [
   { to: "/", label: "لوحة التحكم", icon: LayoutDashboard },
   { to: "/products", label: "المنتجات", icon: Package, permission: "products" },
-  { to: "/inventory", label: "المخزون", icon: Warehouse, permission: "products" },
+  { to: "/inventory", label: "المخزون", icon: Warehouse, permission: "inventory" },
   { to: "/suppliers", label: "الموردين", icon: Factory, permission: "suppliers" },
   { to: "/customers", label: "العملاء", icon: Users, permission: "customers" },
   { to: "/purchases", label: "فواتير المشتريات", icon: ShoppingBag, permission: "purchaseInvoices" },
   { to: "/sales", label: "فواتير المبيعات", icon: Receipt, permission: "salesInvoices" },
-  { to: "/drivers", label: "السائقين", icon: Truck, permission: "salesInvoices" },
-  { to: "/returns", label: "المرتجعات", icon: ArrowLeftRight },
-  { to: "/alerts", label: "التنبيهات", icon: Bell, permission: "products" },
+  { to: "/drivers", label: "السائقين", icon: Truck, permission: "drivers" },
+  { to: "/returns", label: "المرتجعات", icon: ArrowLeftRight, permission: "returns" },
+  { to: "/alerts", label: "التنبيهات", icon: Bell, permission: "alerts" },
   { to: "/cashbox", label: "الخزينة", icon: Wallet, permission: "cashbox" },
   { to: "/reports", label: "التقارير", icon: BarChart3, permission: "reports" },
+  { to: "/reports/employees", label: "تقرير الموظفين", icon: Users, ownerOnly: true },
   { to: "/users", label: "المستخدمين", icon: Users, ownerOnly: true },
+  { to: "/my-profile", label: "ملفي الشخصي", icon: UserRound, employeeOnly: true },
   { to: "/settings", label: "الإعدادات", icon: Settings, ownerOnly: true },
 ];
 
@@ -50,12 +55,12 @@ export function Sidebar() {
   
   const filteredNav = NAV.filter(item => {
     if (!currentUser) return false;
-    if (currentUser.role === "owner") return true;
-    if (item.ownerOnly) return false;
-    if (item.to === "/returns") {
-      return currentUser.permissions.salesInvoices?.view || currentUser.permissions.purchaseInvoices?.view;
+    if (currentUser.role === "owner") {
+      return !item.employeeOnly;
     }
-    if (item.permission && !currentUser.permissions[item.permission]?.view) return false;
+    if (item.ownerOnly) return false;
+    if (item.employeeOnly && currentUser.role !== "employee") return false;
+    if (item.permission && !hasPermission(currentUser, item.permission)) return false;
     return true;
   });
   
@@ -83,7 +88,7 @@ export function Sidebar() {
             <NavLink
               key={item.to}
               to={item.to}
-              end={item.to === "/"}
+              end={item.to === "/" || item.to === "/reports"}
               className={({ isActive }) =>
                 cn(
                   "flex items-center gap-3 px-3 h-10 rounded-lg text-sm transition-colors",

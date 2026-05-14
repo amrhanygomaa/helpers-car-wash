@@ -25,7 +25,8 @@ const EMPTY: FormState = {
   category: "مواد غذائية",
   unit: "قطعة",
   purchasePrice: 0,
-  sellingPrice: 0,
+  wholesalePrice: 0,
+  retailPrice: 0,
   quantity: 0,
   minStock: 5,
   hasExpiry: false,
@@ -65,7 +66,11 @@ export function ProductFormDialog({
     if (!form.name.trim()) e.name = "اسم المنتج مطلوب";
     if (!form.code.trim()) e.code = "الكود مطلوب";
     if (form.purchasePrice < 0) e.purchasePrice = "يجب أن يكون موجباً";
-    if (form.sellingPrice < 0) e.sellingPrice = "يجب أن يكون موجباً";
+    if (form.wholesalePrice < 0) e.wholesalePrice = "يجب أن يكون موجباً";
+    if (form.retailPrice < 0) e.retailPrice = "يجب أن يكون موجباً";
+    if (form.retailPrice < form.wholesalePrice) {
+      e.retailPrice = "سعر التجزئة يجب أن يكون أكبر من أو يساوي سعر الجملة";
+    }
     if (form.quantity < 0) e.quantity = "يجب أن يكون موجباً";
     if (form.minStock < 0) e.minStock = "يجب أن يكون موجباً";
     if (form.hasExpiry && !form.expiryDate)
@@ -153,13 +158,22 @@ export function ProductFormDialog({
             onChange={(e) => set("purchasePrice", Number(e.target.value))}
           />
         </Field>
-        <Field label="سعر البيع" error={errors.sellingPrice}>
+        <Field label="سعر الجملة" required error={errors.wholesalePrice}>
           <Input
             type="number"
             min={0}
             step="0.01"
-            value={form.sellingPrice}
-            onChange={(e) => set("sellingPrice", Number(e.target.value))}
+            value={form.wholesalePrice}
+            onChange={(e) => set("wholesalePrice", Number(e.target.value))}
+          />
+        </Field>
+        <Field label="سعر التجزئة" required error={errors.retailPrice}>
+          <Input
+            type="number"
+            min={0}
+            step="0.01"
+            value={form.retailPrice}
+            onChange={(e) => set("retailPrice", Number(e.target.value))}
           />
         </Field>
         <Field label="الكمية الحالية" error={errors.quantity}>

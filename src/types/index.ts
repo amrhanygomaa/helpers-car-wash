@@ -2,6 +2,13 @@ export type ID = string;
 
 export type PaymentStatus = "paid" | "partial" | "unpaid";
 export type SalesPaymentType = "cash" | "account";
+export type SalesPriceType = "wholesale" | "retail";
+export type LoginResult = {
+  ok: boolean;
+  error?: "invalid_credentials" | "rate_limited";
+  remainSeconds?: number;
+  attemptsRemaining?: number;
+};
 
 export type UserRole = "owner" | "employee";
 export type ActivationState =
@@ -33,20 +40,28 @@ export interface LicenseStatus {
 
 export interface UserPermissions {
   products: { view: boolean; add: boolean; edit: boolean; delete: boolean };
-  purchaseInvoices: { view: boolean; add: boolean };
-  salesInvoices: { view: boolean; add: boolean };
-  customers: { view: boolean; add: boolean; edit: boolean };
-  suppliers: { view: boolean; add: boolean; edit: boolean };
-  cashbox: { view: boolean };
+  inventory: { view: boolean; adjust: boolean };
+  purchaseInvoices: { view: boolean; add: boolean; pay: boolean; delete: boolean };
+  salesInvoices: { view: boolean; add: boolean; receive: boolean; cancel: boolean; delete: boolean };
+  customers: { view: boolean; add: boolean; edit: boolean; delete: boolean };
+  suppliers: { view: boolean; add: boolean; edit: boolean; delete: boolean; commissions: boolean };
+  drivers: { view: boolean; add: boolean; edit: boolean; delete: boolean };
+  returns: { view: boolean; add: boolean };
+  alerts: { view: boolean };
+  cashbox: { view: boolean; add: boolean; spend: boolean; editOpeningBalance: boolean };
   reports: { view: boolean };
 }
 
 export interface AppUser {
   id: ID;
+  name: string;
   username: string;
   passwordHash: string;
   role: UserRole;
   permissions: UserPermissions;
+  monthlySalary?: number;
+  salesCommissionPct?: number;
+  monthlySalesTarget?: number;
   createdAt: string;
 }
 
@@ -95,7 +110,8 @@ export interface Product {
   category: string;
   unit: string;
   purchasePrice: number;
-  sellingPrice: number;
+  wholesalePrice: number;
+  retailPrice: number;
   quantity: number;
   minStock: number;
   hasExpiry: boolean;
@@ -144,9 +160,12 @@ export interface SalesInvoice {
   amountReceived: number;
   remaining: number;
   paymentType: SalesPaymentType;
+  priceType: SalesPriceType;
+  paymentDueDate?: string;
   status: PaymentStatus;
   notes?: string;
   cancelled?: boolean;
+  createdByUserId?: ID;
   createdAt: string;
 }
 

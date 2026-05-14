@@ -13,6 +13,7 @@ import { useToast } from "../components/ui/Toast";
 import { uid } from "../lib/utils";
 import type { CashEntryType } from "../types";
 import { formatCurrency, formatDate } from "../lib/format";
+import { hasPermission } from "../lib/permissions";
 
 export function CashboxPage() {
   const {
@@ -27,8 +28,12 @@ export function CashboxPage() {
     customerBalance,
     supplierBalance,
     updateSettings,
+    currentUser,
   } = useApp();
   const toast = useToast();
+  const canAddCash = hasPermission(currentUser, "cashbox", "add");
+  const canSpendCash = hasPermission(currentUser, "cashbox", "spend");
+  const canEditOpeningBalance = hasPermission(currentUser, "cashbox", "editOpeningBalance");
 
   const [open, setOpen] = useState(false);
   const [entryType, setEntryType] = useState<CashEntryType>("manual-add");
@@ -67,6 +72,18 @@ export function CashboxPage() {
       toast.error("الوصف مطلوب");
       return;
     }
+    if (entryType === "manual-add" && !canAddCash) {
+      toast.error("ليس لديك صلاحية", "لا تملك صلاحية إضافة نقدية");
+      return;
+    }
+    if (entryType === "manual-remove" && !canSpendCash) {
+      toast.error("ليس لديك صلاحية", "لا تملك صلاحية صرف نقدية");
+      return;
+    }
+    if (entryType === "adjustment" && !canAddCash && !canSpendCash) {
+      toast.error("ليس لديك صلاحية", "لا تملك صلاحية تسجيل تسوية");
+      return;
+    }
     const signed = entryType === "manual-add" ? amount : -amount;
     addCashEntry({
       id: uid("cash_m"),
@@ -87,34 +104,42 @@ export function CashboxPage() {
         title="الخزينة"
         description="رصيد نقدي، إيداعات، صرف، وسجل مالي"
         actions={
-          <>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setNewOpening(settings.openingBalance);
-                setOpenBalOpen(true);
-              }}
-            >
-              الرصيد الافتتاحي
-            </Button>
-            <Button
-              onClick={() => {
-                setEntryType("manual-add");
-                setOpen(true);
-              }}
-            >
-              <Plus className="w-4 h-4" /> إضافة نقدية
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setEntryType("manual-remove");
-                setOpen(true);
-              }}
-            >
-              <Minus className="w-4 h-4" /> صرف نقدي
-            </Button>
-          </>
+          canEditOpeningBalance || canAddCash || canSpendCash ? (
+            <>
+              {canEditOpeningBalance ? (
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setNewOpening(settings.openingBalance);
+                    setOpenBalOpen(true);
+                  }}
+                >
+                  الرصيد الافتتاحي
+                </Button>
+              ) : null}
+              {canAddCash ? (
+                <Button
+                  onClick={() => {
+                    setEntryType("manual-add");
+                    setOpen(true);
+                  }}
+                >
+                  <Plus className="w-4 h-4" /> إضافة نقدية
+                </Button>
+              ) : null}
+              {canSpendCash ? (
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setEntryType("manual-remove");
+                    setOpen(true);
+                  }}
+                >
+                  <Minus className="w-4 h-4" /> صرف نقدي
+                </Button>
+              ) : null}
+            </>
+          ) : null
         }
       />
 
@@ -185,9 +210,9 @@ export function CashboxPage() {
         <div className="space-y-3">
           <Field label="النوع">
             <Select value={entryType} onChange={(e) => setEntryType(e.target.value as CashEntryType)}>
-              <option value="manual-add">إضافة نقدية</option>
-              <option value="manual-remove">صرف نقدي</option>
-              <option value="adjustment">تسوية / ملاحظة</option>
+              {canAddCash ? <option value="manual-add">إضافة نقدية</option> : null}
+              {canSpendCash ? <option value="manual-remove">صرف نقدي</option> : null}
+              {canAddCash || canSpendCash ? <option value="adjustment">تسوية / ملاحظة</option> : null}
             </Select>
           </Field>
           <Field label="المبلغ" required>
