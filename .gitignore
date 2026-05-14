@@ -35,5 +35,8 @@ scripts/
 .env.local
 .env.*.local
 
-# Internal dev handbook (maintain outside public repo or share via private channels)
+# Internal dev handbook — NEVER `git add -f` (keep full doc outside public repo)
 DEVELOPMENT_TEAM.md
+
+# Deployment license public key (never commit — distribute via private channel)
+electron/license-public-key.cjs

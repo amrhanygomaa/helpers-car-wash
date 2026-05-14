@@ -8,7 +8,20 @@ const Database = require("better-sqlite3-multiple-ciphers");
 const argon2 = require("argon2");
 const { machineIdSync } = require("node-machine-id");
 const { z } = require("zod");
-const { LICENSE_PUBLIC_KEY } = require("./license-public-key.cjs");
+
+let LICENSE_PUBLIC_KEY;
+try {
+  ({ LICENSE_PUBLIC_KEY } = require("./license-public-key.cjs"));
+} catch (e) {
+  if (e && (e.code === "MODULE_NOT_FOUND" || e.code === "ERR_MODULE_NOT_FOUND")) {
+    console.error(
+      "[electron] Missing `electron/license-public-key.cjs`.\n" +
+        "Copy `electron/license-public-key.example.cjs` to `electron/license-public-key.cjs` " +
+        "and replace the PEM with your deployment Ed25519 public key (team-only; do not commit)."
+    );
+  }
+  throw e;
+}
 
 if (!electronRuntime.app) {
   const env = { ...process.env };

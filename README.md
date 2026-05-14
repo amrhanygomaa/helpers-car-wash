@@ -143,6 +143,13 @@ npm run preview     # معاينة نسخة Vite بعد `npm run build`
 
 ---
 
+## لفريق التطوير (وثائق داخلية)
+
+- **قالب يُرفَع على Git:** [docs/development-team.template.md](docs/development-team.template.md) — انسخه إلى `DEVELOPMENT_TEAM.md` في جذر المشروع وأكمله من مصادركم الخاصة؛ اسم `DEVELOPMENT_TEAM.md` **مُدرَج في `.gitignore`** حتى لا يُرفَع بالخطأ.
+- **لا** تستخدم `git add -f` على ملفات الوثائق أو المفاتيح المستبعدة.
+
+---
+
 ## 📞 الدعم والتواصل
 
 | | |
