@@ -34,3 +34,6 @@ scripts/
 .env
 .env.local
 .env.*.local
+
+# Internal dev handbook (maintain outside public repo or share via private channels)
+DEVELOPMENT_TEAM.md

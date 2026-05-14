@@ -20,7 +20,7 @@
 
 ## 📋 نظرة عامة
 
-**Helpers Warehouse System** هو تطبيق Desktop احترافي لإدارة المخزون والمبيعات، مصمم للشركات الصغيرة والمتوسطة. يعمل بدون إنترنت مع تشفير كامل للبيانات وترخيص مربوط بالجهاز.
+**Helpers Warehouse System** هو تطبيق Desktop احترافي لإدارة المخزون والمبيعات، مصمم للشركات الصغيرة والمتوسطة. يعمل بدون إنترنت مع تشفير كامل للبيانات.
 
 ### ✨ المميزات الرئيسية
 
@@ -44,9 +44,8 @@
 
 | الطبقة | التقنية |
 |--------|---------|
-| **تشفير قاعدة البيانات** | SQLCipher (AES-256) مربوط بمعرّف الجهاز |
+| **تشفير قاعدة البيانات** | SQLCipher (AES-256) |
 | **تشفير كلمات المرور** | Argon2id (65MB memory, 3 iterations) |
-| **نظام الترخيص** | Ed25519 Digital Signatures — مربوط بالجهاز |
 | **حماية وقت التشغيل** | Content Security Policy, Sandbox, Context Isolation |
 | **مقاومة الهندسة العكسية** | Terser minification, ASAR archive, no source maps |
 | **حماية DevTools** | محظور في الإنتاج مع إغلاق تلقائي |
@@ -61,7 +60,6 @@ Frontend:    React 19 + TypeScript 6 + Tailwind CSS 3
 Desktop:     Electron 39
 Database:    better-sqlite3-multiple-ciphers + SQLCipher (encrypted)
 Auth:        Argon2id hashing
-License:     Ed25519 asymmetric signatures
 Build:       Vite 8 + electron-builder
 ```
 
@@ -102,45 +100,10 @@ release/Helpers Inventory-1.0.1-Setup.exe
 
 ---
 
-## 🔑 نظام الترخيص
-
-### إنشاء مفاتيح المطور (مرة واحدة)
-
-```bash
-npm run license:init
-```
-
-> ⚠️ أدوات إصدار التراخيص موجودة خارج تطبيق العميل في `../helpers_sys_activate`، والمفتاح الخاص يُحفظ هناك في `.license/private-key.pem` — **لا يُرفع على Git ولا يُشحن مع البرنامج.**
-
-### إصدار سيريال لعميل
-
-```bash
-# واجهة رسومية محلية لإصدار التراخيص
-npm run license:studio
-
-# أو عبر سطر الأوامر
-npm run license:generate -- \
-  --machine HTW-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX \
-  --months 12 \
-  --warranty-months 12
-```
-
-### كود دعم مؤقت (إعادة تعيين كلمة مرور المدير)
-
-```bash
-npm run license:generate -- \
-  --support \
-  --machine HTW-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX \
-  --hours 24
-```
-
----
-
 ## 📱 تجربة المستخدم الأولى
 
-1. **🔑 التفعيل** — يظهر كود الجهاز ويُطلب سيريال التفعيل
-2. **👤 إنشاء المدير** — تسجيل اسم مستخدم وكلمة مرور للمدير
-3. **🚀 جاهز للعمل** — النظام فارغ وجاهز لإدخال البيانات
+1. **👤 إنشاء المدير** — تسجيل اسم مستخدم وكلمة مرور للمدير
+2. **🚀 جاهز للعمل** — النظام فارغ وجاهز لإدخال البيانات
 
 > لا يوجد حساب افتراضي أو كلمة مرور مبدئية — كل نسخة تبدأ نظيفة.
 
@@ -151,11 +114,10 @@ npm run license:generate -- \
 ```
 helpers-warehouse-system/
 ├── electron/               # Electron main process
-│   ├── main.cjs            # Main process (IPC, DB, License, Print)
+│   ├── main.cjs            # Main process (IPC, DB, Print, …)
 │   ├── preload.cjs         # Context bridge APIs
 │   ├── print-preload.cjs   # Print window bridge
-│   ├── run-electron.cjs    # Dev launcher (غير مُضمَّن في حزمة الإنتاج)
-│   └── license-public-key.cjs
+│   └── run-electron.cjs    # Dev launcher (غير مُضمَّن في حزمة الإنتاج)
 ├── src/                    # React frontend
 │   ├── components/         # Reusable UI components
 │   ├── features/           # Feature-specific components
