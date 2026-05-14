@@ -10,7 +10,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Platform-Windows-blue?logo=windows" alt="Platform" />
-  <img src="https://img.shields.io/badge/Electron-37-47848F?logo=electron" alt="Electron" />
+  <img src="https://img.shields.io/badge/Electron-39-47848F?logo=electron" alt="Electron" />
   <img src="https://img.shields.io/badge/React-19-61DAFB?logo=react" alt="React" />
   <img src="https://img.shields.io/badge/TypeScript-6-3178C6?logo=typescript" alt="TypeScript" />
   <img src="https://img.shields.io/badge/License-Proprietary-red" alt="License" />
@@ -58,8 +58,8 @@
 
 ```
 Frontend:    React 19 + TypeScript 6 + Tailwind CSS 3
-Desktop:     Electron 37
-Database:    better-sqlite3 + SQLCipher (encrypted)
+Desktop:     Electron 39
+Database:    better-sqlite3-multiple-ciphers + SQLCipher (encrypted)
 Auth:        Argon2id hashing
 License:     Ed25519 asymmetric signatures
 Build:       Vite 8 + electron-builder
@@ -80,7 +80,10 @@ Build:       Vite 8 + electron-builder
 # تثبيت الحزم
 npm install
 
-# تشغيل وضع التطوير (Electron + Vite)
+# تشغيل واجهة Vite فقط (متصفح — بدون IPC/Electron)
+npm run dev
+
+# تشغيل وضع التطوير الكامل (Electron + Vite)
 npm run electron:dev
 ```
 
@@ -91,9 +94,10 @@ npm run electron:dev
 npm run dist:win
 ```
 
-ملف التثبيت يُنتج في:
+اسم ملف التثبيت يأتي من `productName` و`version` في `package.json` (electron-builder). مثال للنسخة الحالية:
+
 ```
-release/Helpers Warehouse System-1.0.0-Setup.exe
+release/Helpers Inventory-1.0.1-Setup.exe
 ```
 
 ---
@@ -147,9 +151,10 @@ npm run license:generate -- \
 ```
 helpers-warehouse-system/
 ├── electron/               # Electron main process
-│   ├── main.cjs           # Main process (IPC, DB, License, Print)
+│   ├── main.cjs            # Main process (IPC, DB, License, Print)
 │   ├── preload.cjs         # Context bridge APIs
 │   ├── print-preload.cjs   # Print window bridge
+│   ├── run-electron.cjs    # Dev launcher (غير مُضمَّن في حزمة الإنتاج)
 │   └── license-public-key.cjs
 ├── src/                    # React frontend
 │   ├── components/         # Reusable UI components
@@ -169,8 +174,9 @@ helpers-warehouse-system/
 ## ✅ التحقق
 
 ```bash
-npm run lint        # فحص الكود
-npm run build       # بناء الإنتاج
+npm run lint        # فحص الكود (ESLint)
+npm run build       # TypeScript + بناء Vite للإنتاج
+npm run preview     # معاينة نسخة Vite بعد `npm run build`
 ```
 
 ---
