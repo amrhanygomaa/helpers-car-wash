@@ -1,158 +1,167 @@
-<p align="center">
-  <img src="build/icon.ico" width="80" alt="Helpers Warehouse System" />
-</p>
+# Helpers warehouse system
 
-<h1 align="center">Helpers Warehouse System</h1>
+[![CI](https://github.com/amrhanygomaa/Inv_system/actions/workflows/ci.yml/badge.svg)](https://github.com/amrhanygomaa/Inv_system/actions/workflows/ci.yml)
 
-<p align="center">
-  <strong>نظام متكامل لإدارة المخزون والمبيعات — تطبيق سطح مكتب مؤمّن ومشفّر</strong>
-</p>
+Professional offline desktop system for warehouse, inventory, sales, purchasing, cashbox, returns, reports, and user permissions.
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Platform-Windows-blue?logo=windows" alt="Platform" />
-  <img src="https://img.shields.io/badge/Electron-39-47848F?logo=electron" alt="Electron" />
-  <img src="https://img.shields.io/badge/React-19-61DAFB?logo=react" alt="React" />
-  <img src="https://img.shields.io/badge/TypeScript-6-3178C6?logo=typescript" alt="TypeScript" />
-  <img src="https://img.shields.io/badge/License-Proprietary-red" alt="License" />
-</p>
+The application is built for Windows desktop deployment using Electron, React, TypeScript, Vite, and an encrypted local SQLite database.
 
----
+## Product Overview
 
-## 📋 نظرة عامة
+`Helpers warehouse system` is a proprietary desktop application developed by Helpers Technologies for small and medium businesses that need an offline-first warehouse and sales workflow.
 
-**Helpers Warehouse System** هو تطبيق Desktop احترافي لإدارة المخزون والمبيعات، مصمم للشركات الصغيرة والمتوسطة. يعمل بدون إنترنت مع تشفير كامل للبيانات.
+Core capabilities:
 
-### ✨ المميزات الرئيسية
+| Area | Details |
+| --- | --- |
+| Products and stock | Product catalog, stock levels, expiry tracking, and stock movements |
+| Sales and purchasing | Sales invoices, purchase invoices, A4 printing, and PDF export |
+| Customers and suppliers | Contact data, balances, and transaction history |
+| Cashbox | Incoming and outgoing payments with daily operational tracking |
+| Returns | Sales and purchase returns with automatic stock updates |
+| Reports | Business reports and CSV export |
+| Drivers | Driver records linked to sales operations |
+| Supplier bonuses | Tiered supplier commission/bonus workflows |
+| Alerts | Low stock and near-expiry alerts |
+| Users and roles | Owner/admin setup, employee accounts, and permission-based access |
+| Backups | Manual and automatic backup/restore workflows |
 
-| الميزة | الوصف |
-|--------|-------|
-| 📦 **إدارة المنتجات** | إضافة وتعديل المنتجات مع تتبع الكميات وتواريخ الصلاحية |
-| 🧾 **فواتير الشراء والبيع** | إنشاء فواتير احترافية مع طباعة A4 وحفظ PDF |
-| 👥 **العملاء والموردين** | إدارة بيانات العملاء والموردين مع تتبع الأرصدة |
-| 💰 **الخزينة** | تتبع التدفقات النقدية والدفعات |
-| 📊 **التقارير** | تقارير المبيعات والمشتريات والمخزون وتصدير CSV |
-| 🔄 **المرتجعات** | مرتجعات مبيعات ومشتريات مع تحديث المخزون تلقائياً |
-| 🚚 **السائقين** | إدارة السائقين وربطهم بفواتير المبيعات |
-| 🏆 **بونص الموردين** | نظام عمولات متدرج للموردين |
-| 🔔 **التنبيهات** | تنبيهات نقص المخزون وقرب انتهاء الصلاحية |
-| 👤 **صلاحيات المستخدمين** | نظام أدوار (مدير / موظف) مع صلاحيات مخصصة |
-| 💾 **النسخ الاحتياطي** | نسخ احتياطي يدوي وتلقائي مع استعادة |
+## Security Model
 
----
+| Layer | Implementation |
+| --- | --- |
+| Database encryption | SQLCipher through `better-sqlite3-multiple-ciphers` |
+| Password hashing | Argon2id |
+| Runtime hardening | Context isolation, sandboxing, CSP, restricted preload bridge |
+| Production packaging | ASAR packaging, Electron fuses, minified renderer build |
+| License protection | Local machine-bound signed license tokens |
+| Brute-force protection | Login and support-code rate limiting |
 
-## 🔒 الأمان والحماية
+Production license material is intentionally not committed. Each local development or release machine must provide `electron/license-public-key.cjs` from a private channel.
 
-| الطبقة | التقنية |
-|--------|---------|
-| **تشفير قاعدة البيانات** | SQLCipher (AES-256) |
-| **تشفير كلمات المرور** | Argon2id (65MB memory, 3 iterations) |
-| **حماية وقت التشغيل** | Content Security Policy, Sandbox, Context Isolation |
-| **مقاومة الهندسة العكسية** | Terser minification, ASAR archive, no source maps |
-| **حماية DevTools** | محظور في الإنتاج مع إغلاق تلقائي |
-| **حماية Brute-force** | Rate-limiting (5 محاولات / قفل 60 ثانية) |
+## Tech Stack
 
----
+| Layer | Technology |
+| --- | --- |
+| Desktop shell | Electron 39 |
+| Renderer | React 19, TypeScript 6, Tailwind CSS |
+| Build tooling | Vite 8, electron-builder |
+| Database | Encrypted SQLite |
+| Native modules | `argon2`, `better-sqlite3-multiple-ciphers` |
 
-## 🛠️ Technology Stack
+## Requirements
 
-```
-Frontend:    React 19 + TypeScript 6 + Tailwind CSS 3
-Desktop:     Electron 39
-Database:    better-sqlite3-multiple-ciphers + SQLCipher (encrypted)
-Auth:        Argon2id hashing
-Build:       Vite 8 + electron-builder
-```
+- Windows 10/11 64-bit for the packaged desktop app
+- Node.js 20 or newer
+- npm 10 or newer
 
----
+## Local Setup
 
-## 🚀 التشغيل والتطوير
-
-### المتطلبات
-- **Node.js** >= 20.x
-- **npm** >= 10.x
-- **Windows** 10/11 (64-bit)
-
-### التثبيت والتشغيل
+Install dependencies:
 
 ```bash
-# تثبيت الحزم
 npm install
+```
 
-# تشغيل واجهة Vite فقط (متصفح — بدون IPC/Electron)
+Create the local license public key file:
+
+```bash
+copy electron\license-public-key.example.cjs electron\license-public-key.cjs
+```
+
+Replace the example key with the production public key when preparing a real release.
+
+Run the renderer only:
+
+```bash
 npm run dev
+```
 
-# تشغيل وضع التطوير الكامل (Electron + Vite)
+Run the full desktop app in development:
+
+```bash
 npm run electron:dev
 ```
 
-### بناء نسخة الإنتاج
+## Production Build
+
+Build the Windows installer:
 
 ```bash
-# بناء ملف التثبيت (Windows NSIS Installer)
 npm run dist:win
 ```
 
-اسم ملف التثبيت يأتي من `productName` و`version` في `package.json` (electron-builder). مثال للنسخة الحالية:
+The installer is generated under `release/` using the `productName` and `version` from `package.json`.
 
-```
-release/Helpers Inventory-1.0.1-Setup.exe
-```
+Current artifact name:
 
----
-
-## 📱 تجربة المستخدم الأولى
-
-1. **👤 إنشاء المدير** — تسجيل اسم مستخدم وكلمة مرور للمدير
-2. **🚀 جاهز للعمل** — النظام فارغ وجاهز لإدخال البيانات
-
-> لا يوجد حساب افتراضي أو كلمة مرور مبدئية — كل نسخة تبدأ نظيفة.
-
----
-
-## 📁 هيكل المشروع
-
-```
-helpers-warehouse-system/
-├── electron/               # Electron main process
-│   ├── main.cjs            # Main process (IPC, DB, Print, …)
-│   ├── preload.cjs         # Context bridge APIs
-│   ├── print-preload.cjs   # Print window bridge
-│   └── run-electron.cjs    # Dev launcher (غير مُضمَّن في حزمة الإنتاج)
-├── src/                    # React frontend
-│   ├── components/         # Reusable UI components
-│   ├── features/           # Feature-specific components
-│   ├── pages/              # Route pages
-│   ├── store/              # App state (AppContext)
-│   ├── lib/                # Utilities
-│   ├── types/              # TypeScript types
-│   └── data/               # Seed data
-├── build/                  # App icons
-├── public/                 # Static assets
-└── package.json
+```text
+release/Helpers warehouse system-1.0.1-Setup.exe
 ```
 
----
+Release artifacts, signing certificates, private keys, and client USB packages are not committed to this repository.
 
-## ✅ التحقق
+## Code Signing
+
+The current internal distribution flow uses a self-signed Windows code-signing certificate owned by Helpers Technologies.
+
+Keep these files outside the repository:
+
+| File | Purpose |
+| --- | --- |
+| `.pfx` private certificate backup | Used by the developer to sign future releases |
+| `.cer` public certificate | Installed on client machines to trust the publisher |
+| Client USB package ZIP | Installer package prepared for field installation |
+
+Never commit `.pfx`, `.cer`, private keys, generated releases, or customer-specific license data.
+
+## Validation
+
+Run the main checks before building or publishing changes:
 
 ```bash
-npm run lint        # فحص الكود (ESLint)
-npm run build       # TypeScript + بناء Vite للإنتاج
-npm run preview     # معاينة نسخة Vite بعد `npm run build`
+npm run lint
+npm run build
 ```
 
----
+The GitHub Actions workflow runs the same checks on pull requests and pushes to `main`.
 
-## 📞 الدعم والتواصل
+## Project Structure
 
-| | |
-|---|---|
-| **الشركة** | Helpers Technologies |
-| **واتساب** | [+201118445625](https://wa.me/201118445625) |
-| **الموقع** | [helpers-tech.com](https://helpers-tech.com) |
+```text
+helpers-warehouse-system/
+├── .github/              GitHub Actions and PR templates
+├── build/                Application icons used by Electron Builder
+├── docs/                 Installation and support documentation
+├── electron/             Electron main process, preload, print bridge, license key example
+├── public/               Static renderer assets
+├── src/                  React application source
+├── package.json          Scripts, dependencies, and Electron Builder config
+└── vite.config.ts        Vite build configuration
+```
 
----
+## Client Installation
 
-<p align="center">
-  <sub>© 2026 Helpers Technologies — جميع الحقوق محفوظة</sub>
-</p>
+Arabic installation guidance for field technicians is available in:
+
+```text
+docs/client-installation-guide-ar.md
+```
+
+The client delivery package should be generated outside Git and copied to USB or secure offline storage.
+
+## First Run
+
+On first launch, the application starts with no default credentials. The owner/admin account must be created during initial setup, then the machine-bound license flow activates the deployment.
+
+## Contact
+
+| Item | Details |
+| --- | --- |
+| Company | Helpers Technologies |
+| WhatsApp | [+201118445625](https://wa.me/201118445625) |
+| Website | [helpers-tech.com](https://helpers-tech.com) |
+
+## License
+
+Proprietary. All rights reserved by Helpers Technologies.

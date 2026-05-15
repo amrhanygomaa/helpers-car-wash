@@ -1,8 +1,8 @@
 {
-  "name": "helpers-inventory-system",
+  "name": "helpers-warehouse-system",
   "private": true,
   "version": "1.0.1",
-  "description": "Protected desktop inventory and sales management system",
+  "description": "Protected desktop warehouse and sales management system",
   "author": "Helpers Technologies",
   "type": "module",
   "main": "electron/main.cjs",
@@ -18,8 +18,8 @@
     "preview": "vite preview"
   },
   "build": {
-    "appId": "com.helperstechnologies.inventory",
-    "productName": "Helpers Inventory",
+    "appId": "com.helperstechnologies.warehouse",
+    "productName": "Helpers warehouse system",
     "directories": {
       "output": "release"
     },

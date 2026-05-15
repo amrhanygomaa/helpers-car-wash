@@ -13,6 +13,9 @@ const statusText = {
   active: "مفعل",
 };
 
+const activationMessage = encodeURIComponent("أريد تفعيل نسخة Helpers warehouse system");
+const activationWhatsappUrl = `https://wa.me/201118445625?text=${activationMessage}`;
+
 export function ActivationPage() {
   const { licenseStatus, activateLicense } = useApp();
   const toast = useToast();
@@ -62,7 +65,7 @@ export function ActivationPage() {
           <div className="w-16 h-16 rounded-2xl bg-white/10 flex items-center justify-center mb-6">
             <ShieldCheck className="w-10 h-10 text-white/85" />
           </div>
-          <h1 className="text-3xl font-bold leading-tight">تفعيل نسخة Helpers Inventory</h1>
+          <h1 className="text-3xl font-bold leading-tight">تفعيل نسخة Helpers warehouse system</h1>
           <p className="text-white/80 text-sm leading-relaxed">
             التفعيل يتم بسيريال موقّع ومربوط بهذا الجهاز، وبعده يتم إنشاء حساب مدير
             النظام لأول مرة.
@@ -138,7 +141,7 @@ export function ActivationPage() {
           </div>
 
           <a
-            href="https://wa.me/201118445625?text=%D8%A3%D8%B1%D9%8I%D8%AF%20%D8%AA%D9%81%D8%B9%D9%8I%D9%84%20%D9%86%D8%B3%D8%AE%D8%A9%20Helpers%20Inventory"
+            href={activationWhatsappUrl}
             target="_blank"
             rel="noreferrer"
             className="flex items-center justify-center gap-2 w-full py-3 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-sm transition-colors shadow-sm"

@@ -13,11 +13,19 @@ dist-ssr
 release
 *.local
 
-# SECURITY: Never commit license keys, private keys, or scripts
+# Local duplicate/generated app icons
+/icon.ico
+/icon.png
+
+# SECURITY: Never commit license keys, private keys, or generated signing assets
 .license/
-scripts/
 *.pem
 *.key
+*.pfx
+*.cer
+*.p12
+private-code-signing-backup*/
+*code-signing*
 
 # Editor directories and files
 .vscode/*

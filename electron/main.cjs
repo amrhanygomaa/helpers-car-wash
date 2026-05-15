@@ -37,7 +37,7 @@ if (!electronRuntime.app) {
 
 const { app, BrowserWindow, dialog, ipcMain, shell, session } = electronRuntime;
 
-const APP_ID = "com.helperstechnologies.inventory";
+const APP_ID = "com.helperstechnologies.warehouse";
 const STORE_PREFIX = "helpers_inventory_v1::";
 const LICENSE_TOKEN_KEY = "__license_token";
 const LICENSE_LAST_SEEN_KEY = "__license_last_seen_at";
@@ -655,7 +655,7 @@ function createWindow() {
     height: 860,
     minWidth: 1100,
     minHeight: 720,
-    title: "نظام إدارة المخزون والمبيعات — Helpers Inventory",
+    title: "نظام إدارة المخازن والمبيعات — Helpers warehouse system",
     icon: iconPath,
     autoHideMenuBar: true,
     webPreferences: {
