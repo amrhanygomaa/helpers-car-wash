@@ -28,6 +28,7 @@
       "dist/**/*",
       "electron/**/*",
       "!electron/run-electron.cjs",
+      "!electron/license-public-key.example.cjs",
       "node_modules/**/*",
       "package.json",
       "!**/scripts/**",
