@@ -26,193 +26,279 @@ export function InvoicePrintLayout(props: Props) {
     document.title = `${props.kind === "sales" ? "فاتورة مبيعات" : "فاتورة مشتريات"} ${props.invoiceNumber}`;
   }, [props.invoiceNumber, props.kind]);
 
+  const isSales = props.kind === "sales";
+
   return (
-    <div
-      className="min-h-screen bg-slate-50 p-6 print:p-0 print:bg-white"
-      dir="rtl"
-    >
+    <div className="min-h-screen bg-slate-200 py-8 px-4 print:p-0 print:bg-white" dir="rtl">
       <style dangerouslySetInnerHTML={{
         __html: `
-        @media print {
-          @page { size: A4 landscape; margin: 10mm; }
-          body { background: white; }
-        }
-      `}} />
-      <div className="max-w-6xl mx-auto bg-white print-container shadow-card border border-slate-200 print:border-0 print:shadow-none rounded-xl p-8 print:p-0">
-        {/* Top action bar — hidden on print */}
-        <div className="no-print flex items-center justify-between mb-6">
-          <button
-            onClick={() => window.history.back()}
-            className="text-sm text-slate-600 hover:text-slate-900"
-          >
-            ← رجوع
-          </button>
-          <button
-            onClick={() => window.print()}
-            className="h-10 px-4 bg-brand-600 text-white rounded-lg font-medium hover:bg-brand-700"
-          >
-            طباعة
-          </button>
-        </div>
+          @media print {
+            @page { size: A4 portrait; margin: 0; }
+            body { background: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .no-print { display: none !important; }
+            .invoice-page { box-shadow: none !important; border-radius: 0 !important; }
+          }
+          @media screen {
+            .invoice-page { max-width: 210mm; }
+          }
+        `
+      }} />
 
-        {/* Header */}
-        <div className="flex items-start justify-between border-b border-slate-200 pb-6 mb-6">
-          <div className="flex items-center gap-3">
-            <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-brand-600 to-brand-800 grid place-items-center text-white font-bold text-lg overflow-hidden">
-              {settings.logoImage ? (
-                <img src={settings.logoImage} alt="Logo" className="w-full h-full object-cover" />
-              ) : (
-                settings.logoText
-              )}
-            </div>
-            <div>
-              <div className="font-bold text-xl text-slate-900">
-                {settings.arabicLabels ? settings.companyNameAr : settings.companyName}
+      {/* Screen toolbar */}
+      <div className="no-print max-w-[210mm] mx-auto flex items-center justify-between mb-4">
+        <button
+          onClick={() => window.history.back()}
+          className="text-sm text-slate-600 hover:text-slate-900 flex items-center gap-1.5 bg-white border border-slate-200 rounded-lg px-3 h-9"
+        >
+          ← رجوع
+        </button>
+        <button
+          onClick={() => window.print()}
+          className="h-9 px-6 bg-brand-600 text-white rounded-lg text-sm font-medium hover:bg-brand-700"
+        >
+          طباعة
+        </button>
+      </div>
+
+      {/* A4 page */}
+      <div
+        className="invoice-page mx-auto bg-white shadow-xl print:shadow-none"
+        style={{ minHeight: "297mm", display: "flex", flexDirection: "column" }}
+      >
+        {/* Top accent bar */}
+        <div style={{ height: 8, background: "linear-gradient(90deg, #1e3a5f 0%, #2563eb 100%)" }} />
+
+        {/* Page body with padding */}
+        <div style={{ padding: "20mm 16mm 14mm", display: "flex", flexDirection: "column", flex: 1 }}>
+
+          {/* ── HEADER ── */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, paddingBottom: 14, borderBottom: "2px solid #1e3a5f" }}>
+            {/* Company info */}
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{
+                width: 52, height: 52, borderRadius: 10, overflow: "hidden", flexShrink: 0,
+                background: "linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                color: "white", fontWeight: 700, fontSize: 16
+              }}>
+                {settings.logoImage
+                  ? <img src={settings.logoImage} alt="Logo" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  : settings.logoText}
               </div>
-              <div className="text-xs text-slate-500 mt-0.5">
-                {settings.companyName}
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 18, color: "#0f172a", lineHeight: 1.2 }}>
+                  {settings.arabicLabels ? settings.companyNameAr : settings.companyName}
+                </div>
+                {settings.companyNameAr && settings.companyName && settings.companyNameAr !== settings.companyName && (
+                  <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>{settings.companyName}</div>
+                )}
+              </div>
+            </div>
+
+            {/* Invoice identity */}
+            <div style={{ textAlign: "left" }}>
+              <div style={{ fontSize: 20, fontWeight: 800, color: "#1e3a5f", letterSpacing: -0.5 }}>
+                {isSales ? "فاتورة مبيعات" : "فاتورة مشتريات"}
+              </div>
+              <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 2 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
+                  <span style={{ fontSize: 11, color: "#64748b" }}>رقم الفاتورة</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", fontFamily: "monospace", background: "#f1f5f9", padding: "1px 8px", borderRadius: 4 }}>
+                    {props.invoiceNumber}
+                  </span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
+                  <span style={{ fontSize: 11, color: "#64748b" }}>التاريخ</span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: "#334155" }}>{formatDate(props.date)}</span>
+                </div>
               </div>
             </div>
           </div>
-          <div className="text-left">
-            <div className="text-2xl font-bold text-slate-900">
-              {props.kind === "sales" ? "فاتورة مبيعات" : "فاتورة مشتريات"}
-            </div>
-            <div className="text-sm text-slate-500 mt-1">
-              رقم الفاتورة: <span className="font-mono font-bold tabular-nums text-slate-900">{props.invoiceNumber}</span>
-            </div>
-            <div className="text-sm text-slate-500 tabular-nums">
-              التاريخ: {formatDate(props.date)}
-            </div>
-          </div>
-        </div>
 
-        {/* Party info */}
-        <div className="grid grid-cols-2 gap-4 mb-6">
-          <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
-            <div className="text-xs text-slate-500">{props.partyLabel}</div>
-            <div className="font-semibold text-slate-900 mt-1">
-              {props.partyName}
-            </div>
+          {/* ── INFO ROW ── */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 16 }}>
+            <InfoBox label={props.partyLabel} value={props.partyName} accent />
+            <InfoBox label="طريقة الدفع" value={props.paymentLabel ?? "—"} sub={props.priceTypeLabel ? `نوع السعر: ${props.priceTypeLabel}` : undefined} />
+            <InfoBox label="السائق" value={props.driverName ?? "—"} />
           </div>
-          <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
-            <div className="text-xs text-slate-500">طريقة الدفع / نوع السعر / السائق</div>
-            <div className="font-semibold text-slate-900 mt-1">
-              {props.paymentLabel ?? "—"}
-              {props.priceTypeLabel ? (
-                <span className="text-slate-500 text-sm">
-                  {" "}
-                  • نوع السعر: {props.priceTypeLabel}
-                </span>
-              ) : null}
-              {props.driverName ? (
-                <span className="text-slate-500 text-sm">
-                  {" "}
-                  • السائق: {props.driverName}
-                </span>
-              ) : null}
-            </div>
+
+          {/* ── ITEMS TABLE ── */}
+          <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+              <thead>
+                <tr>
+                  <Th center style={{ width: 28 }}>#</Th>
+                  <Th>الصنف</Th>
+                  <Th center style={{ width: 52 }}>الوحدة</Th>
+                  <Th center style={{ width: 52 }}>الكمية</Th>
+                  <Th center style={{ width: 80 }}>السعر</Th>
+                  <Th center style={{ width: 88 }}>الإجمالي</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {props.lines.map((l, idx) => (
+                  <tr key={l.id} style={{ background: idx % 2 === 1 ? "#f8fafc" : "#ffffff" }}>
+                    <Td center muted>{idx + 1}</Td>
+                    <Td>
+                      <span style={{ fontWeight: 600, color: "#0f172a" }}>{l.productName}</span>
+                      {l.expiryDate && (
+                        <span style={{ display: "block", fontSize: 10, color: "#94a3b8" }}>
+                          صلاحية: {formatDate(l.expiryDate)}
+                        </span>
+                      )}
+                    </Td>
+                    <Td center muted>{l.unit}</Td>
+                    <Td center bold>{l.quantity}</Td>
+                    <Td center mono>{formatCurrency(l.price, settings.currency)}</Td>
+                    <Td center mono bold accent>{formatCurrency(l.subtotal, settings.currency)}</Td>
+                  </tr>
+                ))}
+                {/* Filler rows — minimum 8 rows total to fill space */}
+                {Array.from({ length: Math.max(0, 8 - props.lines.length) }).map((_, i) => (
+                  <tr key={`e${i}`} style={{ background: (props.lines.length + i) % 2 === 1 ? "#f8fafc" : "#ffffff" }}>
+                    {[0,1,2,3,4,5].map(j => (
+                      <td key={j} style={{ padding: "9px 6px", border: "1px solid #e2e8f0" }}>&nbsp;</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        </div>
 
-        {/* Lines */}
-        <table className="w-full border-collapse text-sm mb-6">
-          <thead>
-            <tr className="bg-slate-100 text-slate-700">
-              <th className="p-2 border border-slate-200 text-center w-10">#</th>
-              <th className="p-2 border border-slate-200 text-right">الصنف</th>
-              <th className="p-2 border border-slate-200 text-center w-20">الوحدة</th>
-              <th className="p-2 border border-slate-200 text-center w-20">الكمية</th>
-              <th className="p-2 border border-slate-200 text-center w-28">
-                السعر
-              </th>
-              <th className="p-2 border border-slate-200 text-center w-28">
-                الإجمالي
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {props.lines.map((l, idx) => (
-              <tr key={l.id}>
-                <td className="p-2 border border-slate-200 text-center">
-                  {idx + 1}
-                </td>
-                <td className="p-2 border border-slate-200">
-                  {l.productName}
-                  {l.expiryDate ? (
-                    <span className="text-xs text-slate-500 block">
-                      صلاحية: {formatDate(l.expiryDate)}
-                    </span>
-                  ) : null}
-                </td>
-                <td className="p-2 border border-slate-200 text-center">{l.unit}</td>
-                <td className="p-2 border border-slate-200 text-center tabular-nums">{l.quantity}</td>
-                <td className="p-2 border border-slate-200 text-center tabular-nums font-mono">
-                  {formatCurrency(l.price, settings.currency)}
-                </td>
-                <td className="p-2 border border-slate-200 text-center font-bold tabular-nums font-mono">
-                  {formatCurrency(l.subtotal, settings.currency)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+          {/* ── TOTALS + SIGNATURES ── */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginTop: 14 }}>
 
-        {/* Totals */}
-        <div className="flex justify-end mb-6">
-          <div className="w-80 space-y-1 text-sm">
-            <Row label="الإجمالي" value={formatCurrency(props.total, settings.currency)} />
-            <Row
-              label={props.kind === "sales" ? "المبلغ المستلم" : "المبلغ المدفوع"}
-              value={formatCurrency(props.amountPaid, settings.currency)}
-            />
-            <div className="pt-2 border-t border-slate-300 mt-2">
-              <Row
+            {/* Signature lines */}
+            <div style={{ display: "flex", gap: 32, fontSize: 11, color: "#64748b" }}>
+              <SignatureLine label="توقيع المستلم" />
+              <SignatureLine label="توقيع المسؤول" />
+            </div>
+
+            {/* Totals box */}
+            <div style={{ width: 220, border: "1px solid #cbd5e1", borderRadius: 8, overflow: "hidden" }}>
+              <TotalRow label="الإجمالي" value={formatCurrency(props.total, settings.currency)} />
+              <TotalRow
+                label={isSales ? "المبلغ المستلم" : "المبلغ المدفوع"}
+                value={formatCurrency(props.amountPaid, settings.currency)}
+              />
+              <TotalRow
                 label="المتبقي"
-                bold
                 value={formatCurrency(props.remaining, settings.currency)}
+                highlight
               />
             </div>
           </div>
-        </div>
 
-        {props.notes ? (
-          <div className="text-xs text-slate-600 border-t border-slate-200 pt-3 mb-4">
-            <span className="font-medium">ملاحظات: </span>
-            {props.notes}
+          {/* Notes */}
+          {props.notes && (
+            <div style={{ marginTop: 12, padding: "8px 10px", background: "#fefce8", border: "1px solid #fde68a", borderRadius: 6, fontSize: 11, color: "#78350f" }}>
+              <span style={{ fontWeight: 700 }}>ملاحظات: </span>
+              {props.notes}
+            </div>
+          )}
+
+          {/* Spacer pushes footer to bottom */}
+          <div style={{ flex: 1 }} />
+
+          {/* Footer */}
+          <div style={{ marginTop: 20, paddingTop: 10, borderTop: "1px solid #e2e8f0" }}>
+            {settings.invoiceFooter && (
+              <div style={{ textAlign: "center", fontSize: 11, color: "#64748b", whiteSpace: "pre-line", marginBottom: 8 }}>
+                {settings.invoiceFooter}
+              </div>
+            )}
+            <div style={{ textAlign: "center", fontSize: 9, color: "#cbd5e1", marginTop: 4 }}>
+              برمجة وتطوير: شركة هلبرز تكنولوجي — واتساب: 01118445625
+            </div>
           </div>
-        ) : null}
-
-        {/* Footer */}
-        <div className="mt-8 pt-4 border-t border-slate-200 text-center text-xs text-slate-500 whitespace-pre-line">
-          {settings.invoiceFooter}
         </div>
 
-        {/* Developer Info */}
-        <div className="mt-12 text-center text-[10px] text-slate-400 font-medium">
-          برمجة وتطوير: شركة هلبرز تكنولوجي — واتساب: 01118445625
-        </div>
+        {/* Bottom accent bar */}
+        <div style={{ height: 5, background: "linear-gradient(90deg, #1e3a5f 0%, #2563eb 100%)" }} />
       </div>
     </div>
   );
 }
 
-function Row({
-  label,
-  value,
-  bold,
-}: {
-  label: string;
-  value: string;
+/* ── Small helper components ── */
+
+function InfoBox({ label, value, sub, accent }: { label: string; value: string; sub?: string; accent?: boolean }) {
+  return (
+    <div style={{
+      border: `1px solid ${accent ? "#bfdbfe" : "#e2e8f0"}`,
+      borderRadius: 8,
+      padding: "8px 10px",
+      background: accent ? "#eff6ff" : "#f8fafc",
+      borderRight: accent ? "3px solid #2563eb" : undefined,
+    }}>
+      <div style={{ fontSize: 10, color: "#94a3b8", marginBottom: 3, textTransform: "uppercase", letterSpacing: 0.5 }}>{label}</div>
+      <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a" }}>{value}</div>
+      {sub && <div style={{ fontSize: 10, color: "#64748b", marginTop: 2 }}>{sub}</div>}
+    </div>
+  );
+}
+
+function Th({ children, center, style }: { children: React.ReactNode; center?: boolean; style?: React.CSSProperties }) {
+  return (
+    <th style={{
+      padding: "8px 6px",
+      border: "1px solid #1e3a5f",
+      background: "#1e3a5f",
+      color: "white",
+      fontWeight: 700,
+      fontSize: 11,
+      textAlign: center ? "center" : "right",
+      ...style,
+    }}>
+      {children}
+    </th>
+  );
+}
+
+function Td({ children, center, muted, bold, mono, accent }: {
+  children: React.ReactNode;
+  center?: boolean;
+  muted?: boolean;
   bold?: boolean;
+  mono?: boolean;
+  accent?: boolean;
 }) {
   return (
-    <div
-      className={`flex items-center justify-between py-1 ${bold ? "text-slate-900 font-bold text-lg" : "text-slate-700 font-medium"
-        }`}
-    >
-      <span>{label}</span>
-      <span className="tabular-nums font-mono">{value}</span>
+    <td style={{
+      padding: "8px 6px",
+      border: "1px solid #e2e8f0",
+      textAlign: center ? "center" : "right",
+      color: accent ? "#1e3a5f" : muted ? "#64748b" : "#0f172a",
+      fontWeight: bold ? 700 : 400,
+      fontFamily: mono ? "monospace" : undefined,
+    }}>
+      {children}
+    </td>
+  );
+}
+
+function TotalRow({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
+  return (
+    <div style={{
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      padding: highlight ? "10px 12px" : "7px 12px",
+      background: highlight ? "#1e3a5f" : "#f8fafc",
+      borderBottom: highlight ? "none" : "1px solid #e2e8f0",
+      color: highlight ? "white" : "#334155",
+    }}>
+      <span style={{ fontSize: highlight ? 13 : 12, fontWeight: highlight ? 700 : 500 }}>{label}</span>
+      <span style={{ fontSize: highlight ? 14 : 12, fontWeight: 700, fontFamily: "monospace" }}>{value}</span>
+    </div>
+  );
+}
+
+function SignatureLine({ label }: { label: string }) {
+  return (
+    <div style={{ textAlign: "center" }}>
+      <div style={{ width: 110, height: 36, borderBottom: "1.5px solid #94a3b8", marginBottom: 4 }} />
+      <div style={{ fontSize: 10, color: "#64748b" }}>{label}</div>
     </div>
   );
 }

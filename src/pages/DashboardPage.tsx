@@ -14,6 +14,7 @@ import {
   ShoppingBag,
   Users,
   ArrowLeft,
+  Clock,
 } from "lucide-react";
 import {
   AreaChart,
@@ -232,6 +233,28 @@ export function DashboardPage() {
       .slice(0, 8);
   }, [salesInvoices, purchaseInvoices, canViewSales, canViewPurchases]);
 
+  const { accountInvoicesTotal, accountInvoicesCount, overdueInvoices, overdueTotal } = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const accountList = salesInvoices.filter(
+      (s) => !s.cancelled && s.remaining > 0 && s.paymentType === "account"
+    );
+    const overdue = accountList
+      .filter((s) => {
+        if (!s.paymentDueDate) return false;
+        const due = new Date(s.paymentDueDate);
+        due.setHours(0, 0, 0, 0);
+        return due < today;
+      })
+      .sort((a, b) => (a.paymentDueDate! < b.paymentDueDate! ? -1 : 1));
+    return {
+      accountInvoicesTotal: accountList.reduce((a, s) => a + s.remaining, 0),
+      accountInvoicesCount: accountList.length,
+      overdueInvoices: overdue,
+      overdueTotal: overdue.reduce((a, s) => a + s.remaining, 0),
+    };
+  }, [salesInvoices]);
+
   const showTrendChart = canViewSales || canViewPurchases;
   const showStockChart = canViewInventory;
   const showRecentActivity = canViewSales || canViewPurchases;
@@ -355,6 +378,24 @@ export function DashboardPage() {
               value={formatCurrency(stats.cashBalance, settings.currency)}
               icon={<Wallet className="w-5 h-5" />}
               tone="green"
+            />
+          ) : null}
+          {canViewSales ? (
+            <StatCard
+              title="فواتير آجل مفتوحة"
+              value={formatCurrency(accountInvoicesTotal, settings.currency)}
+              icon={<Clock className="w-5 h-5" />}
+              tone="indigo"
+              delta={`${accountInvoicesCount} فاتورة`}
+            />
+          ) : null}
+          {canViewSales ? (
+            <StatCard
+              title="فواتير متأخرة عن الاستحقاق"
+              value={formatNumber(overdueInvoices.length)}
+              icon={<AlertTriangle className="w-5 h-5" />}
+              tone="red"
+              delta={overdueTotal > 0 ? formatCurrency(overdueTotal, settings.currency) : "لا يوجد تأخير"}
             />
           ) : null}
         </div>
@@ -579,6 +620,51 @@ export function DashboardPage() {
               </CardBody>
             </Card>
           ) : null}
+        </div>
+      ) : null}
+
+      {canViewSales && overdueInvoices.length > 0 ? (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <Card className="lg:col-span-2">
+            <CardHeader
+              title="فواتير آجل متأخرة عن الاستحقاق"
+              subtitle={`${overdueInvoices.length} فاتورة — إجمالي متأخر: ${formatCurrency(overdueTotal, settings.currency)}`}
+              actions={
+                <Link to="/sales" className="text-xs text-brand-700 hover:underline">
+                  عرض كل الفواتير
+                </Link>
+              }
+            />
+            <CardBody className="divide-y divide-slate-100 p-0">
+              {overdueInvoices.slice(0, 8).map((inv) => {
+                const due = new Date(inv.paymentDueDate!);
+                due.setHours(0, 0, 0, 0);
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                const daysLate = Math.floor((today.getTime() - due.getTime()) / (1000 * 60 * 60 * 24));
+                return (
+                  <Link
+                    key={inv.id}
+                    to={`/sales/${inv.id}`}
+                    className="flex items-center gap-3 p-3 hover:bg-slate-50 transition-colors"
+                  >
+                    <div className="w-9 h-9 rounded-lg bg-rose-50 text-rose-600 grid place-items-center shrink-0">
+                      <AlertTriangle className="w-4 h-4" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-slate-900">{inv.customerName}</div>
+                      <div className="text-xs text-slate-500">{inv.invoiceNumber} — متأخر {daysLate} يوم</div>
+                    </div>
+                    <div className="text-start shrink-0">
+                      <div className="text-sm font-bold text-rose-700">{formatCurrency(inv.remaining, settings.currency)}</div>
+                      <div className="text-xs text-slate-400">استحقاق: {formatDate(inv.paymentDueDate!)}</div>
+                    </div>
+                    <ArrowLeft className="w-4 h-4 text-slate-300 shrink-0" />
+                  </Link>
+                );
+              })}
+            </CardBody>
+          </Card>
         </div>
       ) : null}
 

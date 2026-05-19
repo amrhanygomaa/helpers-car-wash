@@ -63,7 +63,7 @@ export function SettingsPage() {
                   </button>
                 )}
               </div>
-              
+
               <div className="flex-1 space-y-2">
                 <div className="text-sm font-bold text-slate-900">شعار الشركة</div>
                 <div className="flex items-center gap-2">
@@ -111,7 +111,7 @@ export function SettingsPage() {
                 />
               </Field>
             </div>
-            
+
             <Field label="اسم الشركة بالإنجليزية">
               <Input
                 value={form.companyName}
@@ -272,7 +272,7 @@ export function SettingsPage() {
                 </div>
                 <div className="text-[10px] text-slate-400 font-mono">ID: {settings.companyName.slice(0, 3)}-{new Date(form.subscriptionStartDate).getTime().toString().slice(-4)}</div>
               </div>
-              
+
               <div className="grid grid-cols-2 gap-6 p-4 rounded-xl bg-white border border-brand-100 shadow-sm">
                 <div>
                   <div className="text-[10px] text-slate-400 uppercase font-bold mb-1">نوع الاشتراك</div>
@@ -337,9 +337,8 @@ export function SettingsPage() {
                   </div>
                   <div className="text-left">
                     <div className="text-[10px] text-slate-400 uppercase font-bold mb-1">الأيام المتبقية</div>
-                    <div className={`text-sm font-mono font-bold px-2 py-0.5 rounded border flex items-center gap-2 ${
-                      form.warrantyType === "limited" && form.warrantyStartDate ? "text-indigo-600 bg-indigo-50 border-indigo-100" : "text-slate-400 bg-slate-50 border-slate-100"
-                    }`}>
+                    <div className={`text-sm font-mono font-bold px-2 py-0.5 rounded border flex items-center gap-2 ${form.warrantyType === "limited" && form.warrantyStartDate ? "text-indigo-600 bg-indigo-50 border-indigo-100" : "text-slate-400 bg-slate-50 border-slate-100"
+                      }`}>
                       <Clock className="w-3 h-3" />
                       {!form.warrantyStartDate && form.warrantyType === "limited" ? "تاريخ غير محدد" : (form.warrantyType === "limited" ? Math.max(0, getRemainingDays(form.warrantyStartDate, form.warrantyMonths)) : 0) + " يوم"}
                     </div>
@@ -352,9 +351,9 @@ export function SettingsPage() {
             <div className="text-xs text-slate-500">
               * هذه البيانات رسمية وموثقة من قبل <strong>Helpers Technologies</strong> ولا يمكن تعديلها من قبل المستخدم.
             </div>
-            <Button 
-              variant="outline" 
-              size="sm" 
+            <Button
+              variant="outline"
+              size="sm"
               className="text-[10px] h-7 px-3"
               onClick={() => window.open("https://wa.me/201118445625", "_blank")}
             >
@@ -393,9 +392,9 @@ export function SettingsPage() {
               يتم تصدير ملف بصيغة JSON يحتوي على كافة الفواتير، المنتجات، والعملاء.
             </p>
             <div className="pt-2 border-t border-slate-100">
-              <Button 
-                variant="outline" 
-                size="sm" 
+              <Button
+                variant="outline"
+                size="sm"
                 className="w-full text-blue-600 border-blue-200 bg-blue-50 hover:bg-blue-100"
                 onClick={() => {
                   const data = lsGet<unknown | null>("inventory_auto_backup_internal", null);
@@ -436,7 +435,6 @@ export function SettingsPage() {
           </CardBody>
         </Card>
       </div>
-
     </>
   );
 }

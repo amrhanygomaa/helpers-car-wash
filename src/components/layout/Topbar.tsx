@@ -15,6 +15,7 @@ const TITLES: Record<string, string> = {
   "/sales": "فواتير المبيعات",
   "/alerts": "التنبيهات",
   "/cashbox": "الخزينة",
+  "/dues": "المستحقات",
   "/reports": "التقارير",
   "/my-profile": "ملفي الشخصي",
   "/settings": "الإعدادات",

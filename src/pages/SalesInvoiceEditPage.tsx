@@ -1,0 +1,395 @@
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import { ArrowRight, Plus, Save, Trash2 } from "lucide-react";
+import { PageHeader } from "../components/layout/AppLayout";
+import { Card, CardBody, CardHeader } from "../components/ui/Card";
+import { Button } from "../components/ui/Button";
+import { Badge } from "../components/ui/Badge";
+import { Field, Input, Select, Textarea } from "../components/ui/Input";
+import { Table, TBody, TD, TH, THead, TR } from "../components/ui/Table";
+import { useApp } from "../store/AppContext";
+import { useToast } from "../components/ui/Toast";
+import { uid } from "../lib/utils";
+import type { InvoiceLine, SalesPaymentType } from "../types";
+import { formatCurrency } from "../lib/format";
+
+interface LineDraft {
+  id: string;
+  productId: string;
+  quantity: number;
+  price: number;
+  expiryDate?: string;
+}
+
+export function SalesInvoiceEditPage() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const toast = useToast();
+  const { salesInvoices, products, drivers, updateSalesInvoice, settings } = useApp();
+
+  const inv = salesInvoices.find((s) => s.id === id);
+
+  const [invoiceNumber, setInvoiceNumber] = useState(inv?.invoiceNumber ?? "");
+  const [date, setDate] = useState(inv?.date ?? "");
+  const [driverId, setDriverId] = useState(inv?.driverId ?? "");
+  const [paymentType, setPaymentType] = useState<SalesPaymentType>(inv?.paymentType ?? "cash");
+  const [paymentDueDate, setPaymentDueDate] = useState(inv?.paymentDueDate ?? "");
+  const [amountReceived, setAmountReceived] = useState(inv?.amountReceived ?? 0);
+  const [notes, setNotes] = useState(inv?.notes ?? "");
+  const [lines, setLines] = useState<LineDraft[]>(
+    () =>
+      inv?.lines.map((l) => ({
+        id: l.id,
+        productId: l.productId,
+        quantity: l.quantity,
+        price: l.price,
+        expiryDate: l.expiryDate,
+      })) ?? []
+  );
+
+  useEffect(() => {
+    if (paymentType === "cash") setPaymentDueDate("");
+  }, [paymentType]);
+
+  const total = useMemo(
+    () => lines.reduce((a, l) => a + (l.quantity || 0) * (l.price || 0), 0),
+    [lines]
+  );
+
+  const stockWarnings = useMemo(() => {
+    const map = new Map<string, number>();
+    lines.forEach((l) => {
+      if (!l.productId) return;
+      map.set(l.productId, (map.get(l.productId) ?? 0) + l.quantity);
+    });
+    const out: { productId: string; requested: number; available: number; name: string; unit: string }[] = [];
+    map.forEach((req, pid) => {
+      const p = products.find((x) => x.id === pid);
+      if (!p) return;
+      const origLine = inv?.lines.find((l) => l.productId === pid);
+      const isRetailLine = inv?.priceType === "retail" && !!p.piecesPerUnit;
+      const originalQty = origLine?.quantity ?? 0;
+      const effectiveAvailable = isRetailLine
+        ? p.quantity * p.piecesPerUnit! + (p.looseQuantity ?? 0) + originalQty
+        : p.quantity + originalQty;
+      if (req > effectiveAvailable) {
+        out.push({ productId: pid, requested: req, available: effectiveAvailable, name: p.name, unit: isRetailLine ? (p.retailUnit ?? "قطعة") : p.unit });
+      }
+    });
+    return out;
+  }, [lines, products, inv]);
+
+  function addLine() {
+    setLines((l) => [...l, { id: uid("line"), productId: "", quantity: 1, price: 0 }]);
+  }
+
+  function updateLine(lineId: string, patch: Partial<LineDraft>) {
+    setLines((arr) =>
+      arr.map((l) => {
+        if (l.id !== lineId) return l;
+        const next = { ...l, ...patch };
+        if (patch.productId) {
+          const p = products.find((x) => x.id === patch.productId);
+          if (p) next.price = next.price || (inv?.priceType === "retail" ? p.retailPrice : p.wholesalePrice);
+        }
+        return next;
+      })
+    );
+  }
+
+  function removeLine(lineId: string) {
+    setLines((arr) => arr.filter((l) => l.id !== lineId));
+  }
+
+  function submit() {
+    if (!inv) return;
+    if (lines.length === 0) {
+      toast.error("أضف بنود الفاتورة");
+      return;
+    }
+    const invalid = lines.find((l) => !l.productId || l.quantity <= 0);
+    if (invalid) {
+      toast.error("تأكد من اختيار المنتج وإدخال كمية صحيحة لكل سطر");
+      return;
+    }
+    if (stockWarnings.length > 0) {
+      toast.error(
+        "الكمية تتجاوز المخزون",
+        stockWarnings.map((w) => `${w.name}: متاح ${w.available} / مطلوب ${w.requested}`).join(" • ")
+      );
+      return;
+    }
+    if (amountReceived < 0) {
+      toast.error("المبلغ المستلم غير صحيح");
+      return;
+    }
+
+    const invLines: InvoiceLine[] = lines.map((l) => {
+      const p = products.find((x) => x.id === l.productId)!;
+      const isRetailUnit = inv.priceType === "retail" && !!p.piecesPerUnit;
+      return {
+        id: l.id,
+        productId: p.id,
+        productName: p.name,
+        unit: isRetailUnit ? (p.retailUnit ?? "قطعة") : p.unit,
+        quantity: l.quantity,
+        price: l.price,
+        expiryDate: l.expiryDate,
+        subtotal: l.quantity * l.price,
+        isRetailUnit: isRetailUnit || undefined,
+      };
+    });
+
+    const effectivePaymentType: SalesPaymentType = amountReceived >= total ? "cash" : paymentType;
+    const effectiveDueDate = effectivePaymentType === "account" && paymentDueDate ? paymentDueDate : undefined;
+
+    updateSalesInvoice(inv.id, {
+      invoiceNumber,
+      date,
+      driverId: driverId || undefined,
+      driverName: driverId ? drivers.find((d) => d.id === driverId)?.name : undefined,
+      lines: invLines,
+      amountReceived,
+      paymentType: effectivePaymentType,
+      priceType: inv.priceType,
+      paymentDueDate: effectiveDueDate,
+      notes: notes.trim() || undefined,
+      cancelled: inv.cancelled,
+      createdByUserId: inv.createdByUserId,
+    });
+
+    toast.success("تم تحديث الفاتورة");
+    navigate(`/sales/${inv.id}`);
+  }
+
+  if (!inv) {
+    return (
+      <Card>
+        <CardBody>
+          <div className="text-center py-8 text-slate-500">الفاتورة غير موجودة</div>
+        </CardBody>
+      </Card>
+    );
+  }
+
+  return (
+    <>
+      <PageHeader
+        title={`تعديل فاتورة ${inv.invoiceNumber}`}
+        description="تعديل بنود الفاتورة وبيانات الدفع — العميل لا يمكن تغييره"
+        actions={
+          <>
+            <Button variant="outline" onClick={() => navigate(`/sales/${inv.id}`)}>
+              <ArrowRight className="w-4 h-4" /> إلغاء
+            </Button>
+            <Button onClick={submit}>
+              <Save className="w-4 h-4" /> حفظ التعديلات
+            </Button>
+          </>
+        }
+      />
+
+      {stockWarnings.length > 0 && (
+        <div className="bg-rose-50 border border-rose-200 text-rose-900 rounded-lg p-3 text-sm">
+          <div className="font-semibold mb-1">⚠ تحذير: الكمية تتجاوز المخزون</div>
+          <ul className="list-disc ps-5 space-y-0.5 text-xs">
+            {stockWarnings.map((w) => (
+              <li key={w.productId}>
+                {w.name}: المتاح {w.available} {w.unit} / المطلوب {w.requested} {w.unit}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <Card>
+        <CardHeader title="بيانات الفاتورة" />
+        <CardBody>
+          {/* Customer — read-only */}
+          <div className="mb-4 bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-700">
+            <span className="text-slate-400 text-xs block mb-0.5">العميل (غير قابل للتعديل)</span>
+            <span className="font-semibold text-slate-900">{inv.customerName}</span>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            <Field label="رقم الفاتورة" required>
+              <Input value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} />
+            </Field>
+            <Field label="التاريخ" required>
+              <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            </Field>
+            <Field label="السائق">
+              <Select value={driverId} onChange={(e) => setDriverId(e.target.value)}>
+                <option value="">— بدون سائق —</option>
+                {drivers.map((d) => (
+                  <option key={d.id} value={d.id}>{d.name}</option>
+                ))}
+              </Select>
+            </Field>
+          </div>
+        </CardBody>
+      </Card>
+
+      <Card>
+        <CardHeader
+          title="بنود الفاتورة"
+          actions={
+            <Button size="sm" onClick={addLine}>
+              <Plus className="w-3.5 h-3.5" /> إضافة بند
+            </Button>
+          }
+        />
+        <CardBody>
+          {lines.length === 0 ? (
+            <div className="text-center py-8 text-sm text-slate-500">
+              لا توجد بنود.
+              <div className="mt-3">
+                <Button onClick={addLine}><Plus className="w-4 h-4" /> إضافة بند</Button>
+              </div>
+            </div>
+          ) : (
+            <Table>
+              <THead>
+                <TR>
+                  <TH>المنتج</TH>
+                  <TH className="w-20 text-center">متاح</TH>
+                  <TH className="w-24">الكمية</TH>
+                  <TH className="w-28">السعر</TH>
+                  <TH className="w-28 text-end">الإجمالي</TH>
+                  <TH className="w-10"></TH>
+                </TR>
+              </THead>
+              <TBody>
+                {lines.map((l) => {
+                  const p = products.find((x) => x.id === l.productId);
+                  const origLine = inv.lines.find((ol) => ol.productId === l.productId);
+                  const isRetailLine = inv.priceType === "retail" && !!p?.piecesPerUnit;
+                  const originalQty = origLine?.quantity ?? 0;
+                  const available = isRetailLine
+                    ? p!.quantity * p!.piecesPerUnit! + (p!.looseQuantity ?? 0) + originalQty
+                    : (p?.quantity ?? 0) + originalQty;
+                  const availUnit = isRetailLine ? (p!.retailUnit ?? "قطعة") : (p?.unit ?? "");
+                  const exceeds = !!p && l.quantity > available;
+                  return (
+                    <TR key={l.id}>
+                      <TD>
+                        <Select
+                          value={l.productId}
+                          onChange={(e) => updateLine(l.id, { productId: e.target.value })}
+                          className="w-full"
+                        >
+                          <option value="">— اختر منتجاً —</option>
+                          {products.map((pr) => (
+                            <option key={pr.id} value={pr.id}>{pr.name} — {pr.code}</option>
+                          ))}
+                        </Select>
+                      </TD>
+                      <TD className="text-center text-xs">
+                        {p ? (
+                          <Badge tone={available <= p.minStock ? "amber" : "slate"}>
+                            {available} {availUnit}
+                          </Badge>
+                        ) : "—"}
+                      </TD>
+                      <TD>
+                        <Input
+                          type="number"
+                          min={1}
+                          value={l.quantity}
+                          onChange={(e) => updateLine(l.id, { quantity: Math.max(1, Number(e.target.value)) })}
+                          className={exceeds ? "border-rose-400" : ""}
+                        />
+                      </TD>
+                      <TD>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min={0}
+                          value={l.price}
+                          onChange={(e) => updateLine(l.id, { price: Number(e.target.value) })}
+                        />
+                      </TD>
+                      <TD className="text-end font-medium">
+                        {formatCurrency(l.quantity * l.price, settings.currency)}
+                      </TD>
+                      <TD>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="text-red-600 hover:bg-red-50"
+                          onClick={() => removeLine(l.id)}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </TD>
+                    </TR>
+                  );
+                })}
+              </TBody>
+            </Table>
+          )}
+        </CardBody>
+      </Card>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <Card>
+          <CardHeader title="الدفع" />
+          <CardBody className="space-y-3">
+            <Field label="طريقة الدفع">
+              <div className="flex items-center gap-4">
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="radio" checked={paymentType === "cash"} onChange={() => setPaymentType("cash")} />
+                  نقدي
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="radio" checked={paymentType === "account"} onChange={() => setPaymentType("account")} />
+                  آجل (حساب)
+                </label>
+              </div>
+            </Field>
+            {paymentType === "account" && (
+              <Field label="تاريخ الاستحقاق">
+                <Input type="date" value={paymentDueDate} onChange={(e) => setPaymentDueDate(e.target.value)} />
+              </Field>
+            )}
+            <Field label="المبلغ المستلم">
+              <Input
+                type="number"
+                min={0}
+                step="0.01"
+                value={amountReceived}
+                onChange={(e) => setAmountReceived(Number(e.target.value))}
+              />
+            </Field>
+            <Field label="ملاحظات">
+              <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
+            </Field>
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader title="الملخص" />
+          <CardBody className="space-y-2 text-sm">
+            <div className="flex justify-between text-slate-700">
+              <span>إجمالي الفاتورة</span>
+              <span className="font-mono">{formatCurrency(total, settings.currency)}</span>
+            </div>
+            <div className="flex justify-between text-slate-700">
+              <span>المبلغ المستلم</span>
+              <span className="font-mono">{formatCurrency(Math.min(amountReceived, total), settings.currency)}</span>
+            </div>
+            <div className="border-t border-slate-200 pt-2 flex justify-between text-lg font-bold text-amber-700">
+              <span>المتبقي</span>
+              <span className="font-mono">{formatCurrency(Math.max(0, total - amountReceived), settings.currency)}</span>
+            </div>
+            <div className="pt-2">
+              <Button onClick={submit} size="lg" className="w-full">
+                <Save className="w-4 h-4" /> حفظ التعديلات
+              </Button>
+            </div>
+          </CardBody>
+        </Card>
+      </div>
+    </>
+  );
+}

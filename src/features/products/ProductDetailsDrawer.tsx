@@ -46,19 +46,26 @@ export function ProductDetailsDrawer({
         <div className="grid grid-cols-2 gap-3">
           <Info label="الكمية الحالية">
             <span className="text-lg font-semibold">
-              {product.quantity} {product.unit}
+              {product.piecesPerUnit
+                ? `${product.quantity} ${product.unit}${product.looseQuantity ? ` + ${product.looseQuantity} ${product.retailUnit ?? "قطعة"}` : ""}`
+                : `${product.quantity} ${product.unit}`}
             </span>
           </Info>
           <Info label="الحد الأدنى">
             {product.minStock} {product.unit}
           </Info>
+          {product.piecesPerUnit ? (
+            <Info label="تجزئة">
+              {product.piecesPerUnit} {product.retailUnit ?? "قطعة"} في {product.unit}
+            </Info>
+          ) : null}
           <Info label="سعر الشراء">
             {formatCurrency(product.purchasePrice, settings.currency)}
           </Info>
           <Info label="سعر الجملة">
             {formatCurrency(product.wholesalePrice, settings.currency)}
           </Info>
-          <Info label="سعر التجزئة">
+          <Info label={product.piecesPerUnit ? `سعر ${product.retailUnit ?? "القطعة"}` : "سعر التجزئة"}>
             {formatCurrency(product.retailPrice, settings.currency)}
           </Info>
           <Info label="المورد">{supplier?.name ?? "—"}</Info>

@@ -10,7 +10,7 @@
     "dev": "vite",
     "electron:dev": "cross-env ELECTRON_RENDERER_URL=http://127.0.0.1:5173 concurrently -k \"vite --host 127.0.0.1 --strictPort\" \"wait-on http://127.0.0.1:5173 && node electron/run-electron.cjs .\"",
     "build": "tsc -b && vite build",
-    "dist:win": "npm run build && electron-builder --win nsis",
+    "dist:win": "node scripts/prepare-dist-win.cjs && npm run build && electron-builder --win nsis",
     "license:init": "node ../helpers_sys_activate/scripts/generate-license.cjs --init-keypair",
     "license:generate": "node ../helpers_sys_activate/scripts/generate-license.cjs",
     "license:studio": "node ../helpers_sys_activate/scripts/license-studio.cjs",
@@ -23,6 +23,7 @@
     "directories": {
       "output": "release"
     },
+    "afterPack": "scripts/electron-builder-after-pack.cjs",
     "files": [
       "build/icon.ico",
       "dist/**/*",

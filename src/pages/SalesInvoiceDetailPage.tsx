@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowRight, Ban, HandCoins, Printer, Trash2 } from "lucide-react";
+import { ArrowRight, Ban, HandCoins, Pencil, Printer, Trash2 } from "lucide-react";
 import { PageHeader } from "../components/layout/AppLayout";
 import { Card, CardBody, CardHeader } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -21,14 +21,17 @@ export function SalesInvoiceDetailPage() {
   const toast = useToast();
   const {
     salesInvoices,
+    salesReturns,
     customers,
     settings,
     recordSalesReceipt,
     cancelSalesInvoice,
     deleteSalesInvoice,
     currentUser,
+    customerBalance,
   } = useApp();
   const inv = salesInvoices.find((s) => s.id === id);
+  const canEditSales = hasPermission(currentUser, "salesInvoices", "edit");
   const canReceiveSales = hasPermission(currentUser, "salesInvoices", "receive");
   const canCancelSales = hasPermission(currentUser, "salesInvoices", "cancel");
   const canDeleteSales = hasPermission(currentUser, "salesInvoices", "delete");
@@ -55,6 +58,9 @@ export function SalesInvoiceDetailPage() {
   }
 
   const customer = customers.find((c) => c.id === inv.customerId);
+  const totalCustomerBalance = customerBalance(inv.customerId);
+  const linkedReturns = salesReturns.filter((r) => r.originalInvoiceId === inv.id);
+  const canCreateReturn = canAddReturn && inv.lines.some((line) => line.quantity > 0);
   const priceTypeLabel = inv.priceType === "retail" ? "تجزئة" : "جملة";
   const dueDatePassed = (() => {
     if (!inv.paymentDueDate || inv.remaining <= 0) return false;
@@ -76,6 +82,11 @@ export function SalesInvoiceDetailPage() {
               <ArrowRight className="w-4 h-4" />
               رجوع
             </Button>
+            {!inv.cancelled && canEditSales ? (
+              <Button variant="outline" onClick={() => navigate(`/sales/${inv.id}/edit`)}>
+                <Pencil className="w-4 h-4" /> تعديل
+              </Button>
+            ) : null}
             <Button
               variant="outline"
               onClick={async () => {
@@ -94,7 +105,7 @@ export function SalesInvoiceDetailPage() {
             ) : null}
             {!inv.cancelled && (canAddReturn || canCancelSales) ? (
               <>
-                {canAddReturn ? (
+                {canCreateReturn ? (
                   <Button variant="outline" onClick={() => setReturnOpen(true)}>
                     <ArrowRight className="w-4 h-4" /> إنشاء مرتجع
                   </Button>
@@ -124,7 +135,10 @@ export function SalesInvoiceDetailPage() {
       <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
         <Stat label="الإجمالي" value={formatCurrency(inv.total, settings.currency)} />
         <Stat label="المستلم" value={formatCurrency(inv.amountReceived, settings.currency)} tone="green" />
-        <Stat label="المتبقي" value={formatCurrency(inv.remaining, settings.currency)} tone={inv.remaining > 0 ? "amber" : "slate"} />
+        <Stat label="المتبقي على هذه الفاتورة" value={formatCurrency(inv.remaining, settings.currency)} tone={inv.remaining > 0 ? "amber" : "slate"} />
+        {inv.overpayment && inv.overpayment > 0 ? (
+          <Stat label="رصيد دائن للعميل" value={formatCurrency(inv.overpayment, settings.currency)} tone="green" />
+        ) : null}
         <Stat label="الحالة" value={inv.cancelled ? "ملغاة" : inv.status === "paid" ? "مسددة" : inv.status === "partial" ? "جزئي" : "غير مسددة"} tone={inv.cancelled ? "slate" : inv.status === "paid" ? "green" : inv.status === "partial" ? "amber" : "red"} />
         <Stat label="نوع السعر" value={priceTypeLabel} />
         {inv.paymentDueDate ? (
@@ -134,6 +148,17 @@ export function SalesInvoiceDetailPage() {
             tone={dueDatePassed ? "red" : "slate"}
           />
         ) : null}
+        <Stat
+          label={`إجمالي رصيد ${inv.customerName}`}
+          value={
+            totalCustomerBalance > 0
+              ? formatCurrency(totalCustomerBalance, settings.currency)
+              : totalCustomerBalance < 0
+                ? `رصيد دائن: ${formatCurrency(-totalCustomerBalance, settings.currency)}`
+                : "لا يوجد مستحق"
+          }
+          tone={totalCustomerBalance > 0 ? "red" : "green"}
+        />
       </div>
 
       <Card>
@@ -187,22 +212,74 @@ export function SalesInvoiceDetailPage() {
         </CardBody>
       </Card>
 
+      {linkedReturns.length > 0 ? (
+        <Card>
+          <CardHeader title="المرتجعات المرتبطة بهذه الفاتورة" />
+          <CardBody>
+            <Table>
+              <THead>
+                <TR>
+                  <TH>رقم المرتجع</TH>
+                  <TH>التاريخ</TH>
+                  <TH>الأصناف</TH>
+                  <TH className="text-end">قيمة المرتجع</TH>
+                  <TH>طريقة الرد</TH>
+                </TR>
+              </THead>
+              <TBody>
+                {linkedReturns.map((r) => (
+                  <TR key={r.id}>
+                    <TD className="font-mono text-xs text-slate-600">{r.returnNumber}</TD>
+                    <TD>{formatDate(r.date)}</TD>
+                    <TD>
+                      <ul className="space-y-0.5">
+                        {r.lines.map((l) => (
+                          <li key={l.id} className="text-xs text-slate-700">
+                            {l.productName} × {l.quantity} {l.unit}
+                          </li>
+                        ))}
+                      </ul>
+                    </TD>
+                    <TD className="text-end font-semibold text-rose-700">
+                      {formatCurrency(r.total, settings.currency)}
+                    </TD>
+                    <TD>
+                      <Badge tone={r.refundCash ? "emerald" : "indigo"}>
+                        {r.refundCash ? "رد نقدي" : "خصم من الرصيد"}
+                      </Badge>
+                    </TD>
+                  </TR>
+                ))}
+              </TBody>
+            </Table>
+            <div className="mt-3 flex justify-end">
+              <div className="text-sm font-semibold text-rose-700">
+                إجمالي المرتجعات: {formatCurrency(linkedReturns.reduce((a, r) => a + r.total, 0), settings.currency)}
+              </div>
+            </div>
+          </CardBody>
+        </Card>
+      ) : null}
+
       <Dialog
         open={payOpen}
         onClose={() => setPayOpen(false)}
         title="تسجيل دفعة"
-        subtitle={`المتبقي: ${formatCurrency(inv.remaining, settings.currency)}`}
+        subtitle={`المتبقي: ${formatCurrency(inv.remaining, settings.currency)} — الدفع الزائد يُسجَّل رصيداً دائناً`}
         footer={
           <>
             <Button variant="outline" onClick={() => setPayOpen(false)}>إلغاء</Button>
             <Button
               onClick={() => {
-                if (payAmount <= 0 || payAmount > inv.remaining) {
-                  toast.error("المبلغ غير صحيح");
+                if (payAmount <= 0) {
+                  toast.error("المبلغ يجب أن يكون أكبر من صفر");
                   return;
                 }
                 recordSalesReceipt(inv.id, payAmount);
-                toast.success("تم تسجيل الدفعة");
+                const msg = payAmount > inv.remaining
+                  ? `تم التسجيل — رصيد دائن: ${formatCurrency(payAmount - inv.remaining, settings.currency)}`
+                  : "تم تسجيل الدفعة";
+                toast.success(msg);
                 setPayOpen(false);
               }}
             >
@@ -215,7 +292,6 @@ export function SalesInvoiceDetailPage() {
           <Input
             type="number"
             min={0.01}
-            max={inv.remaining}
             step="0.01"
             value={payAmount}
             onChange={(e) => setPayAmount(Number(e.target.value))}

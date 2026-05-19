@@ -4,7 +4,7 @@ import { PageHeader } from "../components/layout/AppLayout";
 import { Card, CardBody, CardHeader } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Badge } from "../components/ui/Badge";
-import { Input, Field, Textarea } from "../components/ui/Input";
+import { Input, Field, Select, Textarea } from "../components/ui/Input";
 import { Table, TBody, TD, TH, THead, TR } from "../components/ui/Table";
 import { ConfirmDialog, Dialog } from "../components/ui/Dialog";
 import { EmptyState } from "../components/ui/EmptyState";
@@ -26,6 +26,7 @@ export function CustomersPage() {
     salesInvoices,
     settings,
     currentUser,
+    nextCustomerCode,
   } = useApp();
   const toast = useToast();
   const canAddCustomer = hasPermission(currentUser, "customers", "add");
@@ -39,9 +40,11 @@ export function CustomersPage() {
   const [toDelete, setToDelete] = useState<Customer | null>(null);
 
   const [form, setForm] = useState<Omit<Customer, "id" | "createdAt">>({
+    code: "",
     name: "",
     phone: "",
     address: "",
+    shippingDirection: undefined,
     notes: "",
   });
 
@@ -57,22 +60,36 @@ export function CustomersPage() {
 
   function openNew() {
     setEditing(null);
-    setForm({ name: "", phone: "", address: "", notes: "" });
+    setForm({ code: `CUS-${String(nextCustomerCode).padStart(4, "0")}`, name: "", phone: "", address: "", shippingDirection: undefined, notes: "" });
     setOpen(true);
   }
   function openEdit(c: Customer) {
     setEditing(c);
     setForm({
+      code: c.code ?? "",
       name: c.name,
       phone: c.phone ?? "",
       address: c.address ?? "",
+      shippingDirection: c.shippingDirection,
       notes: c.notes ?? "",
     });
     setOpen(true);
   }
   function submit() {
     if (!form.name.trim()) {
-      toast.error("الاسم مطلوب");
+      toast.error("اسم العميل مطلوب");
+      return;
+    }
+    if (!form.phone?.trim()) {
+      toast.error("رقم الهاتف مطلوب");
+      return;
+    }
+    if (!form.address?.trim()) {
+      toast.error("العنوان مطلوب");
+      return;
+    }
+    if (!form.shippingDirection) {
+      toast.error("اتجاه الشحن مطلوب");
       return;
     }
     if (editing) {
@@ -138,9 +155,10 @@ export function CustomersPage() {
             <Table>
               <THead>
                 <TR>
+                  <TH>الكود</TH>
                   <TH>اسم العميل</TH>
                   <TH>الهاتف</TH>
-                  <TH>العنوان</TH>
+                  <TH>الاتجاه</TH>
                   <TH className="text-end">الرصيد الحالي</TH>
                   <TH className="text-end">إجراءات</TH>
                 </TR>
@@ -150,14 +168,23 @@ export function CustomersPage() {
                   const bal = customerBalance(c.id);
                   return (
                     <TR key={c.id}>
+                      <TD className="text-slate-500 font-mono text-xs">{c.code ?? "—"}</TD>
                       <TD className="font-medium text-slate-900">{c.name}</TD>
                       <TD className="text-slate-600">{c.phone ?? "—"}</TD>
-                      <TD className="text-slate-600">{c.address ?? "—"}</TD>
+                      <TD>
+                        {c.shippingDirection === "qibli" ? (
+                          <Badge tone="amber">قبلي</Badge>
+                        ) : c.shippingDirection === "bahri" ? (
+                          <Badge tone="blue">بحري</Badge>
+                        ) : (
+                          <span className="text-slate-400 text-xs">—</span>
+                        )}
+                      </TD>
                       <TD className="text-end">
                         {bal > 0 ? (
-                          <Badge tone="amber">
-                            عليه {formatCurrency(bal, settings.currency)}
-                          </Badge>
+                          <Badge tone="amber">عليه {formatCurrency(bal, settings.currency)}</Badge>
+                        ) : bal < 0 ? (
+                          <Badge tone="green">له رصيد {formatCurrency(-bal, settings.currency)}</Badge>
                         ) : (
                           <Badge tone="green">لا يوجد مستحق</Badge>
                         )}
@@ -207,23 +234,46 @@ export function CustomersPage() {
         }
       >
         <div className="grid grid-cols-2 gap-3">
-          <Field label="اسم العميل" required className="col-span-2">
+          <Field label="كود العميل">
+            <Input
+              value={form.code ?? ""}
+              readOnly={!editing}
+              onChange={(e) => editing && setForm({ ...form, code: e.target.value })}
+              className={!editing ? "bg-gray-100 cursor-not-allowed text-gray-600 font-mono" : "font-mono"}
+            />
+          </Field>
+          <Field label="اسم العميل" required>
             <Input
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
             />
           </Field>
-          <Field label="الهاتف">
+          <Field label="الهاتف" required>
             <Input
               value={form.phone ?? ""}
               onChange={(e) => setForm({ ...form, phone: e.target.value })}
             />
           </Field>
-          <Field label="العنوان">
+          <Field label="العنوان" required>
             <Input
               value={form.address ?? ""}
               onChange={(e) => setForm({ ...form, address: e.target.value })}
             />
+          </Field>
+          <Field label="اتجاه الشحن" required className="col-span-2">
+            <Select
+              value={form.shippingDirection ?? ""}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  shippingDirection: (e.target.value as "qibli" | "bahri") || undefined,
+                })
+              }
+            >
+              <option value="">— غير محدد —</option>
+              <option value="qibli">قبلي (جنوب)</option>
+              <option value="bahri">بحري (شمال)</option>
+            </Select>
           </Field>
           <Field label="ملاحظات" className="col-span-2">
             <Textarea
@@ -248,9 +298,18 @@ export function CustomersPage() {
               <Info label="الهاتف">{viewing.phone ?? "—"}</Info>
               <Info label="العنوان">{viewing.address ?? "—"}</Info>
               <Info label="الرصيد الحالي">
-                <span className="font-semibold">
-                  {formatCurrency(customerBalance(viewing.id), settings.currency)}
-                </span>
+                {(() => {
+                  const b = customerBalance(viewing.id);
+                  return (
+                    <span className={`font-semibold ${b > 0 ? "text-rose-700" : b < 0 ? "text-emerald-700" : "text-slate-900"}`}>
+                      {b > 0
+                        ? `${formatCurrency(b, settings.currency)} (مديونية)`
+                        : b < 0
+                          ? `${formatCurrency(-b, settings.currency)} (رصيد دائن)`
+                          : "لا يوجد مستحق"}
+                    </span>
+                  );
+                })()}
               </Info>
               <Info label="عدد الفواتير">{viewingInvoices.length}</Info>
               {viewing.notes ? (
@@ -284,7 +343,11 @@ export function CustomersPage() {
                             {formatCurrency(inv.total, settings.currency)}
                           </TD>
                           <TD className="text-end">
-                            {inv.remaining > 0 ? (
+                            {inv.overpayment && inv.overpayment > 0 ? (
+                              <Badge tone="green">
+                                رصيد دائن {formatCurrency(inv.overpayment, settings.currency)}
+                              </Badge>
+                            ) : inv.remaining > 0 ? (
                               <Badge tone="amber">
                                 {formatCurrency(inv.remaining, settings.currency)}
                               </Badge>

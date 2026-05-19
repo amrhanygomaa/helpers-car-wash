@@ -46,6 +46,7 @@ export const PERMISSION_GROUPS: {
     actions: [
       { key: "view", label: "عرض" },
       { key: "add", label: "إضافة" },
+      { key: "edit", label: "تعديل" },
       { key: "receive", label: "تحصيل" },
       { key: "cancel", label: "إلغاء" },
       { key: "delete", label: "حذف" },
@@ -124,7 +125,7 @@ export function createPermissions(enabled = false): UserPermissions {
     products: { view: enabled, add: enabled, edit: enabled, delete: enabled },
     inventory: { view: enabled, adjust: enabled },
     purchaseInvoices: { view: enabled, add: enabled, pay: enabled, delete: enabled },
-    salesInvoices: { view: enabled, add: enabled, receive: enabled, cancel: enabled, delete: enabled },
+    salesInvoices: { view: enabled, add: enabled, edit: enabled, receive: enabled, cancel: enabled, delete: enabled },
     customers: { view: enabled, add: enabled, edit: enabled, delete: enabled },
     suppliers: { view: enabled, add: enabled, edit: enabled, delete: enabled, commissions: enabled },
     drivers: { view: enabled, add: enabled, edit: enabled, delete: enabled },
@@ -178,6 +179,9 @@ export function normalizePermissions(input?: Partial<UserPermissions> | null): U
   }
   if (legacyPurchases && typeof legacyPurchases.delete !== "boolean") {
     permissions.purchaseInvoices.delete = Boolean(legacyPurchases.add);
+  }
+  if (legacySales && typeof legacySales.edit !== "boolean") {
+    permissions.salesInvoices.edit = false;
   }
   if (legacySales && typeof legacySales.receive !== "boolean") {
     permissions.salesInvoices.receive = Boolean(legacySales.add);

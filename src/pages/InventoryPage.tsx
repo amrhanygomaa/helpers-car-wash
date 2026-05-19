@@ -51,6 +51,7 @@ export function InventoryPage() {
   const [adjustTarget, setAdjustTarget] = useState<Product | null>(null);
   const [adjType, setAdjType] = useState<"in" | "out">("in");
   const [adjQty, setAdjQty] = useState(0);
+  const [adjLooseQty, setAdjLooseQty] = useState(0);
   const [adjReason, setAdjReason] = useState("");
 
   const categories = useMemo(
@@ -114,13 +115,17 @@ export function InventoryPage() {
       return;
     }
     const delta = adjType === "in" ? adjQty : -adjQty;
-    adjustStock(adjustTarget.id, delta, adjReason.trim());
+    const looseDelta = adjustTarget.piecesPerUnit
+      ? (adjType === "in" ? adjLooseQty : -adjLooseQty)
+      : undefined;
+    adjustStock(adjustTarget.id, delta, adjReason.trim(), looseDelta);
     toast.success(
       adjType === "in" ? "تم إضافة الكمية" : "تم خصم الكمية",
-      `${adjustTarget.name}: ${delta > 0 ? "+" : ""}${delta}`
+      `${adjustTarget.name}: ${delta > 0 ? "+" : ""}${delta} ${adjustTarget.unit}`
     );
     setAdjustTarget(null);
     setAdjQty(0);
+    setAdjLooseQty(0);
     setAdjReason("");
     setAdjType("in");
   }
@@ -259,7 +264,9 @@ export function InventoryPage() {
                       <TD className="font-medium text-slate-900">{p.name}</TD>
                       <TD className="text-slate-600">{p.category}</TD>
                       <TD className="text-end font-semibold">
-                        {p.quantity} {p.unit}
+                        {p.piecesPerUnit
+                          ? `${p.quantity} ${p.unit}${p.looseQuantity ? ` + ${p.looseQuantity} ${p.retailUnit ?? "قطعة"}` : ""}`
+                          : `${p.quantity} ${p.unit}`}
                       </TD>
                       <TD className="text-end text-slate-500">{p.minStock}</TD>
                       <TD className="text-slate-600 text-xs">
@@ -414,7 +421,11 @@ export function InventoryPage() {
         open={!!adjustTarget}
         onClose={() => setAdjustTarget(null)}
         title={`ضبط مخزون: ${adjustTarget?.name ?? ""}`}
-        subtitle={`الكمية الحالية: ${adjustTarget?.quantity} ${adjustTarget?.unit}`}
+        subtitle={
+          adjustTarget?.piecesPerUnit
+            ? `الكمية الحالية: ${adjustTarget.quantity} ${adjustTarget.unit}${adjustTarget.looseQuantity ? ` + ${adjustTarget.looseQuantity} ${adjustTarget.retailUnit ?? "قطعة"}` : ""}`
+            : `الكمية الحالية: ${adjustTarget?.quantity} ${adjustTarget?.unit}`
+        }
         width="md"
         footer={
           <>
@@ -446,15 +457,26 @@ export function InventoryPage() {
               </label>
             </div>
           </Field>
-          <Field label="الكمية" required>
+          <Field label={`الكمية (${adjustTarget?.unit ?? ""})`} required>
             <Input
               type="number"
-              min={1}
+              min={0}
               value={adjQty || ""}
               onChange={(e) => setAdjQty(Number(e.target.value))}
-              placeholder="مثل: 10"
+              placeholder="مثل: 2"
             />
           </Field>
+          {adjustTarget?.piecesPerUnit ? (
+            <Field label={`القطع المفردة (${adjustTarget.retailUnit ?? "قطعة"})`}>
+              <Input
+                type="number"
+                min={0}
+                value={adjLooseQty || ""}
+                onChange={(e) => setAdjLooseQty(Number(e.target.value))}
+                placeholder="مثل: 6"
+              />
+            </Field>
+          ) : null}
           <Field label="السبب" required>
             <Textarea
               rows={2}

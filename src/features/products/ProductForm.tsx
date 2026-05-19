@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Check, Plus, X } from "lucide-react";
 import { Button } from "../../components/ui/Button";
 import { Dialog } from "../../components/ui/Dialog";
 import { Field, Input, Select, Textarea } from "../../components/ui/Input";
@@ -7,15 +8,6 @@ import { useApp } from "../../store/AppContext";
 import { useToast } from "../../components/ui/Toast";
 
 const UNITS = ["كيلو", "جرام", "لتر", "كيس", "علبة", "كرتونة", "زجاجة", "كوب", "قطعة", "علبة صغيرة"];
-const CATEGORIES = [
-  "مواد غذائية",
-  "ألبان",
-  "مخبوزات",
-  "مشروبات",
-  "منظفات",
-  "مستلزمات",
-  "أخرى",
-];
 
 type FormState = Omit<Product, "id" | "createdAt">;
 
@@ -23,11 +15,14 @@ const EMPTY: FormState = {
   code: "",
   name: "",
   category: "مواد غذائية",
-  unit: "قطعة",
+  unit: "كرتونة",
+  retailUnit: undefined,
   purchasePrice: 0,
   wholesalePrice: 0,
   retailPrice: 0,
+  piecesPerUnit: undefined,
   quantity: 0,
+  looseQuantity: undefined,
   minStock: 5,
   hasExpiry: false,
   expiryDate: undefined,
@@ -44,9 +39,21 @@ export function ProductFormDialog({
   onClose: () => void;
   editing?: Product | null;
 }) {
-  const { addProduct, updateProduct, suppliers, nextProductCode } = useApp();
+  const { addProduct, updateProduct, suppliers, products, nextProductCode } = useApp();
   const toast = useToast();
   const [form, setForm] = useState<FormState>(EMPTY);
+
+  const existingCategories = useMemo(
+    () => [...new Set(products.map((p) => p.category).filter(Boolean))].sort(),
+    [products]
+  );
+  const [customCategories, setCustomCategories] = useState<string[]>([]);
+  const allCategories = useMemo(
+    () => [...new Set([...existingCategories, ...customCategories])].sort(),
+    [existingCategories, customCategories]
+  );
+  const [addingCategory, setAddingCategory] = useState(false);
+  const [newCategoryInput, setNewCategoryInput] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -59,6 +66,9 @@ export function ProductFormDialog({
       setForm({ ...EMPTY, code: nextProductCode.toString() });
     }
     setErrors({});
+    setAddingCategory(false);
+    setNewCategoryInput("");
+    setCustomCategories([]);
   }, [editing, open, nextProductCode]);
 
   function validate(): boolean {
@@ -68,8 +78,11 @@ export function ProductFormDialog({
     if (form.purchasePrice < 0) e.purchasePrice = "يجب أن يكون موجباً";
     if (form.wholesalePrice < 0) e.wholesalePrice = "يجب أن يكون موجباً";
     if (form.retailPrice < 0) e.retailPrice = "يجب أن يكون موجباً";
-    if (form.retailPrice < form.wholesalePrice) {
+    if (!form.piecesPerUnit && form.retailPrice < form.wholesalePrice) {
       e.retailPrice = "سعر التجزئة يجب أن يكون أكبر من أو يساوي سعر الجملة";
+    }
+    if (form.piecesPerUnit && !form.retailUnit?.trim()) {
+      e.retailUnit = "اسم وحدة التجزئة مطلوب";
     }
     if (form.quantity < 0) e.quantity = "يجب أن يكون موجباً";
     if (form.minStock < 0) e.minStock = "يجب أن يكون موجباً";
@@ -77,6 +90,18 @@ export function ProductFormDialog({
       e.expiryDate = "تاريخ الصلاحية مطلوب";
     setErrors(e);
     return Object.keys(e).length === 0;
+  }
+
+  function confirmNewCategory() {
+    const trimmed = newCategoryInput.trim();
+    if (trimmed) {
+      if (!allCategories.includes(trimmed)) {
+        setCustomCategories((prev) => [...prev, trimmed]);
+      }
+      set("category", trimmed);
+    }
+    setAddingCategory(false);
+    setNewCategoryInput("");
   }
 
   function handleSubmit() {
@@ -129,16 +154,51 @@ export function ProductFormDialog({
           />
         </Field>
         <Field label="الفئة">
-          <Select
-            value={form.category}
-            onChange={(e) => set("category", e.target.value)}
-          >
-            {CATEGORIES.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </Select>
+          <div className="flex gap-2">
+            <Select
+              value={form.category}
+              onChange={(e) => set("category", e.target.value)}
+              className="flex-1"
+            >
+              <option value="">— اختر فئة —</option>
+              {allCategories.map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+              {form.category && !allCategories.includes(form.category) && (
+                <option value={form.category}>{form.category}</option>
+              )}
+            </Select>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              onClick={() => { setAddingCategory(true); setNewCategoryInput(""); }}
+              title="إضافة فئة جديدة"
+            >
+              <Plus className="w-4 h-4" />
+            </Button>
+          </div>
+          {addingCategory && (
+            <div className="flex gap-1.5 mt-1.5">
+              <Input
+                autoFocus
+                value={newCategoryInput}
+                onChange={(e) => setNewCategoryInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") { e.preventDefault(); confirmNewCategory(); }
+                  if (e.key === "Escape") setAddingCategory(false);
+                }}
+                placeholder="اسم الفئة الجديدة"
+                className="flex-1"
+              />
+              <Button type="button" size="icon" variant="outline" onClick={confirmNewCategory}>
+                <Check className="w-4 h-4 text-green-600" />
+              </Button>
+              <Button type="button" size="icon" variant="ghost" onClick={() => setAddingCategory(false)}>
+                <X className="w-4 h-4 text-red-500" />
+              </Button>
+            </div>
+          )}
         </Field>
         <Field label="الوحدة">
           <Select value={form.unit} onChange={(e) => set("unit", e.target.value)}>
@@ -167,7 +227,11 @@ export function ProductFormDialog({
             onChange={(e) => set("wholesalePrice", Number(e.target.value))}
           />
         </Field>
-        <Field label="سعر التجزئة" required error={errors.retailPrice}>
+        <Field
+          label={form.piecesPerUnit ? `سعر ${form.retailUnit || "القطعة"}` : "سعر التجزئة للوحدة"}
+          required
+          error={errors.retailPrice}
+        >
           <Input
             type="number"
             min={0}
@@ -176,7 +240,32 @@ export function ProductFormDialog({
             onChange={(e) => set("retailPrice", Number(e.target.value))}
           />
         </Field>
-        <Field label="الكمية الحالية" error={errors.quantity}>
+        <Field label="عدد القطع في الوحدة">
+          <Input
+            type="number"
+            min={1}
+            value={form.piecesPerUnit ?? ""}
+            onChange={(e) => {
+              const val = e.target.value ? Number(e.target.value) : undefined;
+              set("piecesPerUnit", val);
+              if (!val) {
+                set("retailUnit", undefined);
+                set("looseQuantity", undefined);
+              }
+            }}
+            placeholder={`مثل: 24 قطعة في ${form.unit}`}
+          />
+        </Field>
+        {form.piecesPerUnit ? (
+          <Field label="اسم وحدة التجزئة" required error={errors.retailUnit}>
+            <Input
+              value={form.retailUnit ?? ""}
+              onChange={(e) => set("retailUnit", e.target.value || undefined)}
+              placeholder="مثل: قطعة، كيس، علبة صغيرة"
+            />
+          </Field>
+        ) : <div />}
+        <Field label={`الكمية الحالية (${form.unit})`} error={errors.quantity}>
           <Input
             type="number"
             min={0}
@@ -184,6 +273,18 @@ export function ProductFormDialog({
             onChange={(e) => set("quantity", Number(e.target.value))}
           />
         </Field>
+        {form.piecesPerUnit ? (
+          <Field label={`القطع المفردة (${form.retailUnit || "قطعة"})`}>
+            <Input
+              type="number"
+              min={0}
+              max={form.piecesPerUnit - 1}
+              value={form.looseQuantity ?? 0}
+              onChange={(e) => set("looseQuantity", Number(e.target.value) || undefined)}
+              placeholder="0"
+            />
+          </Field>
+        ) : <div />}
         <Field label="الحد الأدنى للمخزون" error={errors.minStock}>
           <Input
             type="number"

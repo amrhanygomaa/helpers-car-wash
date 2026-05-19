@@ -21,6 +21,7 @@ export function PurchaseInvoiceDetailPage() {
   const toast = useToast();
   const {
     purchaseInvoices,
+    purchaseReturns,
     suppliers,
     settings,
     recordPurchasePayment,
@@ -52,6 +53,8 @@ export function PurchaseInvoiceDetailPage() {
   }
 
   const supplier = suppliers.find((s) => s.id === inv.supplierId);
+  const linkedReturns = purchaseReturns.filter((r) => r.originalInvoiceId === inv.id);
+  const canCreateReturn = canAddReturn && inv.lines.some((line) => line.quantity > 0);
 
   return (
     <>
@@ -80,7 +83,7 @@ export function PurchaseInvoiceDetailPage() {
                 <HandCoins className="w-4 h-4" /> تسجيل دفعة
               </Button>
             ) : null}
-            {canAddReturn ? (
+            {canCreateReturn ? (
               <Button variant="outline" onClick={() => setReturnOpen(true)}>
                 <ArrowRight className="w-4 h-4" /> إنشاء مرتجع
               </Button>
@@ -98,6 +101,9 @@ export function PurchaseInvoiceDetailPage() {
         <Stat label="الإجمالي" value={formatCurrency(inv.total, settings.currency)} />
         <Stat label="المدفوع" value={formatCurrency(inv.amountPaid, settings.currency)} tone="green" />
         <Stat label="المتبقي" value={formatCurrency(inv.remaining, settings.currency)} tone={inv.remaining > 0 ? "amber" : "slate"} />
+        {inv.overpayment && inv.overpayment > 0 ? (
+          <Stat label="رصيد دائن لدى المورد" value={formatCurrency(inv.overpayment, settings.currency)} tone="green" />
+        ) : null}
         <Stat label="الحالة" value={inv.status === "paid" ? "مسددة" : inv.status === "partial" ? "جزئي" : "غير مسددة"} tone={inv.status === "paid" ? "green" : inv.status === "partial" ? "amber" : "red"} />
       </div>
 
@@ -155,6 +161,44 @@ export function PurchaseInvoiceDetailPage() {
           </Table>
         </CardBody>
       </Card>
+
+      {linkedReturns.length > 0 ? (
+        <Card>
+          <CardHeader title="المرتجعات المرتبطة بهذه الفاتورة" />
+          <CardBody>
+            <Table>
+              <THead>
+                <TR>
+                  <TH>رقم المرتجع</TH>
+                  <TH>التاريخ</TH>
+                  <TH>الأصناف</TH>
+                  <TH className="text-end">قيمة المرتجع</TH>
+                </TR>
+              </THead>
+              <TBody>
+                {linkedReturns.map((r) => (
+                  <TR key={r.id}>
+                    <TD className="font-mono text-xs text-slate-600">{r.returnNumber}</TD>
+                    <TD>{formatDate(r.date)}</TD>
+                    <TD>
+                      <ul className="space-y-0.5">
+                        {r.lines.map((l) => (
+                          <li key={l.id} className="text-xs text-slate-700">
+                            {l.productName} × {l.quantity} {l.unit}
+                          </li>
+                        ))}
+                      </ul>
+                    </TD>
+                    <TD className="text-end font-semibold text-rose-700">
+                      {formatCurrency(r.total, settings.currency)}
+                    </TD>
+                  </TR>
+                ))}
+              </TBody>
+            </Table>
+          </CardBody>
+        </Card>
+      ) : null}
 
       <Dialog
         open={payOpen}

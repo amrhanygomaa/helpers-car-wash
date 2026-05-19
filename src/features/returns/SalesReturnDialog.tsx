@@ -39,14 +39,25 @@ export function SalesReturnDialog({
       const q = quantities[l.id] || 0;
       return {
         id: uid("rl"),
+        sourceLineId: l.id,
         productId: l.productId,
         productName: l.productName,
         unit: l.unit,
         quantity: q,
         price: l.price,
         subtotal: q * l.price,
+        isRetailUnit: l.isRetailUnit,
       };
     });
+
+    const refundable = invoice.amountReceived + (invoice.overpayment ?? 0);
+    if (refundCash && total > refundable) {
+      toast.error(
+        "لا يمكن رد نقدية أكبر من المحصل",
+        "اختر خصم من الرصيد أو قلل كمية المرتجع"
+      );
+      return;
+    }
 
     addSalesReturn({
       date: new Date().toISOString().slice(0, 10),
@@ -89,7 +100,7 @@ export function SalesReturnDialog({
             <TR>
               <TH>المنتج</TH>
               <TH>السعر</TH>
-              <TH>الكمية الأصلية</TH>
+              <TH>الكمية المتاحة</TH>
               <TH className="w-32">كمية الإرجاع</TH>
               <TH className="text-end">القيمة</TH>
             </TR>
@@ -137,7 +148,7 @@ export function SalesReturnDialog({
             رد القيمة نقداً (تسجيل حركة سحب من الخزينة)
           </label>
           <p className="text-xs text-slate-500 mt-1 mr-6">
-            إذا لم تقم بتحديد هذا الخيار، سيتم خصم القيمة من مديونية العميل.
+            إذا لم تقم بتحديد هذا الخيار، سيتم خصم القيمة من مديونية العميل وتحديث الفاتورة.
           </p>
         </div>
       </div>

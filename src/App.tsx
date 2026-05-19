@@ -15,10 +15,12 @@ import { PurchaseInvoiceDetailPage } from "./pages/PurchaseInvoiceDetailPage";
 import { PurchaseInvoicePrintPage } from "./pages/PurchaseInvoicePrintPage";
 import { SalesInvoicesPage } from "./pages/SalesInvoicesPage";
 import { SalesInvoiceNewPage } from "./pages/SalesInvoiceNewPage";
+import { SalesInvoiceEditPage } from "./pages/SalesInvoiceEditPage";
 import { SalesInvoiceDetailPage } from "./pages/SalesInvoiceDetailPage";
 import { SalesInvoicePrintPage } from "./pages/SalesInvoicePrintPage";
 import { AlertsPage } from "./pages/AlertsPage";
 import { CashboxPage } from "./pages/CashboxPage";
+import { DuesPage } from "./pages/DuesPage";
 import { ReportsPage } from "./pages/ReportsPage";
 import { EmployeeReportPage } from "./pages/EmployeeReportPage";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -180,6 +182,14 @@ export default function App() {
         }
       />
       <Route
+        path="/sales/:id/edit"
+        element={
+          <ProtectedShell permission="salesInvoices">
+            <SalesInvoiceEditPage />
+          </ProtectedShell>
+        }
+      />
+      <Route
         path="/returns"
         element={
           <ProtectedShell permission="returns">
@@ -208,6 +218,14 @@ export default function App() {
         element={
           <ProtectedShell permission="cashbox">
             <CashboxPage />
+          </ProtectedShell>
+        }
+      />
+      <Route
+        path="/dues"
+        element={
+          <ProtectedShell permission="reports">
+            <DuesPage />
           </ProtectedShell>
         }
       />

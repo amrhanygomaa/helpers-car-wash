@@ -54,6 +54,7 @@ export function SuppliersPage() {
   });
 
   const [form, setForm] = useState<Omit<Supplier, "id" | "createdAt">>({
+    code: "",
     name: "",
     phone: "",
     address: "",
@@ -73,12 +74,13 @@ export function SuppliersPage() {
 
   function openNew() {
     setEditing(null);
-    setForm({ name: "", phone: "", address: "", notes: "", commissionNote: "" });
+    setForm({ code: "", name: "", phone: "", address: "", notes: "", commissionNote: "" });
     setOpen(true);
   }
   function openEdit(s: Supplier) {
     setEditing(s);
     setForm({
+      code: s.code ?? "",
       name: s.name,
       phone: s.phone ?? "",
       address: s.address ?? "",
@@ -155,6 +157,7 @@ export function SuppliersPage() {
             <Table>
               <THead>
                 <TR>
+                  <TH>الكود</TH>
                   <TH>اسم المورد</TH>
                   <TH>الهاتف</TH>
                   <TH>العنوان</TH>
@@ -168,6 +171,7 @@ export function SuppliersPage() {
                   const bal = supplierBalance(s.id);
                   return (
                     <TR key={s.id}>
+                      <TD className="text-slate-500 font-mono text-xs">{s.code ?? "—"}</TD>
                       <TD className="font-medium text-slate-900">{s.name}</TD>
                       <TD className="text-slate-600">{s.phone ?? "—"}</TD>
                       <TD className="text-slate-600">{s.address ?? "—"}</TD>
@@ -178,6 +182,10 @@ export function SuppliersPage() {
                         {bal > 0 ? (
                           <Badge tone="amber">
                             {formatCurrency(bal, settings.currency)}
+                          </Badge>
+                        ) : bal < 0 ? (
+                          <Badge tone="green">
+                            لنا رصيد {formatCurrency(-bal, settings.currency)}
                           </Badge>
                         ) : (
                           <Badge tone="green">مسدد</Badge>
@@ -228,7 +236,14 @@ export function SuppliersPage() {
         }
       >
         <div className="grid grid-cols-2 gap-3">
-          <Field label="اسم المورد" required className="col-span-2">
+          <Field label="كود المورد">
+            <Input
+              value={form.code ?? ""}
+              onChange={(e) => setForm({ ...form, code: e.target.value })}
+              placeholder="مثل: SUP-001"
+            />
+          </Field>
+          <Field label="اسم المورد" required>
             <Input
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
@@ -278,8 +293,10 @@ export function SuppliersPage() {
               <Info label="الهاتف">{viewing.phone ?? "—"}</Info>
               <Info label="العنوان">{viewing.address ?? "—"}</Info>
               <Info label="الرصيد المستحق">
-                <span className="font-semibold">
-                  {formatCurrency(supplierBalance(viewing.id), settings.currency)}
+                <span className={`font-semibold ${supplierBalance(viewing.id) < 0 ? "text-emerald-700" : ""}`}>
+                  {supplierBalance(viewing.id) < 0
+                    ? `لنا رصيد ${formatCurrency(-supplierBalance(viewing.id), settings.currency)}`
+                    : formatCurrency(supplierBalance(viewing.id), settings.currency)}
                 </span>
               </Info>
               <Info label="عدد الفواتير">{viewingInvoices.length}</Info>
@@ -316,7 +333,11 @@ export function SuppliersPage() {
                             {formatCurrency(inv.total, settings.currency)}
                           </TD>
                           <TD className="text-end">
-                            {inv.remaining > 0 ? (
+                            {inv.overpayment && inv.overpayment > 0 ? (
+                              <Badge tone="green">
+                                لنا رصيد {formatCurrency(inv.overpayment, settings.currency)}
+                              </Badge>
+                            ) : inv.remaining > 0 ? (
                               <Badge tone="amber">
                                 {formatCurrency(inv.remaining, settings.currency)}
                               </Badge>

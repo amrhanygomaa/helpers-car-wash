@@ -27,6 +27,11 @@ export function SalesInvoicesPage() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
 
+  const customerCodeMap = useMemo(
+    () => new Map(customers.map((c) => [c.id, (c.code ?? "").toLowerCase()])),
+    [customers]
+  );
+
   const filtered = useMemo(() => {
     let list = salesInvoices;
     if (q.trim()) {
@@ -35,7 +40,8 @@ export function SalesInvoicesPage() {
         (s) =>
           s.invoiceNumber.toLowerCase().includes(t) ||
           s.customerName.toLowerCase().includes(t) ||
-          (s.driverName ?? "").toLowerCase().includes(t)
+          (s.driverName ?? "").toLowerCase().includes(t) ||
+          (customerCodeMap.get(s.customerId) ?? "").includes(t)
       );
     }
     if (customerId) list = list.filter((s) => s.customerId === customerId);
@@ -43,7 +49,7 @@ export function SalesInvoicesPage() {
     if (payment) list = list.filter((s) => s.paymentType === payment);
     list = list.filter((s) => inRange(s.date, from, to));
     return [...list].sort((a, b) => (a.date < b.date ? 1 : -1));
-  }, [salesInvoices, q, customerId, status, payment, from, to]);
+  }, [salesInvoices, customerCodeMap, q, customerId, status, payment, from, to]);
 
   const totals = useMemo(() => {
     const total = filtered.reduce((a, s) => a + (s.cancelled ? 0 : s.total), 0);
@@ -181,7 +187,11 @@ export function SalesInvoicesPage() {
                       {formatCurrency(s.amountReceived, settings.currency)}
                     </TD>
                     <TD className="text-end">
-                      {s.remaining > 0 ? (
+                      {s.overpayment && s.overpayment > 0 ? (
+                        <span className="text-emerald-700">
+                          رصيد دائن {formatCurrency(s.overpayment, settings.currency)}
+                        </span>
+                      ) : s.remaining > 0 ? (
                         <span className="text-rose-700">
                           {formatCurrency(s.remaining, settings.currency)}
                         </span>

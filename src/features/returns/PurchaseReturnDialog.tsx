@@ -38,6 +38,7 @@ export function PurchaseReturnDialog({
       const q = quantities[l.id] || 0;
       return {
         id: uid("rl"),
+        sourceLineId: l.id,
         productId: l.productId,
         productName: l.productName,
         unit: l.unit,
@@ -87,7 +88,7 @@ export function PurchaseReturnDialog({
             <TR>
               <TH>المنتج</TH>
               <TH>السعر</TH>
-              <TH>الكمية الأصلية</TH>
+              <TH>الكمية المتاحة</TH>
               <TH className="w-32">كمية الإرجاع</TH>
               <TH className="text-end">القيمة</TH>
             </TR>

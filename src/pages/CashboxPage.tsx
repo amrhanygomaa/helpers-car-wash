@@ -47,11 +47,11 @@ export function CashboxPage() {
     () =>
       salesInvoices
         .filter((s) => !s.cancelled)
-        .reduce((a, s) => a + s.amountReceived, 0),
+        .reduce((a, s) => a + s.amountReceived + (s.overpayment ?? 0), 0),
     [salesInvoices]
   );
   const totalPurchasePayments = useMemo(
-    () => purchaseInvoices.reduce((a, s) => a + s.amountPaid, 0),
+    () => purchaseInvoices.reduce((a, s) => a + s.amountPaid + (s.overpayment ?? 0), 0),
     [purchaseInvoices]
   );
   const receivables = useMemo(

@@ -24,7 +24,9 @@ import type {
   CommissionType,
   LicenseStatus,
   ID,
+  InvoiceLine,
   LoginResult,
+  ReturnLine,
 } from "../types";
 import { lsClearAll, lsGet, lsRemove, lsSet } from "../lib/storage";
 import { hashPassword, verifyFallbackPassword } from "../lib/auth";
@@ -63,6 +65,7 @@ interface AppState {
   stockMovements: StockMovement[];
   cashEntries: CashEntry[];
   nextProductCode: number;
+  nextCustomerCode: number;
   users: AppUser[];
   currentUser: AppUser | null;
   salesReturns: SalesReturn[];
@@ -73,11 +76,11 @@ interface AppState {
 type UpdateCurrentUserProfileResult = {
   ok: boolean;
   error?:
-    | "not_authenticated"
-    | "invalid_name"
-    | "invalid_current_password"
-    | "password_too_short"
-    | "user_missing";
+  | "not_authenticated"
+  | "invalid_name"
+  | "invalid_current_password"
+  | "password_too_short"
+  | "user_missing";
 };
 
 interface AppActions {
@@ -106,7 +109,8 @@ interface AppActions {
   adjustStock: (
     productId: string,
     delta: number,
-    reason: string
+    reason: string,
+    looseDelta?: number
   ) => void;
 
   // Suppliers
@@ -138,6 +142,10 @@ interface AppActions {
   addSalesInvoice: (
     inv: Omit<SalesInvoice, "id" | "createdAt" | "status" | "remaining">
   ) => SalesInvoice;
+  updateSalesInvoice: (
+    id: string,
+    patch: Omit<SalesInvoice, "id" | "createdAt" | "customerId" | "customerName" | "status" | "remaining" | "total">
+  ) => void;
   recordSalesReceipt: (id: string, amount: number) => void;
   cancelSalesInvoice: (id: string) => void;
   deleteSalesInvoice: (id: string) => boolean;
@@ -159,11 +167,11 @@ interface AppActions {
   currentCashBalance: () => number;
   customerBalance: (customerId: string) => number;
   supplierBalance: (supplierId: string) => number;
-  calculateSupplierCommission: (supplierId: string) => { 
-    tierId: string; 
-    threshold: number; 
-    periodDays: number; 
-    totalPurchases: number; 
+  calculateSupplierCommission: (supplierId: string) => {
+    tierId: string;
+    threshold: number;
+    periodDays: number;
+    totalPurchases: number;
     earned: number;
     commissionType: CommissionType;
     commissionValue: number;
@@ -192,9 +200,136 @@ function computeStatus(
   total: number,
   paid: number
 ): "paid" | "partial" | "unpaid" {
+  if (total <= 0) return "paid";
   if (paid <= 0) return "unpaid";
   if (paid >= total) return "paid";
   return "partial";
+}
+
+function applyPieceDeduction(p: Product, pieces: number): Partial<Product> {
+  const ppu = p.piecesPerUnit!;
+  const loose = p.looseQuantity ?? 0;
+  if (loose >= pieces) {
+    return { quantity: p.quantity, looseQuantity: loose - pieces };
+  }
+  const needed = pieces - loose;
+  const cartonsToOpen = Math.ceil(needed / ppu);
+  return {
+    quantity: Math.max(0, p.quantity - cartonsToOpen),
+    looseQuantity: cartonsToOpen * ppu - needed,
+  };
+}
+
+function applyPieceAddition(p: Product, pieces: number): Partial<Product> {
+  const ppu = p.piecesPerUnit!;
+  const newLoose = (p.looseQuantity ?? 0) + pieces;
+  const fullCartons = Math.floor(newLoose / ppu);
+  return {
+    quantity: p.quantity + fullCartons,
+    looseQuantity: newLoose - fullCartons * ppu,
+  };
+}
+
+function applyReturnToInvoiceLines(lines: InvoiceLine[], returns: ReturnLine[]) {
+  const remainingByLine = new Map<string, number>();
+  const remainingByProduct = new Map<string, number>();
+
+  returns.forEach((line) => {
+    if (line.sourceLineId) {
+      remainingByLine.set(
+        line.sourceLineId,
+        (remainingByLine.get(line.sourceLineId) ?? 0) + line.quantity
+      );
+      return;
+    }
+
+    remainingByProduct.set(
+      line.productId,
+      (remainingByProduct.get(line.productId) ?? 0) + line.quantity
+    );
+  });
+
+  let appliedTotal = 0;
+  const nextLines = lines
+    .map((line) => {
+      const lineReturnQty = remainingByLine.get(line.id);
+      const productReturnQty = lineReturnQty === undefined
+        ? remainingByProduct.get(line.productId)
+        : undefined;
+      const requestedReturnQty = lineReturnQty ?? productReturnQty ?? 0;
+      const appliedQty = Math.min(line.quantity, Math.max(0, requestedReturnQty));
+
+      if (lineReturnQty !== undefined) {
+        remainingByLine.set(line.id, Math.max(0, lineReturnQty - appliedQty));
+      } else if (productReturnQty !== undefined) {
+        remainingByProduct.set(line.productId, Math.max(0, productReturnQty - appliedQty));
+      }
+
+      appliedTotal += appliedQty * line.price;
+      const quantity = Math.max(0, line.quantity - appliedQty);
+      return {
+        ...line,
+        quantity,
+        subtotal: quantity * line.price,
+      };
+    })
+    .filter((line) => line.quantity > 0);
+
+  const total = nextLines.reduce((sum, line) => sum + line.subtotal, 0);
+  return { lines: nextLines, total, appliedTotal };
+}
+
+function settleSalesInvoiceReturn(
+  invoice: SalesInvoice,
+  ret: Pick<SalesReturn, "lines" | "total" | "refundCash">
+) {
+  const adjusted = applyReturnToInvoiceLines(invoice.lines, ret.lines);
+  const returnTotal = Math.min(
+    invoice.total,
+    ret.total,
+    adjusted.appliedTotal
+  );
+  const paidAndCredit = invoice.amountReceived + (invoice.overpayment ?? 0);
+  const cashRefund = ret.refundCash ? Math.min(returnTotal, paidAndCredit) : 0;
+  const paidAndCreditAfterReturn = Math.max(0, paidAndCredit - cashRefund);
+  const amountReceived = Math.min(adjusted.total, paidAndCreditAfterReturn);
+  const overpayment = Math.max(0, paidAndCreditAfterReturn - amountReceived);
+  const remaining = Math.max(0, adjusted.total - amountReceived);
+
+  return {
+    invoice: {
+      ...invoice,
+      lines: adjusted.lines,
+      total: adjusted.total,
+      amountReceived,
+      remaining,
+      status: computeStatus(adjusted.total, amountReceived),
+      overpayment: overpayment > 0 ? overpayment : undefined,
+      paymentDueDate: remaining > 0 ? invoice.paymentDueDate : undefined,
+    },
+    cashRefund,
+  };
+}
+
+function settlePurchaseInvoiceReturn(
+  invoice: PurchaseInvoice,
+  ret: Pick<PurchaseReturn, "lines" | "total">
+) {
+  const adjusted = applyReturnToInvoiceLines(invoice.lines, ret.lines);
+  const paidAndCredit = invoice.amountPaid + (invoice.overpayment ?? 0);
+  const amountPaid = Math.min(adjusted.total, paidAndCredit);
+  const overpayment = Math.max(0, paidAndCredit - amountPaid);
+  const remaining = Math.max(0, adjusted.total - amountPaid);
+
+  return {
+    ...invoice,
+    lines: adjusted.lines,
+    total: adjusted.total,
+    amountPaid,
+    remaining,
+    status: computeStatus(adjusted.total, amountPaid),
+    overpayment: overpayment > 0 ? overpayment : undefined,
+  };
 }
 
 function monthsBetween(start?: string | null, end?: string | null): number {
@@ -326,10 +461,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       isDesktop
         ? null
         : {
-            state: "active",
-            machineCode: "WEB-DEVELOPMENT",
-            machineHash: "WEB-DEVELOPMENT",
-          }
+          state: "active",
+          machineCode: "WEB-DEVELOPMENT",
+          machineHash: "WEB-DEVELOPMENT",
+        }
   );
   const [auth, setAuth] = useState<AuthState>({ isAuthenticated: false });
   const [desktopOwnerExists, setDesktopOwnerExists] = useState<boolean | null>(
@@ -363,6 +498,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
   const [nextProductCode, setNextProductCode] = useState<number>(() =>
     lsGet<number>("nextProductCode", 1000)
+  );
+  const [nextCustomerCode, setNextCustomerCode] = useState<number>(() =>
+    lsGet<number>("nextCustomerCode", 1)
   );
   const [users, setUsers] = useState<AppUser[]>(() =>
     lsGet<AppUser[]>("users", seedUsers).map(normalizeUser)
@@ -499,7 +637,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [settings, products, suppliers, customers, purchaseInvoices, salesInvoices, stockMovements, cashEntries, nextProductCode, users, salesReturns, purchaseReturns, drivers]);
-  
+
   const currentUser = useMemo(() => {
     if (!auth.isAuthenticated) return null;
     if (auth.userId) {
@@ -528,6 +666,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => lsSet("stockMovements", stockMovements), [stockMovements]);
   useEffect(() => lsSet("cashEntries", cashEntries), [cashEntries]);
   useEffect(() => lsSet("nextProductCode", nextProductCode), [nextProductCode]);
+  useEffect(() => lsSet("nextCustomerCode", nextCustomerCode), [nextCustomerCode]);
   useEffect(() => lsSet("users", users), [users]);
   useEffect(() => lsSet("salesReturns", salesReturns), [salesReturns]);
   useEffect(() => lsSet("purchaseReturns", purchaseReturns), [purchaseReturns]);
@@ -689,10 +828,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
             result.error === "invalid_current_password"
               ? "invalid_current_password"
               : result.error === "user_missing"
-              ? "user_missing"
-              : result.error === "not_authorized"
-              ? "not_authenticated"
-              : "password_too_short",
+                ? "user_missing"
+                : result.error === "not_authorized"
+                  ? "not_authenticated"
+                  : "password_too_short",
         };
       }
       if (result.user) {
@@ -723,8 +862,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
               result.error === "invalid_current_password"
                 ? "invalid_current_password"
                 : result.error === "user_missing"
-                ? "user_missing"
-                : "password_too_short",
+                  ? "user_missing"
+                  : "password_too_short",
           };
         }
         nextPasswordHash = result.user?.passwordHash;
@@ -744,10 +883,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       list.map((user) =>
         user.id === currentUser.id
           ? normalizeUser({
-              ...user,
-              name: cleanName,
-              passwordHash: nextPasswordHash ?? user.passwordHash,
-            })
+            ...user,
+            name: cleanName,
+            passwordHash: nextPasswordHash ?? user.passwordHash,
+          })
           : user
       )
     );
@@ -792,24 +931,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setProducts((list) => list.filter((p) => p.id !== id));
     return true;
   };
-  
 
 
-  const adjustStock: AppActions["adjustStock"] = (productId, delta, reason) => {
+
+  const adjustStock: AppActions["adjustStock"] = (productId, delta, reason, looseDelta) => {
     setProducts((list) =>
-      list.map((p) =>
-        p.id === productId
-          ? { ...p, quantity: Math.max(0, p.quantity + delta) }
-          : p
-      )
+      list.map((p) => {
+        if (p.id !== productId) return p;
+        const newQty = Math.max(0, p.quantity + delta);
+        if (looseDelta !== undefined && p.piecesPerUnit) {
+          const newLoose = Math.max(0, (p.looseQuantity ?? 0) + looseDelta);
+          const fullCartons = Math.floor(newLoose / p.piecesPerUnit);
+          return {
+            ...p,
+            quantity: newQty + fullCartons,
+            looseQuantity: newLoose - fullCartons * p.piecesPerUnit,
+          };
+        }
+        return { ...p, quantity: newQty };
+      })
     );
     const prod = products.find((x) => x.id === productId);
     if (prod) {
+      const totalDelta = delta + (looseDelta && prod.piecesPerUnit ? looseDelta / prod.piecesPerUnit : 0);
       const mv: StockMovement = {
         id: uid("mov"),
         productId,
         productName: prod.name,
-        type: delta >= 0 ? "adjustment-in" : "adjustment-out",
+        type: totalDelta >= 0 ? "adjustment-in" : "adjustment-out",
         quantity: delta,
         reason,
         referenceType: "manual",
@@ -874,9 +1023,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const addCustomer: AppActions["addCustomer"] = (c) => {
     const cus: Customer = {
       ...c,
+      code: `CUS-${String(nextCustomerCode).padStart(4, "0")}`,
       id: uid("cus"),
       createdAt: new Date().toISOString(),
     };
+    setNextCustomerCode((prev) => prev + 1);
     setCustomers((list) => [cus, ...list]);
     return cus;
   };
@@ -1040,6 +1191,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       list.map((p) => {
         const l = inv.lines.find((x) => x.productId === p.id);
         if (!l) return p;
+        if (l.isRetailUnit && p.piecesPerUnit) {
+          return { ...p, ...applyPieceDeduction(p, l.quantity) };
+        }
         return { ...p, quantity: Math.max(0, p.quantity - l.quantity) };
       })
     );
@@ -1056,11 +1210,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }));
     setStockMovements((list) => [...movements, ...list]);
 
-    if (inv.amountReceived > 0) {
+    const totalCashReceived = inv.amountReceived + (inv.overpayment ?? 0);
+    if (totalCashReceived > 0) {
       const ce: CashEntry = {
         id: uid("cash_s"),
         type: "sales-receipt",
-        amount: inv.amountReceived,
+        amount: totalCashReceived,
         description: `تحصيل فاتورة مبيعات ${inv.invoiceNumber} — ${inv.customerName}`,
         referenceId: id,
         date: inv.date,
@@ -1074,12 +1229,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSalesInvoices((list) =>
       list.map((inv) => {
         if (inv.id !== id) return inv;
-        const received = Math.min(inv.total, inv.amountReceived + amount);
+        const cappedAmount = Math.min(amount, inv.remaining);
+        const excess = amount - cappedAmount;
+        const received = inv.amountReceived + cappedAmount;
         return {
           ...inv,
           amountReceived: received,
           remaining: Math.max(0, inv.total - received),
           status: computeStatus(inv.total, received),
+          overpayment: excess > 0 ? (inv.overpayment ?? 0) + excess : inv.overpayment,
         };
       })
     );
@@ -1096,6 +1254,73 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setCashEntries((list) => [ce, ...list]);
     }
   };
+  const updateSalesInvoice: AppActions["updateSalesInvoice"] = (id, patch) => {
+    const inv = salesInvoices.find((s) => s.id === id);
+    if (!inv || inv.cancelled) return;
+
+    // Restore old stock quantities
+    setProducts((list) =>
+      list.map((p) => {
+        const old = inv.lines.find((l) => l.productId === p.id);
+        if (!old) return p;
+        if (old.isRetailUnit && p.piecesPerUnit) {
+          return { ...p, ...applyPieceAddition(p, old.quantity) };
+        }
+        return { ...p, quantity: p.quantity + old.quantity };
+      })
+    );
+
+    // Deduct new stock quantities
+    setProducts((list) =>
+      list.map((p) => {
+        const nl = patch.lines.find((l) => l.productId === p.id);
+        if (!nl) return p;
+        if (nl.isRetailUnit && p.piecesPerUnit) {
+          return { ...p, ...applyPieceDeduction(p, nl.quantity) };
+        }
+        return { ...p, quantity: p.quantity - nl.quantity };
+      })
+    );
+
+    // Replace stock movements for this invoice
+    setStockMovements((list) => {
+      const kept = list.filter((m) => !(m.referenceId === id && m.type === "sale"));
+      const next: StockMovement[] = patch.lines.map((l, i) => ({
+        id: uid(`mov_upd_${i}`),
+        productId: l.productId,
+        productName: l.productName,
+        type: "sale" as const,
+        quantity: -l.quantity,
+        referenceId: id,
+        referenceType: "sale" as const,
+        date: patch.date,
+        reason: `فاتورة مبيعات ${inv.invoiceNumber}`,
+      }));
+      return [...kept, ...next];
+    });
+
+    const newTotal = patch.lines.reduce((a, l) => a + l.subtotal, 0);
+    const cappedReceived = Math.min(patch.amountReceived, newTotal);
+    const newOverpayment = Math.max(0, patch.amountReceived - newTotal);
+    const newRemaining = Math.max(0, newTotal - cappedReceived);
+    const newStatus = computeStatus(newTotal, cappedReceived);
+
+    setSalesInvoices((list) =>
+      list.map((s) =>
+        s.id === id
+          ? {
+              ...s, ...patch,
+              amountReceived: cappedReceived,
+              total: newTotal,
+              remaining: newRemaining,
+              status: newStatus,
+              overpayment: newOverpayment > 0 ? newOverpayment : undefined,
+            }
+          : s
+      )
+    );
+  };
+
   const cancelSalesInvoice: AppActions["cancelSalesInvoice"] = (id) => {
     const inv = salesInvoices.find((i) => i.id === id);
     if (!inv || inv.cancelled) return;
@@ -1104,6 +1329,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       list.map((p) => {
         const l = inv.lines.find((x) => x.productId === p.id);
         if (!l) return p;
+        if (l.isRetailUnit && p.piecesPerUnit) {
+          return { ...p, ...applyPieceAddition(p, l.quantity) };
+        }
         return { ...p, quantity: p.quantity + l.quantity };
       })
     );
@@ -1131,6 +1359,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         list.map((p) => {
           const l = inv.lines.find((x) => x.productId === p.id);
           if (!l) return p;
+          if (l.isRetailUnit && p.piecesPerUnit) {
+            return { ...p, ...applyPieceAddition(p, l.quantity) };
+          }
           return { ...p, quantity: p.quantity + l.quantity };
         })
       );
@@ -1158,6 +1389,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       list.map((p) => {
         const l = r.lines.find((x) => x.productId === p.id);
         if (!l) return p;
+        if (l.isRetailUnit && p.piecesPerUnit) {
+          return { ...p, ...applyPieceAddition(p, l.quantity) };
+        }
         return { ...p, quantity: p.quantity + l.quantity };
       })
     );
@@ -1176,12 +1410,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }));
     setStockMovements((l) => [...movements, ...l]);
 
+    const originalInvoice = salesInvoices.find((inv) => inv.id === r.originalInvoiceId);
+    const cashRefundAmount = originalInvoice
+      ? settleSalesInvoiceReturn(originalInvoice, r).cashRefund
+      : r.refundCash
+        ? r.total
+        : 0;
+
+    setSalesInvoices((list) =>
+      list.map((inv) =>
+        inv.id === r.originalInvoiceId && !inv.cancelled
+          ? settleSalesInvoiceReturn(inv, r).invoice
+          : inv
+      )
+    );
+
     // Cash refund if applicable
-    if (r.refundCash && r.total > 0) {
+    if (r.refundCash && cashRefundAmount > 0) {
       const ce: CashEntry = {
         id: uid("cash_sr"),
         type: "adjustment",
-        amount: -r.total,
+        amount: -cashRefundAmount,
         description: `رد نقدية لمرتجع مبيعات ${num} — ${r.customerName}`,
         referenceId: id,
         date: r.date,
@@ -1226,6 +1475,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }));
     setStockMovements((l) => [...movements, ...l]);
 
+    setPurchaseInvoices((list) =>
+      list.map((inv) =>
+        inv.id === r.originalInvoiceId ? settlePurchaseInvoiceReturn(inv, r) : inv
+      )
+    );
+
     return full;
   };
 
@@ -1253,32 +1508,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const customerBalance = useCallback(
     (customerId: string) => {
-      const invoicesTotal = salesInvoices
+      // remaining already reflects non-cash return credits.
+      // overpayment (excess payment or excess return credit) further reduces the balance.
+      return salesInvoices
         .filter((s) => s.customerId === customerId && !s.cancelled)
-        .reduce((a, s) => a + s.remaining, 0);
-      
-      const returnsTotal = salesReturns
-        .filter((r) => r.customerId === customerId && !r.refundCash)
-        .reduce((a, r) => a + r.total, 0);
-
-      return invoicesTotal - returnsTotal;
+        .reduce((a, s) => a + s.remaining - (s.overpayment ?? 0), 0);
     },
-    [salesInvoices, salesReturns]
+    [salesInvoices]
   );
 
   const supplierBalance = useCallback(
     (supplierId: string) => {
-      const invoicesTotal = purchaseInvoices
+      return purchaseInvoices
         .filter((p) => p.supplierId === supplierId)
-        .reduce((a, p) => a + p.remaining, 0);
-        
-      const returnsTotal = purchaseReturns
-        .filter((r) => r.supplierId === supplierId)
-        .reduce((a, r) => a + r.total, 0);
-
-      return invoicesTotal - returnsTotal;
+        .reduce((a, p) => a + p.remaining - (p.overpayment ?? 0), 0);
     },
-    [purchaseInvoices, purchaseReturns]
+    [purchaseInvoices]
   );
 
   const calculateSupplierCommission: AppActions["calculateSupplierCommission"] = useCallback((supplierId) => {
@@ -1383,7 +1628,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const text = await file.text();
       const data = JSON.parse(text);
       if (!data.state || !data.version) return false;
-      
+
       // SECURITY: Validate required structure keys
       const s = data.state;
       const requiredKeys = ["products", "customers", "suppliers"];
@@ -1408,7 +1653,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (Array.isArray(s.salesReturns)) setSalesReturns(s.salesReturns);
       if (Array.isArray(s.purchaseReturns)) setPurchaseReturns(s.purchaseReturns);
       if (Array.isArray(s.drivers)) setDrivers(s.drivers);
-      
+
       return true;
     } catch {
       return false;
@@ -1418,7 +1663,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const exportToCSV: AppActions["exportToCSV"] = useCallback((type) => {
     let rows: (string | number | undefined)[][] = [];
     let headers: string[] = [];
-    
+
     if (type === "products") {
       headers = ["الكود", "الاسم", "الفئة", "الكمية", "سعر الشراء", "سعر الجملة", "سعر التجزئة"];
       rows = products.map(p => [p.code, p.name, p.category, p.quantity, p.purchasePrice, p.wholesalePrice, p.retailPrice]);
@@ -1473,6 +1718,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       stockMovements,
       cashEntries,
       nextProductCode,
+      nextCustomerCode,
       salesReturns,
       purchaseReturns,
       drivers,
@@ -1509,6 +1755,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       recordPurchasePayment,
       deletePurchaseInvoice,
       addSalesInvoice,
+      updateSalesInvoice,
       recordSalesReceipt,
       cancelSalesInvoice,
       deleteSalesInvoice,
@@ -1540,6 +1787,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       stockMovements,
       cashEntries,
       nextProductCode,
+      nextCustomerCode,
       salesReturns,
       purchaseReturns,
       drivers,

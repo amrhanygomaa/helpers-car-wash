@@ -216,7 +216,9 @@ export function ProductsPage() {
                       <TD>{p.category}</TD>
                       <TD>{p.unit}</TD>
                       <TD className="text-end font-medium">
-                        {p.quantity}
+                        {p.piecesPerUnit
+                          ? `${p.quantity} ${p.unit}${p.looseQuantity ? ` + ${p.looseQuantity} ${p.retailUnit ?? "قطعة"}` : ""}`
+                          : `${p.quantity} ${p.unit}`}
                       </TD>
                       <TD className="text-end text-slate-600">
                         {formatCurrency(p.purchasePrice, settings.currency)}

@@ -22,6 +22,38 @@ interface LineDraft {
   expiryDate?: string;
 }
 
+const DRAFT_KEY = "sales_invoice_new_draft";
+
+interface DraftState {
+  invoiceNumber: string;
+  date: string;
+  customerId: string;
+  driverId: string;
+  paymentType: SalesPaymentType;
+  priceType: SalesPriceType;
+  paymentDueDate: string;
+  amountReceived: number;
+  notes: string;
+  lines: LineDraft[];
+}
+
+function loadDraft(): DraftState | null {
+  try {
+    const raw = sessionStorage.getItem(DRAFT_KEY);
+    return raw ? (JSON.parse(raw) as DraftState) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveDraft(state: DraftState) {
+  sessionStorage.setItem(DRAFT_KEY, JSON.stringify(state));
+}
+
+function clearDraft() {
+  sessionStorage.removeItem(DRAFT_KEY);
+}
+
 function nextInvoiceNumber(existing: string[]): string {
   const nums = existing
     .map((x) => parseInt(x.replace(/\D/g, ""), 10))
@@ -35,23 +67,43 @@ export function SalesInvoiceNewPage() {
   const navigate = useNavigate();
   const toast = useToast();
 
+  const [draftRestored, setDraftRestored] = useState(() => !!loadDraft());
   const [invoiceNumber, setInvoiceNumber] = useState(() =>
-    nextInvoiceNumber(salesInvoices.map((s) => s.invoiceNumber))
+    loadDraft()?.invoiceNumber ?? nextInvoiceNumber(salesInvoices.map((s) => s.invoiceNumber))
   );
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [customerId, setCustomerId] = useState(customers[0]?.id ?? "");
-  const [driverId, setDriverId] = useState("");
-  const [paymentType, setPaymentType] = useState<SalesPaymentType>("cash");
-  const [priceType, setPriceType] = useState<SalesPriceType>("wholesale");
-  const [paymentDueDate, setPaymentDueDate] = useState("");
-  const [amountReceived, setAmountReceived] = useState<number>(0);
-  const [notes, setNotes] = useState("");
-  const [lines, setLines] = useState<LineDraft[]>([]);
+  const [date, setDate] = useState(() => loadDraft()?.date ?? new Date().toISOString().slice(0, 10));
+  const [customerId, setCustomerId] = useState(() => loadDraft()?.customerId ?? customers[0]?.id ?? "");
+  const [driverId, setDriverId] = useState(() => loadDraft()?.driverId ?? "");
+  const [paymentType, setPaymentType] = useState<SalesPaymentType>(() => loadDraft()?.paymentType ?? "cash");
+  const [priceType, setPriceType] = useState<SalesPriceType>(() => loadDraft()?.priceType ?? "wholesale");
+  const [paymentDueDate, setPaymentDueDate] = useState(() => loadDraft()?.paymentDueDate ?? "");
+  const [amountReceived, setAmountReceived] = useState<number>(() => loadDraft()?.amountReceived ?? 0);
+  const [notes, setNotes] = useState(() => loadDraft()?.notes ?? "");
+  const [lines, setLines] = useState<LineDraft[]>(() => loadDraft()?.lines ?? []);
   const [newDriverOpen, setNewDriverOpen] = useState(false);
 
   useEffect(() => {
     if (!customerId && customers[0]) setCustomerId(customers[0].id);
   }, [customers, customerId]);
+
+  useEffect(() => {
+    saveDraft({ invoiceNumber, date, customerId, driverId, paymentType, priceType, paymentDueDate, amountReceived, notes, lines });
+  }, [invoiceNumber, date, customerId, driverId, paymentType, priceType, paymentDueDate, amountReceived, notes, lines]);
+
+  function handleClearDraft() {
+    clearDraft();
+    setDraftRestored(false);
+    setInvoiceNumber(nextInvoiceNumber(salesInvoices.map((s) => s.invoiceNumber)));
+    setDate(new Date().toISOString().slice(0, 10));
+    setCustomerId(customers[0]?.id ?? "");
+    setDriverId("");
+    setPaymentType("cash");
+    setPriceType("wholesale");
+    setPaymentDueDate("");
+    setAmountReceived(0);
+    setNotes("");
+    setLines([]);
+  }
 
   const total = useMemo(
     () => lines.reduce((a, l) => a + (l.quantity || 0) * (l.price || 0), 0),
@@ -75,18 +127,23 @@ export function SalesInvoiceNewPage() {
       if (!l.productId) return;
       map.set(l.productId, (map.get(l.productId) ?? 0) + l.quantity);
     });
-    const out: { productId: string; requested: number; available: number; name: string }[] = [];
+    const out: { productId: string; requested: number; available: number; name: string; unit: string }[] = [];
     map.forEach((req, pid) => {
       const p = products.find((x) => x.id === pid);
       if (!p) return;
-      if (req > p.quantity) {
-        out.push({ productId: pid, requested: req, available: p.quantity, name: p.name });
+      const isRetailLine = priceType === "retail" && !!p.piecesPerUnit;
+      const available = isRetailLine
+        ? p.quantity * p.piecesPerUnit! + (p.looseQuantity ?? 0)
+        : p.quantity;
+      if (req > available) {
+        out.push({ productId: pid, requested: req, available, name: p.name, unit: isRetailLine ? (p.retailUnit ?? "قطعة") : p.unit });
       }
     });
     return out;
-  }, [lines, products]);
+  }, [lines, products, priceType]);
 
   function productPrice(product: Product, selectedPriceType = priceType) {
+    if (selectedPriceType === "retail" && product.piecesPerUnit) return product.retailPrice;
     return selectedPriceType === "retail" ? product.retailPrice : product.wholesalePrice;
   }
 
@@ -170,17 +227,23 @@ export function SalesInvoiceNewPage() {
     const customer = customers.find((c) => c.id === customerId)!;
     const invLines: InvoiceLine[] = lines.map((l) => {
       const p = products.find((x) => x.id === l.productId)!;
+      const isRetailUnit = priceType === "retail" && !!p.piecesPerUnit;
       return {
         id: l.id,
         productId: p.id,
         productName: p.name,
-        unit: p.unit,
+        unit: isRetailUnit ? (p.retailUnit ?? "قطعة") : p.unit,
         quantity: l.quantity,
         price: l.price,
         expiryDate: l.expiryDate,
         subtotal: l.quantity * l.price,
+        isRetailUnit: isRetailUnit || undefined,
       };
     });
+
+    // If customer paid the full amount or more, treat as cash regardless of selected type
+    const effectivePaymentType: SalesPaymentType = receivedForInvoice >= total ? "cash" : paymentType;
+    const effectiveDueDate = effectivePaymentType === "account" && paymentDueDate ? paymentDueDate : undefined;
 
     const inv = addSalesInvoice({
       invoiceNumber,
@@ -192,12 +255,13 @@ export function SalesInvoiceNewPage() {
       lines: invLines,
       total,
       amountReceived: receivedForInvoice,
-      paymentType,
+      overpayment: customerChange > 0 ? customerChange : undefined,
+      paymentType: effectivePaymentType,
       priceType,
-      paymentDueDate:
-        paymentType === "account" && paymentDueDate ? paymentDueDate : undefined,
+      paymentDueDate: effectiveDueDate,
       notes: notes.trim() || undefined,
     });
+    clearDraft();
     toast.success("تم حفظ الفاتورة", `رقم ${inv.invoiceNumber}`);
     navigate(`/sales/${inv.id}`);
   }
@@ -223,13 +287,22 @@ export function SalesInvoiceNewPage() {
         }
       />
 
+      {draftRestored ? (
+        <div className="bg-blue-50 border border-blue-200 text-blue-900 rounded-lg px-4 py-2.5 text-sm flex items-center justify-between">
+          <span>تم استعادة مسودة محفوظة تلقائياً.</span>
+          <Button size="sm" variant="outline" onClick={handleClearDraft}>
+            مسح المسودة
+          </Button>
+        </div>
+      ) : null}
+
       {stockWarnings.length > 0 ? (
         <div className="bg-rose-50 border border-rose-200 text-rose-900 rounded-lg p-3 text-sm">
           <div className="font-semibold mb-1">⚠ تحذير: الكمية تتجاوز المخزون</div>
           <ul className="list-disc ps-5 space-y-0.5 text-xs">
             {stockWarnings.map((w) => (
               <li key={w.productId}>
-                {w.name}: المتاح {w.available} / المطلوب {w.requested}
+                {w.name}: المتاح {w.available} {w.unit} / المطلوب {w.requested} {w.unit}
               </li>
             ))}
           </ul>
@@ -334,7 +407,11 @@ export function SalesInvoiceNewPage() {
               <TBody>
                 {lines.map((l) => {
                   const p = products.find((x) => x.id === l.productId);
-                  const available = p?.quantity ?? 0;
+                  const isRetailLine = priceType === "retail" && !!p?.piecesPerUnit;
+                  const available = isRetailLine
+                    ? p!.quantity * p!.piecesPerUnit! + (p!.looseQuantity ?? 0)
+                    : (p?.quantity ?? 0);
+                  const availUnit = isRetailLine ? (p!.retailUnit ?? "قطعة") : (p?.unit ?? "");
                   const exceeds = l.quantity > available && !!p;
                   return (
                     <TR key={l.id}>
@@ -348,7 +425,7 @@ export function SalesInvoiceNewPage() {
                       <TD className="text-center text-xs">
                         {p ? (
                           <Badge tone={available <= p.minStock ? "amber" : "slate"}>
-                            {available} {p.unit}
+                            {available} {availUnit}
                           </Badge>
                         ) : (
                           "—"

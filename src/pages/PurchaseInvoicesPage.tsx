@@ -163,7 +163,11 @@ export function PurchaseInvoicesPage() {
                       {formatCurrency(s.amountPaid, settings.currency)}
                     </TD>
                     <TD className="text-end">
-                      {s.remaining > 0 ? (
+                      {s.overpayment && s.overpayment > 0 ? (
+                        <span className="text-emerald-700">
+                          لنا رصيد {formatCurrency(s.overpayment, settings.currency)}
+                        </span>
+                      ) : s.remaining > 0 ? (
                         <span className="text-rose-700">
                           {formatCurrency(s.remaining, settings.currency)}
                         </span>

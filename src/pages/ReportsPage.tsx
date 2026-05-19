@@ -4,9 +4,9 @@ import {
   Printer,
   TrendingUp,
   TrendingDown,
-  Package,
   Coins,
   UserRound,
+  Users,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -140,6 +140,11 @@ export function ReportsPage() {
   const unattributedEmployeeInvoices = salesInRange.filter((invoice) => !invoice.createdByUserId);
   const unattributedEmployeeSales = unattributedEmployeeInvoices.reduce((sum, invoice) => sum + invoice.total, 0);
   const estimatedProfitAfterBonuses = estimatedProfit - totalCommissions - totalEmployeeBonuses;
+
+  const totalReceivables = useMemo(
+    () => customers.reduce((sum, c) => sum + Math.max(0, customerBalance(c.id)), 0),
+    [customers, customerBalance]
+  );
 
   const dailyData = useMemo(() => {
     const map = new Map<string, { date: string; sales: number; purchases: number }>();
@@ -275,7 +280,7 @@ export function ReportsPage() {
         {canViewEmployeeBonuses ? (
           <Stat icon={<UserRound className="w-5 h-5" />} tone="rose" label="بونص الموظفين" value={formatCurrency(totalEmployeeBonuses, settings.currency)} />
         ) : null}
-        <Stat icon={<Package className="w-5 h-5" />} tone="indigo" label="عدد الفواتير" value={`${salesInRange.length} / ${purchasesInRange.length}`} />
+        <Stat icon={<Users className="w-5 h-5" />} tone="indigo" label="مستحقات العملاء" value={formatCurrency(totalReceivables, settings.currency)} />
       </div>
 
       <div className="no-print">
@@ -554,6 +559,8 @@ export function ReportsPage() {
                         <TD className="text-end">
                           {bal > 0 ? (
                             <Badge tone="amber">{formatCurrency(bal, settings.currency)}</Badge>
+                          ) : bal < 0 ? (
+                            <Badge tone="green">رصيد دائن {formatCurrency(-bal, settings.currency)}</Badge>
                           ) : (
                             <Badge tone="green">لا يوجد</Badge>
                           )}

@@ -42,7 +42,7 @@ export interface UserPermissions {
   products: { view: boolean; add: boolean; edit: boolean; delete: boolean };
   inventory: { view: boolean; adjust: boolean };
   purchaseInvoices: { view: boolean; add: boolean; pay: boolean; delete: boolean };
-  salesInvoices: { view: boolean; add: boolean; receive: boolean; cancel: boolean; delete: boolean };
+  salesInvoices: { view: boolean; add: boolean; edit: boolean; receive: boolean; cancel: boolean; delete: boolean };
   customers: { view: boolean; add: boolean; edit: boolean; delete: boolean };
   suppliers: { view: boolean; add: boolean; edit: boolean; delete: boolean; commissions: boolean };
   drivers: { view: boolean; add: boolean; edit: boolean; delete: boolean };
@@ -77,6 +77,7 @@ export interface CommissionTier {
 
 export interface Supplier {
   id: ID;
+  code?: string;
   name: string;
   phone?: string;
   address?: string;
@@ -88,9 +89,11 @@ export interface Supplier {
 
 export interface Customer {
   id: ID;
+  code?: string;
   name: string;
   phone?: string;
   address?: string;
+  shippingDirection?: "qibli" | "bahri";
   notes?: string;
   createdAt: string;
 }
@@ -109,10 +112,13 @@ export interface Product {
   name: string;
   category: string;
   unit: string;
+  retailUnit?: string;
   purchasePrice: number;
   wholesalePrice: number;
   retailPrice: number;
+  piecesPerUnit?: number;
   quantity: number;
+  looseQuantity?: number;
   minStock: number;
   hasExpiry: boolean;
   expiryDate?: string;
@@ -130,6 +136,7 @@ export interface InvoiceLine {
   price: number;
   expiryDate?: string;
   subtotal: number;
+  isRetailUnit?: boolean;
 }
 
 export interface PurchaseInvoice {
@@ -142,6 +149,7 @@ export interface PurchaseInvoice {
   total: number;
   amountPaid: number;
   remaining: number;
+  overpayment?: number;
   status: PaymentStatus;
   notes?: string;
   createdAt: string;
@@ -159,6 +167,7 @@ export interface SalesInvoice {
   total: number;
   amountReceived: number;
   remaining: number;
+  overpayment?: number;
   paymentType: SalesPaymentType;
   priceType: SalesPriceType;
   paymentDueDate?: string;
@@ -178,12 +187,14 @@ export type StockMovementType =
 
 export interface ReturnLine {
   id: ID;
+  sourceLineId?: ID;
   productId: ID;
   productName: string;
   unit: string;
   quantity: number;
   price: number;
   subtotal: number;
+  isRetailUnit?: boolean;
 }
 
 export interface SalesReturn {

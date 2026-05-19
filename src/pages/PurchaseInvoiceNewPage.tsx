@@ -24,8 +24,8 @@ function nextInvoiceNumber(existing: string[]): string {
   const nums = existing
     .map((x) => parseInt(x.replace(/\D/g, ""), 10))
     .filter((n) => !Number.isNaN(n));
-  const max = nums.length ? Math.max(...nums) : 2000;
-  return `PUR-${max + 1}`;
+  const next = nums.length ? Math.max(...nums) + 1 : 1;
+  return `PO-${String(next).padStart(5, "0")}`;
 }
 
 export function PurchaseInvoiceNewPage() {

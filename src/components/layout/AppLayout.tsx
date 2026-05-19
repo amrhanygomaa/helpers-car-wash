@@ -1,12 +1,25 @@
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
+import { lsGet, lsSet } from "../../lib/storage";
 
 export function AppLayout({ children }: { children: ReactNode }) {
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() =>
+    lsGet("sidebarCollapsed", false)
+  );
+
+  useEffect(() => {
+    lsSet("sidebarCollapsed", sidebarCollapsed);
+  }, [sidebarCollapsed]);
+
   return (
     <div className="h-screen overflow-hidden flex bg-slate-50" dir="rtl">
       <div className="no-print">
-        <Sidebar />
+        <Sidebar
+          collapsed={sidebarCollapsed}
+          onToggleCollapse={() => setSidebarCollapsed((value) => !value)}
+        />
       </div>
       <div className="flex-1 min-w-0 min-h-0 flex flex-col">
         <div className="no-print">
