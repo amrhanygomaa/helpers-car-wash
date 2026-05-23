@@ -31,8 +31,12 @@ export function AlertsPage() {
     settings,
   } = useApp();
 
-  const lowStock = useMemo(
-    () => products.filter((p) => p.quantity <= p.minStock),
+  const outOfStock = useMemo(
+    () => products.filter((p) => p.quantity === 0),
+    [products]
+  );
+  const lowStockOnly = useMemo(
+    () => products.filter((p) => p.quantity > 0 && p.quantity <= p.minStock),
     [products]
   );
   const expiringSoon = useMemo(
@@ -99,35 +103,35 @@ export function AlertsPage() {
       />
 
       <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
-        <Stat icon={<AlertTriangle className="w-4 h-4" />} label="مخزون منخفض" value={lowStock.length} tone="amber" />
-        <Stat icon={<CalendarClock className="w-4 h-4" />} label="قريب الانتهاء" value={expiringSoon.length} tone="rose" />
+        <Stat icon={<AlertTriangle className="w-4 h-4" />} label="منتهى المخزون" value={outOfStock.length} tone="red" />
+        <Stat icon={<AlertTriangle className="w-4 h-4" />} label="اقتراب انتهاء الكمية" value={lowStockOnly.length} tone="amber" />
+        <Stat icon={<CalendarClock className="w-4 h-4" />} label="قريب انتهاء الصلاحية" value={expiringSoon.length} tone="rose" />
         <Stat icon={<CalendarX className="w-4 h-4" />} label="منتهي الصلاحية" value={expired.length} tone="red" />
         <Stat icon={<Receipt className="w-4 h-4" />} label="فواتير آجل متأخرة" value={overdueAccountCount} tone="red" />
         <Stat icon={<Users className="w-4 h-4" />} label="عملاء لديهم رصيد" value={unpaidCustomers.length} tone="indigo" />
-        <Stat icon={<Factory className="w-4 h-4" />} label="فواتير موردين غير مسددة" value={purchaseInvoices.filter(p=>p.remaining>0).length} tone="blue" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card>
           <CardHeader
-            title="منتجات منخفضة المخزون"
-            subtitle={`عدد: ${lowStock.length}`}
+            title="منتهى المخزون"
+            subtitle={`عدد: ${outOfStock.length}`}
             actions={<Link to="/inventory" className="text-xs text-brand-700 hover:underline">عرض الكل</Link>}
           />
           <CardBody className="divide-y divide-slate-100 p-0">
-            {lowStock.length === 0 ? (
-              <EmptyState icon={<Bell className="w-5 h-5" />} title="لا يوجد نقص" description="كل المنتجات فوق الحد الأدنى." />
+            {outOfStock.length === 0 ? (
+              <EmptyState icon={<Bell className="w-5 h-5" />} title="لا توجد منتجات نفدت" description="كل المنتجات لديها كمية." />
             ) : (
-              lowStock.slice(0, 8).map((p) => (
+              outOfStock.slice(0, 8).map((p) => (
                 <div key={p.id} className="flex items-center gap-3 p-3">
-                  <div className="w-9 h-9 rounded-lg bg-amber-50 text-amber-600 grid place-items-center">
+                  <div className="w-9 h-9 rounded-lg bg-red-50 text-red-600 grid place-items-center">
                     <AlertTriangle className="w-4 h-4" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium text-slate-900 truncate">{p.name}</div>
                     <div className="text-xs text-slate-500">الحد الأدنى: {p.minStock}</div>
                   </div>
-                  <Badge tone={p.quantity === 0 ? "red" : "amber"}>{p.quantity} {p.unit}</Badge>
+                  <Badge tone="red">منتهى مخزون</Badge>
                   <Link to="/purchases/new">
                     <Button variant="outline" size="sm">توريد</Button>
                   </Link>
@@ -139,7 +143,36 @@ export function AlertsPage() {
 
         <Card>
           <CardHeader
-            title="قريبة الانتهاء (14 يوم)"
+            title="اقتراب انتهاء الكمية"
+            subtitle={`عدد: ${lowStockOnly.length}`}
+            actions={<Link to="/inventory" className="text-xs text-brand-700 hover:underline">عرض الكل</Link>}
+          />
+          <CardBody className="divide-y divide-slate-100 p-0">
+            {lowStockOnly.length === 0 ? (
+              <EmptyState icon={<Bell className="w-5 h-5" />} title="لا يوجد نقص" description="كل المنتجات فوق الحد الأدنى." />
+            ) : (
+              lowStockOnly.slice(0, 8).map((p) => (
+                <div key={p.id} className="flex items-center gap-3 p-3">
+                  <div className="w-9 h-9 rounded-lg bg-amber-50 text-amber-600 grid place-items-center">
+                    <AlertTriangle className="w-4 h-4" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-slate-900 truncate">{p.name}</div>
+                    <div className="text-xs text-slate-500">الحد الأدنى: {p.minStock}</div>
+                  </div>
+                  <Badge tone="amber">{p.quantity} {p.unit}</Badge>
+                  <Link to="/purchases/new">
+                    <Button variant="outline" size="sm">توريد</Button>
+                  </Link>
+                </div>
+              ))
+            )}
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader
+            title="اقتراب انتهاء الصلاحية (14 يوم)"
             subtitle={`عدد: ${expiringSoon.length}`}
           />
           <CardBody className="divide-y divide-slate-100 p-0">

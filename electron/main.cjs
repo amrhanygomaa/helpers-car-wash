@@ -86,7 +86,7 @@ function exitForSmokeTest() {
 const permissionTemplate = {
   products: { view: true, add: true, edit: true, delete: true },
   inventory: { view: true, adjust: true },
-  purchaseInvoices: { view: true, add: true, pay: true, delete: true },
+  purchaseInvoices: { view: true, add: true, edit: true, pay: true, delete: true },
   salesInvoices: { view: true, add: true, receive: true, cancel: true, delete: true },
   customers: { view: true, add: true, edit: true, delete: true },
   suppliers: { view: true, add: true, edit: true, delete: true, commissions: true },

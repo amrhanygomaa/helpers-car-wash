@@ -104,6 +104,10 @@ export function SuppliersPage() {
       toast.error("الاسم مطلوب");
       return;
     }
+    if (form.phone && form.phone.trim().replace(/\D/g, "").length < 11) {
+      toast.error("رقم الهاتف غير صحيح", "يجب أن يحتوي على 11 رقماً على الأقل");
+      return;
+    }
     if (editing) {
       updateSupplier(editing.id, form);
       toast.success("تم تحديث المورد");

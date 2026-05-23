@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
-import { ArrowRight, HandCoins, Printer, Trash2 } from "lucide-react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { ArrowRight, HandCoins, Pencil, Printer, Trash2 } from "lucide-react";
 import { PageHeader } from "../components/layout/AppLayout";
 import { Card, CardBody, CardHeader } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -29,6 +29,7 @@ export function PurchaseInvoiceDetailPage() {
     currentUser,
   } = useApp();
   const inv = purchaseInvoices.find((s) => s.id === id);
+  const canEditPurchase = hasPermission(currentUser, "purchaseInvoices", "edit");
   const canPayPurchase = hasPermission(currentUser, "purchaseInvoices", "pay");
   const canDeletePurchase = hasPermission(currentUser, "purchaseInvoices", "delete");
   const canAddReturn = hasPermission(currentUser, "returns", "add");
@@ -78,6 +79,13 @@ export function PurchaseInvoiceDetailPage() {
             >
               <Printer className="w-4 h-4" /> طباعة
             </Button>
+            {canEditPurchase ? (
+              <Link to={`/purchases/${inv.id}/edit`}>
+                <Button variant="outline">
+                  <Pencil className="w-4 h-4" /> تعديل
+                </Button>
+              </Link>
+            ) : null}
             {inv.remaining > 0 && canPayPurchase ? (
               <Button onClick={() => { setPayAmount(inv.remaining); setPayOpen(true); }}>
                 <HandCoins className="w-4 h-4" /> تسجيل دفعة

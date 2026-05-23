@@ -35,6 +35,7 @@ export const PERMISSION_GROUPS: {
     actions: [
       { key: "view", label: "عرض" },
       { key: "add", label: "إضافة" },
+      { key: "edit", label: "تعديل" },
       { key: "pay", label: "سداد" },
       { key: "delete", label: "حذف" },
     ],
@@ -124,7 +125,7 @@ export function createPermissions(enabled = false): UserPermissions {
   return {
     products: { view: enabled, add: enabled, edit: enabled, delete: enabled },
     inventory: { view: enabled, adjust: enabled },
-    purchaseInvoices: { view: enabled, add: enabled, pay: enabled, delete: enabled },
+    purchaseInvoices: { view: enabled, add: enabled, edit: enabled, pay: enabled, delete: enabled },
     salesInvoices: { view: enabled, add: enabled, edit: enabled, receive: enabled, cancel: enabled, delete: enabled },
     customers: { view: enabled, add: enabled, edit: enabled, delete: enabled },
     suppliers: { view: enabled, add: enabled, edit: enabled, delete: enabled, commissions: enabled },
@@ -173,6 +174,9 @@ export function normalizePermissions(input?: Partial<UserPermissions> | null): U
   if (!source.returns) {
     permissions.returns.view = Boolean(legacySales?.view || legacyPurchases?.view);
     permissions.returns.add = Boolean(legacySales?.add || legacyPurchases?.add);
+  }
+  if (legacyPurchases && typeof legacyPurchases.edit !== "boolean") {
+    permissions.purchaseInvoices.edit = false;
   }
   if (legacyPurchases && typeof legacyPurchases.pay !== "boolean") {
     permissions.purchaseInvoices.pay = Boolean(legacyPurchases.add);

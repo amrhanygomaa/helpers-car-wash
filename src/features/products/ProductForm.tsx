@@ -54,6 +54,19 @@ export function ProductFormDialog({
   );
   const [addingCategory, setAddingCategory] = useState(false);
   const [newCategoryInput, setNewCategoryInput] = useState("");
+
+  const existingUnits = useMemo(
+    () => [...new Set(products.map((p) => p.unit).filter(Boolean))].sort(),
+    [products]
+  );
+  const [customUnits, setCustomUnits] = useState<string[]>([]);
+  const allUnits = useMemo(
+    () => [...new Set([...UNITS, ...existingUnits, ...customUnits])].sort(),
+    [existingUnits, customUnits]
+  );
+  const [addingUnit, setAddingUnit] = useState(false);
+  const [newUnitInput, setNewUnitInput] = useState("");
+
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -69,6 +82,9 @@ export function ProductFormDialog({
     setAddingCategory(false);
     setNewCategoryInput("");
     setCustomCategories([]);
+    setAddingUnit(false);
+    setNewUnitInput("");
+    setCustomUnits([]);
   }, [editing, open, nextProductCode]);
 
   function validate(): boolean {
@@ -102,6 +118,18 @@ export function ProductFormDialog({
     }
     setAddingCategory(false);
     setNewCategoryInput("");
+  }
+
+  function confirmNewUnit() {
+    const trimmed = newUnitInput.trim();
+    if (trimmed) {
+      if (!allUnits.includes(trimmed)) {
+        setCustomUnits((prev) => [...prev, trimmed]);
+      }
+      set("unit", trimmed);
+    }
+    setAddingUnit(false);
+    setNewUnitInput("");
   }
 
   function handleSubmit() {
@@ -201,13 +229,51 @@ export function ProductFormDialog({
           )}
         </Field>
         <Field label="الوحدة">
-          <Select value={form.unit} onChange={(e) => set("unit", e.target.value)}>
-            {UNITS.map((u) => (
-              <option key={u} value={u}>
-                {u}
-              </option>
-            ))}
-          </Select>
+          <div className="flex gap-2">
+            <Select
+              value={form.unit}
+              onChange={(e) => set("unit", e.target.value)}
+              className="flex-1"
+            >
+              <option value="">— اختر وحدة —</option>
+              {allUnits.map((u) => (
+                <option key={u} value={u}>{u}</option>
+              ))}
+              {form.unit && !allUnits.includes(form.unit) && (
+                <option value={form.unit}>{form.unit}</option>
+              )}
+            </Select>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              onClick={() => { setAddingUnit(true); setNewUnitInput(""); }}
+              title="إضافة وحدة جديدة"
+            >
+              <Plus className="w-4 h-4" />
+            </Button>
+          </div>
+          {addingUnit && (
+            <div className="flex gap-1.5 mt-1.5">
+              <Input
+                autoFocus
+                value={newUnitInput}
+                onChange={(e) => setNewUnitInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") { e.preventDefault(); confirmNewUnit(); }
+                  if (e.key === "Escape") setAddingUnit(false);
+                }}
+                placeholder="اسم الوحدة الجديدة"
+                className="flex-1"
+              />
+              <Button type="button" size="icon" variant="outline" onClick={confirmNewUnit}>
+                <Check className="w-4 h-4 text-green-600" />
+              </Button>
+              <Button type="button" size="icon" variant="ghost" onClick={() => setAddingUnit(false)}>
+                <X className="w-4 h-4 text-red-500" />
+              </Button>
+            </div>
+          )}
         </Field>
         <Field label="سعر الشراء" error={errors.purchasePrice}>
           <Input

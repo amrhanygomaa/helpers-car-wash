@@ -135,6 +135,10 @@ interface AppActions {
   addPurchaseInvoice: (
     inv: Omit<PurchaseInvoice, "id" | "createdAt" | "status" | "remaining">
   ) => PurchaseInvoice;
+  updatePurchaseInvoice: (
+    id: string,
+    patch: { lines: InvoiceLine[]; date: string; notes?: string }
+  ) => void;
   recordPurchasePayment: (id: string, amount: number) => void;
   deletePurchaseInvoice: (id: string) => boolean;
 
@@ -1123,6 +1127,66 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     return full;
   };
+  const updatePurchaseInvoice: AppActions["updatePurchaseInvoice"] = (id, patch) => {
+    const inv = purchaseInvoices.find((i) => i.id === id);
+    if (!inv) return;
+
+    // Reverse old stock, apply new stock in one pass
+    setProducts((list) =>
+      list.map((p) => {
+        const oldLine = inv.lines.find((l) => l.productId === p.id);
+        const newLine = patch.lines.find((l) => l.productId === p.id);
+        let qty = p.quantity;
+        if (oldLine) qty = Math.max(0, qty - oldLine.quantity);
+        if (newLine) qty = qty + newLine.quantity;
+        const expiryDate = newLine?.expiryDate && p.hasExpiry ? newLine.expiryDate : p.expiryDate;
+        return qty !== p.quantity || expiryDate !== p.expiryDate
+          ? { ...p, quantity: qty, expiryDate }
+          : p;
+      })
+    );
+
+    // Replace stock movements
+    setStockMovements((list) => {
+      const kept = list.filter((m) => !(m.referenceId === id && m.type === "purchase"));
+      const next: StockMovement[] = patch.lines.map((l, i) => ({
+        id: uid(`mov_upd_p_${i}`),
+        productId: l.productId,
+        productName: l.productName,
+        type: "purchase",
+        quantity: l.quantity,
+        reason: `فاتورة مشتريات ${inv.invoiceNumber}`,
+        referenceId: id,
+        referenceType: "purchase",
+        date: patch.date,
+      }));
+      return [...kept, ...next];
+    });
+
+    const newTotal = patch.lines.reduce((a, l) => a + l.subtotal, 0);
+    const cappedPaid = Math.min(inv.amountPaid, newTotal);
+    const overpayment = Math.max(0, inv.amountPaid - newTotal);
+    const newRemaining = Math.max(0, newTotal - cappedPaid);
+
+    setPurchaseInvoices((list) =>
+      list.map((i) =>
+        i.id === id
+          ? {
+              ...i,
+              lines: patch.lines,
+              total: newTotal,
+              date: patch.date,
+              notes: patch.notes,
+              amountPaid: cappedPaid,
+              remaining: newRemaining,
+              status: computeStatus(newTotal, cappedPaid),
+              overpayment: overpayment > 0 ? overpayment : undefined,
+            }
+          : i
+      )
+    );
+  };
+
   const recordPurchasePayment: AppActions["recordPurchasePayment"] = (
     id,
     amount
@@ -1752,6 +1816,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       updateDriver,
       deleteDriver,
       addPurchaseInvoice,
+      updatePurchaseInvoice,
       recordPurchasePayment,
       deletePurchaseInvoice,
       addSalesInvoice,

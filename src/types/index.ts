@@ -41,7 +41,7 @@ export interface LicenseStatus {
 export interface UserPermissions {
   products: { view: boolean; add: boolean; edit: boolean; delete: boolean };
   inventory: { view: boolean; adjust: boolean };
-  purchaseInvoices: { view: boolean; add: boolean; pay: boolean; delete: boolean };
+  purchaseInvoices: { view: boolean; add: boolean; edit: boolean; pay: boolean; delete: boolean };
   salesInvoices: { view: boolean; add: boolean; edit: boolean; receive: boolean; cancel: boolean; delete: boolean };
   customers: { view: boolean; add: boolean; edit: boolean; delete: boolean };
   suppliers: { view: boolean; add: boolean; edit: boolean; delete: boolean; commissions: boolean };

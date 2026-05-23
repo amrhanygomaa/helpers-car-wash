@@ -12,6 +12,7 @@ import { CustomersPage } from "./pages/CustomersPage";
 import { PurchaseInvoicesPage } from "./pages/PurchaseInvoicesPage";
 import { PurchaseInvoiceNewPage } from "./pages/PurchaseInvoiceNewPage";
 import { PurchaseInvoiceDetailPage } from "./pages/PurchaseInvoiceDetailPage";
+import { PurchaseInvoiceEditPage } from "./pages/PurchaseInvoiceEditPage";
 import { PurchaseInvoicePrintPage } from "./pages/PurchaseInvoicePrintPage";
 import { SalesInvoicesPage } from "./pages/SalesInvoicesPage";
 import { SalesInvoiceNewPage } from "./pages/SalesInvoiceNewPage";
@@ -154,6 +155,14 @@ export default function App() {
         element={
           <ProtectedShell permission="purchaseInvoices">
             <PurchaseInvoiceDetailPage />
+          </ProtectedShell>
+        }
+      />
+      <Route
+        path="/purchases/:id/edit"
+        element={
+          <ProtectedShell permission="purchaseInvoices" permissionAction="edit">
+            <PurchaseInvoiceEditPage />
           </ProtectedShell>
         }
       />

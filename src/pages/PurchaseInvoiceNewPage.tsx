@@ -34,13 +34,23 @@ export function PurchaseInvoiceNewPage() {
   const navigate = useNavigate();
   const toast = useToast();
 
-  const [invoiceNumber, setInvoiceNumber] = useState(() =>
+  const [invoiceNumber] = useState(() =>
     nextInvoiceNumber(purchaseInvoices.map((s) => s.invoiceNumber))
   );
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [supplierId, setSupplierId] = useState(suppliers[0]?.id ?? "");
   const [amountPaid, setAmountPaid] = useState<number>(0);
   const [notes, setNotes] = useState("");
+
+  function handleSupplierChange(id: string) {
+    setSupplierId(id);
+    setLines((prev) =>
+      prev.filter((l) => {
+        const p = products.find((x) => x.id === l.productId);
+        return !p || !p.supplierId || p.supplierId === id;
+      })
+    );
+  }
   const [lines, setLines] = useState<LineDraft[]>([]);
 
   useEffect(() => {
@@ -70,10 +80,11 @@ export function PurchaseInvoiceNewPage() {
       arr.map((l) => {
         if (l.id !== id) return l;
         const next = { ...l, ...patch };
-        if (patch.productId) {
+        if (patch.productId !== undefined) {
           const p = products.find((x) => x.id === patch.productId);
           if (p) {
-            next.price = next.price || p.purchasePrice;
+            next.price = p.purchasePrice;
+            next.expiryDate = p.expiryDate;
           }
         }
         return next;
@@ -154,14 +165,18 @@ export function PurchaseInvoiceNewPage() {
         <CardHeader title="بيانات الفاتورة" />
         <CardBody>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            <Field label="رقم الفاتورة" required>
-              <Input value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} />
+            <Field label="رقم الفاتورة">
+              <Input
+                value={invoiceNumber}
+                readOnly
+                className="bg-gray-100 cursor-not-allowed text-gray-600 font-mono"
+              />
             </Field>
             <Field label="التاريخ" required>
               <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
             </Field>
             <Field label="المورد" required>
-              <Select value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
+              <Select value={supplierId} onChange={(e) => handleSupplierChange(e.target.value)}>
                 {suppliers.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.name}
@@ -211,7 +226,9 @@ export function PurchaseInvoiceNewPage() {
                     <TR key={l.id}>
                       <TD>
                         <ProductCombo
-                          products={products}
+                          products={products.filter(
+                            (x) => !x.supplierId || x.supplierId === supplierId
+                          )}
                           value={l.productId}
                           onChange={(pid) => updateLine(l.id, { productId: pid })}
                         />
