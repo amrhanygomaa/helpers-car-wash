@@ -16,6 +16,7 @@ import { formatCurrency, formatDate } from "../lib/format";
 import type { Supplier, CommissionTier, CommissionType } from "../types";
 import { Select } from "../components/ui/Input";
 import { hasPermission } from "../lib/permissions";
+import { formatSupplierCode } from "../lib/codes";
 
 export function SuppliersPage() {
   const {
@@ -31,6 +32,7 @@ export function SuppliersPage() {
     updateCommissionTier,
     deleteCommissionTier,
     currentUser,
+    nextSupplierCode,
   } = useApp();
   const toast = useToast();
   const canAddSupplier = hasPermission(currentUser, "suppliers", "add");
@@ -68,13 +70,21 @@ export function SuppliersPage() {
     return suppliers.filter(
       (s) =>
         s.name.toLowerCase().includes(t) ||
-        (s.phone ?? "").toLowerCase().includes(t)
+        (s.phone ?? "").toLowerCase().includes(t) ||
+        (s.code ?? "").toLowerCase().includes(t)
     );
   }, [q, suppliers]);
 
   function openNew() {
     setEditing(null);
-    setForm({ code: "", name: "", phone: "", address: "", notes: "", commissionNote: "" });
+    setForm({
+      code: formatSupplierCode(nextSupplierCode),
+      name: "",
+      phone: "",
+      address: "",
+      notes: "",
+      commissionNote: "",
+    });
     setOpen(true);
   }
   function openEdit(s: Supplier) {
@@ -239,8 +249,8 @@ export function SuppliersPage() {
           <Field label="كود المورد">
             <Input
               value={form.code ?? ""}
-              onChange={(e) => setForm({ ...form, code: e.target.value })}
-              placeholder="مثل: SUP-001"
+              readOnly
+              className="bg-gray-100 cursor-not-allowed text-gray-600 font-mono"
             />
           </Field>
           <Field label="اسم المورد" required>

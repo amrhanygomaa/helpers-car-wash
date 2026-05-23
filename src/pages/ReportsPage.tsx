@@ -7,6 +7,8 @@ import {
   Coins,
   UserRound,
   Users,
+  UserRoundMinus,
+  HandCoins,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -36,7 +38,16 @@ import { useToast } from "../components/ui/Toast";
 import { formatCurrency, formatDate } from "../lib/format";
 import { daysUntil, inRange } from "../lib/utils";
 
-type PrintMode = "full" | "sales" | "purchases" | "stock" | "customers" | "suppliers" | "commissions";
+type PrintMode =
+  | "full"
+  | "sales"
+  | "purchases"
+  | "stock"
+  | "customers"
+  | "suppliers"
+  | "supplierDues"
+  | "commissions"
+  | "monthlyProfit";
 
 export function ReportsPage() {
   const {
@@ -103,6 +114,25 @@ export function ReportsPage() {
     return p;
   }, [salesInRange, products]);
 
+  const monthlyProfitData = useMemo(() => {
+    const map = new Map<string, { month: string; sales: number; purchases: number; profit: number }>();
+    salesInvoices.filter((s) => !s.cancelled).forEach((s) => {
+      const key = s.date.slice(0, 7);
+      const entry = map.get(key) ?? { month: key, sales: 0, purchases: 0, profit: 0 };
+      entry.sales += s.total;
+      entry.profit += s.total;
+      map.set(key, entry);
+    });
+    purchaseInvoices.forEach((p) => {
+      const key = p.date.slice(0, 7);
+      const entry = map.get(key) ?? { month: key, sales: 0, purchases: 0, profit: 0 };
+      entry.purchases += p.total;
+      entry.profit -= p.total;
+      map.set(key, entry);
+    });
+    return Array.from(map.values()).sort((a, b) => a.month.localeCompare(b.month));
+  }, [salesInvoices, purchaseInvoices]);
+
   const employeeBonusRows = useMemo(() => {
     return users
       .filter((user) => user.role === "employee")
@@ -145,6 +175,73 @@ export function ReportsPage() {
     () => customers.reduce((sum, c) => sum + Math.max(0, customerBalance(c.id)), 0),
     [customers, customerBalance]
   );
+
+  const customerCredits = useMemo(
+    () => customers.reduce((sum, c) => sum + Math.max(0, -customerBalance(c.id)), 0),
+    [customers, customerBalance]
+  );
+
+  const supplierLookup = useMemo(
+    () => new Map(suppliers.map((supplier) => [supplier.id, supplier])),
+    [suppliers]
+  );
+
+  const supplierDueInvoices = useMemo(
+    () =>
+      purchaseInvoices
+        .filter((invoice) => invoice.remaining > 0)
+        .sort((a, b) => {
+          const byDate = a.date.localeCompare(b.date);
+          return byDate !== 0 ? byDate : b.remaining - a.remaining;
+        }),
+    [purchaseInvoices]
+  );
+
+  const supplierPayableRows = useMemo(() => {
+    const rows = new Map<
+      string,
+      {
+        supplierId: string;
+        supplierName: string;
+        supplierCode?: string;
+        phone?: string;
+        invoiceCount: number;
+        total: number;
+        paid: number;
+        remaining: number;
+        oldestDate: string;
+      }
+    >();
+
+    supplierDueInvoices.forEach((invoice) => {
+      const supplier = supplierLookup.get(invoice.supplierId);
+      const current = rows.get(invoice.supplierId) ?? {
+        supplierId: invoice.supplierId,
+        supplierName: invoice.supplierName,
+        supplierCode: supplier?.code,
+        phone: supplier?.phone,
+        invoiceCount: 0,
+        total: 0,
+        paid: 0,
+        remaining: 0,
+        oldestDate: invoice.date,
+      };
+
+      current.invoiceCount += 1;
+      current.total += invoice.total;
+      current.paid += invoice.amountPaid;
+      current.remaining += invoice.remaining;
+      if (invoice.date < current.oldestDate) current.oldestDate = invoice.date;
+      rows.set(invoice.supplierId, current);
+    });
+
+    return Array.from(rows.values()).sort((a, b) => b.remaining - a.remaining);
+  }, [supplierDueInvoices, supplierLookup]);
+
+  const supplierPayablesTotal = supplierDueInvoices.reduce((sum, invoice) => sum + invoice.remaining, 0);
+  const supplierDuePaidTotal = supplierDueInvoices.reduce((sum, invoice) => sum + invoice.amountPaid, 0);
+  const largestSupplierPayable = supplierPayableRows[0];
+  const oldestSupplierDue = supplierDueInvoices[0];
 
   const dailyData = useMemo(() => {
     const map = new Map<string, { date: string; sales: number; purchases: number }>();
@@ -262,7 +359,9 @@ export function ReportsPage() {
                 <option value="stock">كشف حالة المخزون</option>
                 <option value="customers">كشف أرصدة العملاء</option>
                 <option value="suppliers">كشف أرصدة الموردين</option>
+                <option value="supplierDues">كشف فلوس علينا للموردين</option>
                 <option value="commissions">تقرير عمولات الموردين</option>
+                <option value="monthlyProfit">تقرير صافي الربح الشهري</option>
               </Select>
               <Button variant="outline" onClick={() => window.print()}>
                 <Printer className="w-4 h-4" /> طباعة
@@ -272,7 +371,7 @@ export function ReportsPage() {
         </Card>
       </div>
 
-      <div className="no-print grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+      <div className="no-print grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         <Stat icon={<TrendingUp className="w-5 h-5" />} tone="green" label="إجمالي المبيعات" value={formatCurrency(totalSales, settings.currency)} />
         <Stat icon={<TrendingDown className="w-5 h-5" />} tone="blue" label="إجمالي المشتريات" value={formatCurrency(totalPurchases, settings.currency)} />
         <Stat icon={<Coins className="w-5 h-5" />} tone="amber" label="الربح التقديري" value={formatCurrency(estimatedProfit, settings.currency)} />
@@ -281,18 +380,22 @@ export function ReportsPage() {
           <Stat icon={<UserRound className="w-5 h-5" />} tone="rose" label="بونص الموظفين" value={formatCurrency(totalEmployeeBonuses, settings.currency)} />
         ) : null}
         <Stat icon={<Users className="w-5 h-5" />} tone="indigo" label="مستحقات العملاء" value={formatCurrency(totalReceivables, settings.currency)} />
+        <Stat icon={<UserRoundMinus className="w-5 h-5" />} tone="violet" label="فلوس علينا للعملاء" value={formatCurrency(customerCredits, settings.currency)} />
+        <Stat icon={<HandCoins className="w-5 h-5" />} tone="rose" label="فلوس علينا للموردين" value={formatCurrency(supplierPayablesTotal, settings.currency)} />
       </div>
 
       <div className="no-print">
         <Tabs defaultValue="sales">
-        <TabsList>
+        <TabsList className="flex w-full flex-wrap justify-center">
           <TabsTrigger value="sales">تقرير المبيعات</TabsTrigger>
           <TabsTrigger value="purchases">تقرير المشتريات</TabsTrigger>
           <TabsTrigger value="stock">تقرير المخزون</TabsTrigger>
           <TabsTrigger value="lowstock">منخفض/منتهي</TabsTrigger>
           <TabsTrigger value="customers">أرصدة العملاء</TabsTrigger>
           <TabsTrigger value="suppliers">أرصدة الموردين</TabsTrigger>
+          <TabsTrigger value="supplierDues">فلوس علينا للموردين</TabsTrigger>
           <TabsTrigger value="commissions">عمولات الموردين</TabsTrigger>
+          <TabsTrigger value="monthlyProfit">صافي الربح الشهري</TabsTrigger>
           {canViewEmployeeBonuses ? <TabsTrigger value="employeeBonuses">بونص الموظفين</TabsTrigger> : null}
         </TabsList>
 
@@ -609,6 +712,152 @@ export function ReportsPage() {
           </Card>
         </TabsContent>
 
+        <TabsContent value="supplierDues">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+            <div className="rounded-xl border border-rose-200 bg-rose-50 p-4">
+              <div className="text-xs font-bold text-rose-500">إجمالي المطلوب دفعه</div>
+              <div className="mt-1 text-xl font-bold text-rose-700">
+                {formatCurrency(supplierPayablesTotal, settings.currency)}
+              </div>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-white p-4">
+              <div className="text-xs font-bold text-slate-400">فواتير مفتوحة</div>
+              <div className="mt-1 text-xl font-bold text-slate-900">{supplierDueInvoices.length}</div>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-white p-4">
+              <div className="text-xs font-bold text-slate-400">أكبر مورد مستحق</div>
+              <div className="mt-1 text-sm font-bold text-slate-900 truncate">
+                {largestSupplierPayable ? largestSupplierPayable.supplierName : "—"}
+              </div>
+              <div className="mt-1 text-sm font-semibold text-rose-700">
+                {largestSupplierPayable ? formatCurrency(largestSupplierPayable.remaining, settings.currency) : "—"}
+              </div>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-white p-4">
+              <div className="text-xs font-bold text-slate-400">أقدم فاتورة مفتوحة</div>
+              <div className="mt-1 text-sm font-bold text-slate-900">
+                {oldestSupplierDue ? oldestSupplierDue.invoiceNumber : "—"}
+              </div>
+              <div className="mt-1 text-sm font-semibold text-amber-700">
+                {oldestSupplierDue
+                  ? `${formatDate(oldestSupplierDue.date)} - ${invoiceAgeLabel(invoiceAgeDays(oldestSupplierDue.date))}`
+                  : "—"}
+              </div>
+            </div>
+          </div>
+
+          <Card className="mt-4">
+            <CardHeader
+              title="تفصيل حسب المورد"
+              subtitle={`إجمالي المدفوع من هذه الفواتير: ${formatCurrency(supplierDuePaidTotal, settings.currency)}`}
+            />
+            <CardBody>
+              {supplierPayableRows.length === 0 ? (
+                <div className="text-sm text-slate-500 text-center py-6">لا توجد مستحقات مفتوحة للموردين</div>
+              ) : (
+                <Table>
+                  <THead>
+                    <TR>
+                      <TH>كود المورد</TH>
+                      <TH>المورد</TH>
+                      <TH>الهاتف</TH>
+                      <TH className="text-end">عدد الفواتير</TH>
+                      <TH className="text-end">إجمالي الفواتير</TH>
+                      <TH className="text-end">المدفوع</TH>
+                      <TH className="text-end">المطلوب دفعه</TH>
+                      <TH>أقدم فاتورة</TH>
+                    </TR>
+                  </THead>
+                  <TBody>
+                    {supplierPayableRows.map((row) => (
+                      <TR key={row.supplierId}>
+                        <TD className="font-mono text-xs">{row.supplierCode || "—"}</TD>
+                        <TD className="font-medium text-slate-900">{row.supplierName}</TD>
+                        <TD className="text-slate-600">{row.phone || "—"}</TD>
+                        <TD className="text-end">{row.invoiceCount}</TD>
+                        <TD className="text-end">{formatCurrency(row.total, settings.currency)}</TD>
+                        <TD className="text-end">{formatCurrency(row.paid, settings.currency)}</TD>
+                        <TD className="text-end font-bold text-rose-700">
+                          {formatCurrency(row.remaining, settings.currency)}
+                        </TD>
+                        <TD>
+                          <div className="text-sm">{formatDate(row.oldestDate)}</div>
+                          <div className="text-xs text-slate-500">{invoiceAgeLabel(invoiceAgeDays(row.oldestDate))}</div>
+                        </TD>
+                      </TR>
+                    ))}
+                  </TBody>
+                </Table>
+              )}
+            </CardBody>
+          </Card>
+
+          <Card className="mt-4">
+            <CardHeader
+              title="الفواتير المطلوب سدادها"
+              subtitle="يعرض كل فواتير الموردين المفتوحة حالياً، حتى لو كانت خارج فترة التقرير المختارة"
+            />
+            <CardBody>
+              {supplierDueInvoices.length === 0 ? (
+                <div className="text-sm text-slate-500 text-center py-6">كل فواتير الموردين مسددة</div>
+              ) : (
+                <Table>
+                  <THead>
+                    <TR>
+                      <TH>رقم الفاتورة</TH>
+                      <TH>التاريخ</TH>
+                      <TH>العمر</TH>
+                      <TH>المورد</TH>
+                      <TH>الهاتف</TH>
+                      <TH className="text-end">الإجمالي</TH>
+                      <TH className="text-end">المدفوع</TH>
+                      <TH className="text-end">المتبقي</TH>
+                      <TH>الحالة</TH>
+                      <TH className="text-end">إجراء</TH>
+                    </TR>
+                  </THead>
+                  <TBody>
+                    {supplierDueInvoices.map((invoice) => {
+                      const supplier = supplierLookup.get(invoice.supplierId);
+                      const age = invoiceAgeDays(invoice.date);
+                      return (
+                        <TR key={invoice.id}>
+                          <TD className="font-mono text-xs">{invoice.invoiceNumber}</TD>
+                          <TD>{formatDate(invoice.date)}</TD>
+                          <TD>
+                            <Badge tone={invoiceAgeTone(age)}>{invoiceAgeLabel(age)}</Badge>
+                          </TD>
+                          <TD className="font-medium text-slate-900">{invoice.supplierName}</TD>
+                          <TD className="text-slate-600">{supplier?.phone || "—"}</TD>
+                          <TD className="text-end">{formatCurrency(invoice.total, settings.currency)}</TD>
+                          <TD className="text-end">{formatCurrency(invoice.amountPaid, settings.currency)}</TD>
+                          <TD className="text-end font-bold text-rose-700">
+                            {formatCurrency(invoice.remaining, settings.currency)}
+                          </TD>
+                          <TD>
+                            <Badge tone={invoice.status === "partial" ? "amber" : "rose"}>
+                              {purchaseStatusLabel(invoice.status)}
+                            </Badge>
+                          </TD>
+                          <TD className="text-end">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => navigate(`/purchases/${invoice.id}`)}
+                            >
+                              فتح
+                            </Button>
+                          </TD>
+                        </TR>
+                      );
+                    })}
+                  </TBody>
+                </Table>
+              )}
+            </CardBody>
+          </Card>
+        </TabsContent>
+
         <TabsContent value="commissions">
           <Card>
             <CardHeader title="تفاصيل عمولات وبونص الموردين" />
@@ -649,6 +898,75 @@ export function ReportsPage() {
             </CardBody>
           </Card>
         </TabsContent>
+        <TabsContent value="monthlyProfit">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+              <div className="text-xs font-bold text-emerald-600">إجمالي المبيعات</div>
+              <div className="mt-1 text-xl font-bold text-emerald-700">{formatCurrency(totalSales, settings.currency)}</div>
+            </div>
+            <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+              <div className="text-xs font-bold text-blue-600">إجمالي المشتريات</div>
+              <div className="mt-1 text-xl font-bold text-blue-700">{formatCurrency(totalPurchases, settings.currency)}</div>
+            </div>
+            <div className={`rounded-xl border p-4 ${totalSales - totalPurchases >= 0 ? "border-green-200 bg-green-50" : "border-rose-200 bg-rose-50"}`}>
+              <div className={`text-xs font-bold ${totalSales - totalPurchases >= 0 ? "text-green-600" : "text-rose-600"}`}>صافي الربح في الفترة</div>
+              <div className={`mt-1 text-xl font-bold ${totalSales - totalPurchases >= 0 ? "text-green-700" : "text-rose-700"}`}>
+                {formatCurrency(totalSales - totalPurchases, settings.currency)}
+              </div>
+            </div>
+          </div>
+          <Card>
+            <CardHeader title="صافي الربح الشهري" subtitle="مبيعات وإجمالي مشتريات كل شهر" />
+            <CardBody className="h-72">
+              <ResponsiveContainer>
+                <BarChart data={monthlyProfitData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                  <XAxis dataKey="month" fontSize={12} stroke="#94a3b8" tick={{ fill: "#64748b" }} />
+                  <YAxis fontSize={12} stroke="#94a3b8" tick={{ fill: "#64748b" }} />
+                  <Tooltip
+                    contentStyle={{ borderRadius: 12, border: "none", boxShadow: "0 10px 15px -3px rgb(0 0 0 / 0.1)" }}
+                    formatter={(v, name) => [formatCurrency(Number(v), settings.currency), name === "sales" ? "مبيعات" : name === "purchases" ? "مشتريات" : "صافي الربح"]}
+                  />
+                  <Bar dataKey="sales" name="مبيعات" fill="#10b981" radius={[4, 4, 0, 0]} barSize={20} />
+                  <Bar dataKey="purchases" name="مشتريات" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={20} />
+                  <Bar dataKey="profit" name="صافي الربح" fill="#8b5cf6" radius={[4, 4, 0, 0]} barSize={20} />
+                </BarChart>
+              </ResponsiveContainer>
+            </CardBody>
+          </Card>
+          <Card className="mt-4">
+            <CardHeader title="تفصيل شهري" />
+            <CardBody>
+              {monthlyProfitData.length === 0 ? (
+                <div className="text-sm text-slate-500 text-center py-6">لا توجد بيانات</div>
+              ) : (
+                <Table>
+                  <THead>
+                    <TR>
+                      <TH>الشهر</TH>
+                      <TH className="text-end">المبيعات</TH>
+                      <TH className="text-end">المشتريات</TH>
+                      <TH className="text-end">صافي الربح</TH>
+                    </TR>
+                  </THead>
+                  <TBody>
+                    {monthlyProfitData.map((row) => (
+                      <TR key={row.month}>
+                        <TD className="font-medium">{row.month}</TD>
+                        <TD className="text-end text-emerald-700">{formatCurrency(row.sales, settings.currency)}</TD>
+                        <TD className="text-end text-blue-700">{formatCurrency(row.purchases, settings.currency)}</TD>
+                        <TD className={`text-end font-bold ${row.profit >= 0 ? "text-green-700" : "text-rose-700"}`}>
+                          {formatCurrency(row.profit, settings.currency)}
+                        </TD>
+                      </TR>
+                    ))}
+                  </TBody>
+                </Table>
+              )}
+            </CardBody>
+          </Card>
+        </TabsContent>
+
         {canViewEmployeeBonuses ? (
           <TabsContent value="employeeBonuses">
             <Card>
@@ -774,7 +1092,11 @@ export function ReportsPage() {
             <p className="text-lg text-slate-600 mt-1">{settings.companyName}</p>
             <div className="mt-4 space-y-1 text-sm text-slate-500">
               <p>تاريخ استخراج التقرير: {formatDate(new Date().toISOString())}</p>
-              <p>الفترة من: {formatDate(from)} إلى: {formatDate(to)}</p>
+              {printMode === "supplierDues" ? (
+                <p>النطاق: كل فواتير الموردين المفتوحة حتى تاريخ الاستخراج</p>
+              ) : (
+                <p>الفترة من: {formatDate(from)} إلى: {formatDate(to)}</p>
+              )}
             </div>
           </div>
           <div className="text-right">
@@ -788,7 +1110,9 @@ export function ReportsPage() {
               {printMode === "stock" && "تقرير جرد المخزون"}
               {printMode === "customers" && "كشف أرصدة مديونيات العملاء"}
               {printMode === "suppliers" && "كشف مستحقات الموردين"}
+              {printMode === "supplierDues" && "كشف الفلوس المطلوبة للموردين"}
               {printMode === "commissions" && "تقرير عمولات الموردين"}
+              {printMode === "monthlyProfit" && "تقرير صافي الربح الشهري"}
             </h2>
             <p className="text-xs opacity-50">نظام الهلبرز لإدارة المستودعات</p>
           </div>
@@ -1047,6 +1371,63 @@ export function ReportsPage() {
           </section>
         )}
 
+        {printMode === "supplierDues" && (
+          <section>
+            <div className="grid grid-cols-3 gap-4 mb-6 text-sm">
+              <div className="border border-slate-200 rounded-lg p-3">
+                <div className="text-slate-500">إجمالي المطلوب دفعه</div>
+                <div className="font-bold text-lg">{formatCurrency(supplierPayablesTotal, settings.currency)}</div>
+              </div>
+              <div className="border border-slate-200 rounded-lg p-3">
+                <div className="text-slate-500">عدد الفواتير المفتوحة</div>
+                <div className="font-bold text-lg">{supplierDueInvoices.length}</div>
+              </div>
+              <div className="border border-slate-200 rounded-lg p-3">
+                <div className="text-slate-500">عدد الموردين</div>
+                <div className="font-bold text-lg">{supplierPayableRows.length}</div>
+              </div>
+            </div>
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b-2 border-slate-200">
+                  <th className="py-2 text-right">رقم الفاتورة</th>
+                  <th className="py-2 text-right">التاريخ</th>
+                  <th className="py-2 text-right">العمر</th>
+                  <th className="py-2 text-right">المورد</th>
+                  <th className="py-2 text-left">الإجمالي</th>
+                  <th className="py-2 text-left">المدفوع</th>
+                  <th className="py-2 text-left">المتبقي</th>
+                  <th className="py-2 text-right">الحالة</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {supplierDueInvoices.map((invoice, i) => {
+                  const age = invoiceAgeDays(invoice.date);
+                  return (
+                    <tr key={i}>
+                      <td className="py-2 text-right font-mono tabular-nums">{invoice.invoiceNumber}</td>
+                      <td className="py-2 text-right tabular-nums">{formatDate(invoice.date)}</td>
+                      <td className="py-2 text-right">{invoiceAgeLabel(age)}</td>
+                      <td className="py-2 text-right">{invoice.supplierName}</td>
+                      <td className="py-2 text-left tabular-nums font-mono">{formatCurrency(invoice.total, settings.currency)}</td>
+                      <td className="py-2 text-left tabular-nums font-mono">{formatCurrency(invoice.amountPaid, settings.currency)}</td>
+                      <td className="py-2 text-left tabular-nums font-mono font-bold">{formatCurrency(invoice.remaining, settings.currency)}</td>
+                      <td className="py-2 text-right">{purchaseStatusLabel(invoice.status)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-slate-900 font-bold bg-slate-50">
+                  <td colSpan={6} className="py-3 text-right">إجمالي المطلوب دفعه للموردين</td>
+                  <td className="py-3 text-left tabular-nums font-mono text-lg">{formatCurrency(supplierPayablesTotal, settings.currency)}</td>
+                  <td />
+                </tr>
+              </tfoot>
+            </table>
+          </section>
+        )}
+
         {printMode === "commissions" && (
           <section>
             <table className="w-full text-xs">
@@ -1078,6 +1459,53 @@ export function ReportsPage() {
           </section>
         )}
 
+        {printMode === "monthlyProfit" && (
+          <section>
+            <div className="grid grid-cols-3 gap-4 mb-6 text-sm">
+              <div className="border border-slate-200 rounded-lg p-3">
+                <div className="text-slate-500">إجمالي المبيعات</div>
+                <div className="font-bold text-lg">{formatCurrency(totalSales, settings.currency)}</div>
+              </div>
+              <div className="border border-slate-200 rounded-lg p-3">
+                <div className="text-slate-500">إجمالي المشتريات</div>
+                <div className="font-bold text-lg">{formatCurrency(totalPurchases, settings.currency)}</div>
+              </div>
+              <div className="border border-slate-200 rounded-lg p-3">
+                <div className="text-slate-500">صافي الربح</div>
+                <div className="font-bold text-lg">{formatCurrency(totalSales - totalPurchases, settings.currency)}</div>
+              </div>
+            </div>
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b-2 border-slate-200">
+                  <th className="py-2 text-right">الشهر</th>
+                  <th className="py-2 text-left">المبيعات</th>
+                  <th className="py-2 text-left">المشتريات</th>
+                  <th className="py-2 text-left">صافي الربح</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {monthlyProfitData.map((row, i) => (
+                  <tr key={i}>
+                    <td className="py-2 text-right font-medium">{row.month}</td>
+                    <td className="py-2 text-left tabular-nums font-mono">{formatCurrency(row.sales, settings.currency)}</td>
+                    <td className="py-2 text-left tabular-nums font-mono">{formatCurrency(row.purchases, settings.currency)}</td>
+                    <td className="py-2 text-left tabular-nums font-mono font-bold">{formatCurrency(row.profit, settings.currency)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-slate-900 font-bold bg-slate-50">
+                  <td className="py-3 text-right">الإجمالي</td>
+                  <td className="py-3 text-left tabular-nums font-mono">{formatCurrency(totalSales, settings.currency)}</td>
+                  <td className="py-3 text-left tabular-nums font-mono">{formatCurrency(totalPurchases, settings.currency)}</td>
+                  <td className="py-3 text-left tabular-nums font-mono text-lg">{formatCurrency(totalSales - totalPurchases, settings.currency)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </section>
+        )}
+
         <div className="mt-20 pt-10 border-t border-slate-200 flex justify-between text-xs text-slate-400">
           <p>هذا التقرير تم استخراجه آلياً ولا يحتاج لختم رسمي.</p>
           <div className="text-center">
@@ -1088,6 +1516,34 @@ export function ReportsPage() {
       </div>
     </>
   );
+}
+
+function invoiceAgeDays(date: string): number {
+  const issuedAt = new Date(date);
+  if (Number.isNaN(issuedAt.getTime())) return 0;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  issuedAt.setHours(0, 0, 0, 0);
+  return Math.max(0, Math.floor((today.getTime() - issuedAt.getTime()) / (1000 * 60 * 60 * 24)));
+}
+
+function invoiceAgeLabel(days: number): string {
+  if (days === 0) return "اليوم";
+  if (days === 1) return "منذ يوم";
+  return `منذ ${days} يوم`;
+}
+
+function invoiceAgeTone(days: number): "blue" | "amber" | "orange" | "rose" {
+  if (days >= 60) return "rose";
+  if (days >= 30) return "orange";
+  if (days >= 14) return "amber";
+  return "blue";
+}
+
+function purchaseStatusLabel(status: string): string {
+  if (status === "partial") return "مدفوع جزئياً";
+  if (status === "unpaid") return "غير مدفوع";
+  return "مفتوح";
 }
 
 function TR_Print({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
@@ -1108,7 +1564,7 @@ function Stat({
   icon: React.ReactNode;
   label: string;
   value: string;
-  tone: "green" | "blue" | "amber" | "indigo" | "emerald" | "rose";
+  tone: "green" | "blue" | "amber" | "indigo" | "emerald" | "rose" | "violet";
 }) {
   const colors: Record<string, string> = {
     green: "bg-emerald-50 text-emerald-600",
@@ -1117,6 +1573,7 @@ function Stat({
     indigo: "bg-indigo-50 text-indigo-600",
     emerald: "bg-emerald-50 text-emerald-600",
     rose: "bg-rose-50 text-rose-600",
+    violet: "bg-violet-50 text-violet-600",
   };
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-4 flex items-center gap-4 hover:shadow-md transition-shadow">
@@ -1124,8 +1581,8 @@ function Stat({
         {icon}
       </div>
       <div className="min-w-0">
-        <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 truncate">{label}</div>
-        <div className="text-lg font-bold text-slate-900 mt-0.5 tabular-nums truncate">{value}</div>
+        <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 leading-4">{label}</div>
+        <div className="text-lg font-bold text-slate-900 mt-0.5 tabular-nums leading-tight">{value}</div>
       </div>
     </div>
   );

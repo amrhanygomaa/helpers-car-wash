@@ -45,7 +45,7 @@ export function InventoryPage() {
   const [category, setCategory] = useState("");
   const [supplier, setSupplier] = useState("");
   const [filter, setFilter] = useState<
-    "all" | "low" | "soon" | "expired"
+    "all" | "low" | "soon" | "expired" | "zero"
   >("all");
 
   const [adjustTarget, setAdjustTarget] = useState<Product | null>(null);
@@ -97,6 +97,7 @@ export function InventoryPage() {
         const du = daysUntil(p.expiryDate);
         return du !== null && du < 0;
       });
+    if (filter === "zero") list = list.filter((p) => p.quantity === 0);
     return list;
   }, [products, q, category, supplier, filter]);
 
@@ -216,6 +217,7 @@ export function InventoryPage() {
                 { key: "low", label: "منخفض" },
                 { key: "soon", label: "قارب ينتهي" },
                 { key: "expired", label: "منتهي" },
+                { key: "zero", label: "نفد الكمية" },
               ].map((b) => (
                 <button
                   key={b.key}
@@ -235,7 +237,13 @@ export function InventoryPage() {
           {filtered.length === 0 ? (
             <EmptyState
               icon={<Warehouse className="w-5 h-5" />}
-              title="لا توجد منتجات"
+              title={
+                filter === "expired" ? "لا توجد منتجات منتهية الصلاحية" :
+                filter === "low" ? "لا توجد منتجات منخفضة المخزون" :
+                filter === "soon" ? "لا توجد منتجات قاربت على الانتهاء" :
+                filter === "zero" ? "لا توجد منتجات نفدت كميتها" :
+                "لا توجد منتجات"
+              }
             />
           ) : (
             <Table>

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Eye, Filter, Plus, Receipt, Search, Printer } from "lucide-react";
+import { Eye, Filter, Plus, Receipt, Search, Printer, Trash2 } from "lucide-react";
 import { PageHeader } from "../components/layout/AppLayout";
 import { Card, CardBody, CardHeader } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -8,27 +8,36 @@ import { Badge } from "../components/ui/Badge";
 import { Input, Select } from "../components/ui/Input";
 import { Table, TBody, TD, TH, THead, TR } from "../components/ui/Table";
 import { EmptyState } from "../components/ui/EmptyState";
+import { ConfirmDialog } from "../components/ui/Dialog";
 import { useApp } from "../store/AppContext";
 import { useToast } from "../components/ui/Toast";
 import { formatCurrency, formatDate } from "../lib/format";
 import { inRange } from "../lib/utils";
 import { printAppRoute } from "../lib/print";
 import { hasPermission } from "../lib/permissions";
+import type { SalesInvoice } from "../types";
 
 export function SalesInvoicesPage() {
-  const { salesInvoices, customers, settings, currentUser } = useApp();
+  const { salesInvoices, customers, settings, currentUser, deleteSalesInvoice } = useApp();
   const navigate = useNavigate();
   const toast = useToast();
   const canAddSalesInvoice = hasPermission(currentUser, "salesInvoices", "add");
+  const canDeleteSales = hasPermission(currentUser, "salesInvoices", "delete");
   const [q, setQ] = useState("");
   const [customerId, setCustomerId] = useState("");
   const [status, setStatus] = useState("");
   const [payment, setPayment] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  const [toDelete, setToDelete] = useState<SalesInvoice | null>(null);
 
   const customerCodeMap = useMemo(
     () => new Map(customers.map((c) => [c.id, (c.code ?? "").toLowerCase()])),
+    [customers]
+  );
+
+  const customerPhoneMap = useMemo(
+    () => new Map(customers.map((c) => [c.id, (c.phone ?? "").toLowerCase()])),
     [customers]
   );
 
@@ -41,7 +50,8 @@ export function SalesInvoicesPage() {
           s.invoiceNumber.toLowerCase().includes(t) ||
           s.customerName.toLowerCase().includes(t) ||
           (s.driverName ?? "").toLowerCase().includes(t) ||
-          (customerCodeMap.get(s.customerId) ?? "").includes(t)
+          (customerCodeMap.get(s.customerId) ?? "").includes(t) ||
+          (customerPhoneMap.get(s.customerId) ?? "").includes(t)
       );
     }
     if (customerId) list = list.filter((s) => s.customerId === customerId);
@@ -49,7 +59,7 @@ export function SalesInvoicesPage() {
     if (payment) list = list.filter((s) => s.paymentType === payment);
     list = list.filter((s) => inRange(s.date, from, to));
     return [...list].sort((a, b) => (a.date < b.date ? 1 : -1));
-  }, [salesInvoices, customerCodeMap, q, customerId, status, payment, from, to]);
+  }, [salesInvoices, customerCodeMap, customerPhoneMap, q, customerId, status, payment, from, to]);
 
   const totals = useMemo(() => {
     const total = filtered.reduce((a, s) => a + (s.cancelled ? 0 : s.total), 0);
@@ -238,6 +248,17 @@ export function SalesInvoicesPage() {
                         >
                           <Printer className="w-4 h-4" />
                         </Button>
+                        {canDeleteSales && (
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            title="حذف"
+                            className="text-rose-500 hover:text-rose-700 hover:bg-rose-50"
+                            onClick={() => setToDelete(s)}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        )}
                       </div>
                     </TD>
                   </TR>
@@ -247,6 +268,22 @@ export function SalesInvoicesPage() {
           )}
         </CardBody>
       </Card>
+
+      <ConfirmDialog
+        open={!!toDelete}
+        onClose={() => setToDelete(null)}
+        onConfirm={() => {
+          if (!toDelete) return;
+          const ok = deleteSalesInvoice(toDelete.id);
+          if (ok) toast.success("تم حذف الفاتورة");
+          else toast.error("تعذر الحذف", "لا يمكن حذف الفاتورة");
+          setToDelete(null);
+        }}
+        title="حذف فاتورة المبيعات"
+        message={`هل أنت متأكد من حذف الفاتورة ${toDelete?.invoiceNumber ?? ""}؟ لا يمكن التراجع عن هذا الإجراء.`}
+        confirmText="حذف"
+        variant="danger"
+      />
     </>
   );
 }

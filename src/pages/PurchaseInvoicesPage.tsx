@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Eye, Filter, Plus, ShoppingBag, Search, Printer } from "lucide-react";
+import { Eye, Filter, Plus, ShoppingBag, Search, Printer, Trash2 } from "lucide-react";
 import { PageHeader } from "../components/layout/AppLayout";
 import { Card, CardBody, CardHeader } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -8,23 +8,37 @@ import { Badge } from "../components/ui/Badge";
 import { Input, Select } from "../components/ui/Input";
 import { Table, TBody, TD, TH, THead, TR } from "../components/ui/Table";
 import { EmptyState } from "../components/ui/EmptyState";
+import { ConfirmDialog } from "../components/ui/Dialog";
 import { useApp } from "../store/AppContext";
 import { useToast } from "../components/ui/Toast";
 import { formatCurrency, formatDate } from "../lib/format";
 import { inRange } from "../lib/utils";
 import { printAppRoute } from "../lib/print";
 import { hasPermission } from "../lib/permissions";
+import type { PurchaseInvoice } from "../types";
 
 export function PurchaseInvoicesPage() {
-  const { purchaseInvoices, suppliers, settings, currentUser } = useApp();
+  const { purchaseInvoices, suppliers, settings, currentUser, deletePurchaseInvoice } = useApp();
   const navigate = useNavigate();
   const toast = useToast();
   const canAddPurchaseInvoice = hasPermission(currentUser, "purchaseInvoices", "add");
+  const canDeletePurchase = hasPermission(currentUser, "purchaseInvoices", "delete");
   const [q, setQ] = useState("");
   const [supplierId, setSupplierId] = useState("");
   const [status, setStatus] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  const [toDelete, setToDelete] = useState<PurchaseInvoice | null>(null);
+
+  const supplierCodeMap = useMemo(
+    () => new Map(suppliers.map((s) => [s.id, (s.code ?? "").toLowerCase()])),
+    [suppliers]
+  );
+
+  const supplierPhoneMap = useMemo(
+    () => new Map(suppliers.map((s) => [s.id, (s.phone ?? "").toLowerCase()])),
+    [suppliers]
+  );
 
   const filtered = useMemo(() => {
     let list = purchaseInvoices;
@@ -33,14 +47,16 @@ export function PurchaseInvoicesPage() {
       list = list.filter(
         (s) =>
           s.invoiceNumber.toLowerCase().includes(t) ||
-          s.supplierName.toLowerCase().includes(t)
+          s.supplierName.toLowerCase().includes(t) ||
+          (supplierCodeMap.get(s.supplierId) ?? "").includes(t) ||
+          (supplierPhoneMap.get(s.supplierId) ?? "").includes(t)
       );
     }
     if (supplierId) list = list.filter((s) => s.supplierId === supplierId);
     if (status) list = list.filter((s) => s.status === status);
     list = list.filter((s) => inRange(s.date, from, to));
     return [...list].sort((a, b) => (a.date < b.date ? 1 : -1));
-  }, [purchaseInvoices, q, supplierId, status, from, to]);
+  }, [purchaseInvoices, supplierCodeMap, supplierPhoneMap, q, supplierId, status, from, to]);
 
   const totals = useMemo(() => {
     const total = filtered.reduce((a, s) => a + s.total, 0);
@@ -207,6 +223,17 @@ export function PurchaseInvoicesPage() {
                         >
                           <Printer className="w-4 h-4" />
                         </Button>
+                        {canDeletePurchase && (
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            title="حذف"
+                            className="text-rose-500 hover:text-rose-700 hover:bg-rose-50"
+                            onClick={() => setToDelete(s)}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        )}
                       </div>
                     </TD>
                   </TR>
@@ -216,6 +243,22 @@ export function PurchaseInvoicesPage() {
           )}
         </CardBody>
       </Card>
+
+      <ConfirmDialog
+        open={!!toDelete}
+        onClose={() => setToDelete(null)}
+        onConfirm={() => {
+          if (!toDelete) return;
+          const ok = deletePurchaseInvoice(toDelete.id);
+          if (ok) toast.success("تم حذف الفاتورة");
+          else toast.error("تعذر الحذف", "لا يمكن حذف الفاتورة");
+          setToDelete(null);
+        }}
+        title="حذف فاتورة المشتريات"
+        message={`هل أنت متأكد من حذف الفاتورة ${toDelete?.invoiceNumber ?? ""}؟ لا يمكن التراجع عن هذا الإجراء.`}
+        confirmText="حذف"
+        variant="danger"
+      />
     </>
   );
 }

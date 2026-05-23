@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Plus, Minus, Wallet, HandCoins, Factory, NotebookPen, Users } from "lucide-react";
+import { Plus, Minus, Wallet, HandCoins, Factory, NotebookPen, Users, UserRoundMinus } from "lucide-react";
 import { PageHeader } from "../components/layout/AppLayout";
 import { Card, CardBody, CardHeader } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -55,7 +55,11 @@ export function CashboxPage() {
     [purchaseInvoices]
   );
   const receivables = useMemo(
-    () => customers.reduce((a, c) => a + customerBalance(c.id), 0),
+    () => customers.reduce((a, c) => a + Math.max(0, customerBalance(c.id)), 0),
+    [customers, customerBalance]
+  );
+  const customerCredits = useMemo(
+    () => customers.reduce((a, c) => a + Math.max(0, -customerBalance(c.id)), 0),
     [customers, customerBalance]
   );
   const payables = useMemo(
@@ -135,7 +139,7 @@ export function CashboxPage() {
                     setOpen(true);
                   }}
                 >
-                  <Minus className="w-4 h-4" /> صرف نقدي
+                  <Minus className="w-4 h-4" /> صرف
                 </Button>
               ) : null}
             </>
@@ -143,11 +147,12 @@ export function CashboxPage() {
         }
       />
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
         <Stat icon={<Wallet className="w-5 h-5" />} label="الرصيد الحالي" value={formatCurrency(currentCashBalance(), settings.currency)} tone="green" />
         <Stat icon={<HandCoins className="w-5 h-5" />} label="إجمالي المحصل" value={formatCurrency(totalReceived, settings.currency)} tone="blue" />
         <Stat icon={<Factory className="w-5 h-5" />} label="مدفوعات الموردين" value={formatCurrency(totalPurchasePayments, settings.currency)} tone="amber" />
         <Stat icon={<Users className="w-5 h-5" />} label="مستحقات العملاء" value={formatCurrency(receivables, settings.currency)} tone="rose" />
+        <Stat icon={<UserRoundMinus className="w-5 h-5" />} label="فلوس علينا للعملاء" value={formatCurrency(customerCredits, settings.currency)} tone="violet" />
       </div>
 
       <Card>
@@ -199,7 +204,7 @@ export function CashboxPage() {
       <Dialog
         open={open}
         onClose={() => setOpen(false)}
-        title={entryType === "manual-add" ? "إضافة نقدية" : "صرف نقدي"}
+        title={entryType === "manual-add" ? "إضافة نقدية" : "صرف"}
         footer={
           <>
             <Button variant="outline" onClick={() => setOpen(false)}>إلغاء</Button>
@@ -211,7 +216,7 @@ export function CashboxPage() {
           <Field label="النوع">
             <Select value={entryType} onChange={(e) => setEntryType(e.target.value as CashEntryType)}>
               {canAddCash ? <option value="manual-add">إضافة نقدية</option> : null}
-              {canSpendCash ? <option value="manual-remove">صرف نقدي</option> : null}
+              {canSpendCash ? <option value="manual-remove">صرف</option> : null}
               {canAddCash || canSpendCash ? <option value="adjustment">تسوية / ملاحظة</option> : null}
             </Select>
           </Field>
@@ -279,13 +284,14 @@ function Stat({
   icon: React.ReactNode;
   label: string;
   value: string;
-  tone: "green" | "blue" | "amber" | "rose";
+  tone: "green" | "blue" | "amber" | "rose" | "violet";
 }) {
   const colors: Record<string, string> = {
     green: "bg-emerald-50 text-emerald-700",
     blue: "bg-blue-50 text-blue-700",
     amber: "bg-amber-50 text-amber-700",
     rose: "bg-rose-50 text-rose-700",
+    violet: "bg-violet-50 text-violet-700",
   };
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-4 flex items-center gap-3">
