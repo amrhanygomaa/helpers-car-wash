@@ -313,10 +313,12 @@ export function ReportsPage() {
               <Button 
                 variant="outline" 
                 onClick={() => {
-                  if (printMode === "full") {
+                  const csvModes = ["products", "customers", "suppliers", "sales", "purchases", "stock", "commissions"] as const;
+                  type CsvMode = typeof csvModes[number];
+                  if (printMode === "full" || printMode === "supplierDues" || printMode === "monthlyProfit") {
                     toast.info("تصدير", "يرجى اختيار تقرير محدد (مبيعات، مشتريات، إلخ) للتصدير إلى Excel");
-                  } else {
-                    exportToCSV(printMode);
+                  } else if ((csvModes as readonly string[]).includes(printMode)) {
+                    exportToCSV(printMode as CsvMode);
                   }
                 }}
               >

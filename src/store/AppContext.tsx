@@ -66,6 +66,7 @@ interface AppState {
   cashEntries: CashEntry[];
   nextProductCode: number;
   nextCustomerCode: number;
+  nextSupplierCode: number;
   users: AppUser[];
   currentUser: AppUser | null;
   salesReturns: SalesReturn[];
@@ -506,6 +507,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [nextCustomerCode, setNextCustomerCode] = useState<number>(() =>
     lsGet<number>("nextCustomerCode", 1)
   );
+  const [nextSupplierCode, setNextSupplierCode] = useState<number>(() =>
+    lsGet<number>("nextSupplierCode", 1)
+  );
   const [users, setUsers] = useState<AppUser[]>(() =>
     lsGet<AppUser[]>("users", seedUsers).map(normalizeUser)
   );
@@ -671,6 +675,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => lsSet("cashEntries", cashEntries), [cashEntries]);
   useEffect(() => lsSet("nextProductCode", nextProductCode), [nextProductCode]);
   useEffect(() => lsSet("nextCustomerCode", nextCustomerCode), [nextCustomerCode]);
+  useEffect(() => lsSet("nextSupplierCode", nextSupplierCode), [nextSupplierCode]);
   useEffect(() => lsSet("users", users), [users]);
   useEffect(() => lsSet("salesReturns", salesReturns), [salesReturns]);
   useEffect(() => lsSet("purchaseReturns", purchaseReturns), [purchaseReturns]);
@@ -980,6 +985,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       createdAt: new Date().toISOString(),
     };
     setSuppliers((list) => [sup, ...list]);
+    setNextSupplierCode((prev) => prev + 1);
     return sup;
   };
   const updateSupplier: AppActions["updateSupplier"] = (id, patch) => {
@@ -1783,6 +1789,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       cashEntries,
       nextProductCode,
       nextCustomerCode,
+      nextSupplierCode,
       salesReturns,
       purchaseReturns,
       drivers,
@@ -1853,6 +1860,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       cashEntries,
       nextProductCode,
       nextCustomerCode,
+      nextSupplierCode,
       salesReturns,
       purchaseReturns,
       drivers,
