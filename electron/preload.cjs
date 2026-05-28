@@ -47,9 +47,9 @@ contextBridge.exposeInMainWorld("desktopAPI", {
   },
   storage: {
     get: (key) => sync("storage:get", key),
-    set: (key, value) => sync("storage:set", key, value),
-    remove: (key) => sync("storage:remove", key),
-    clearPrefix: (prefix) => sync("storage:clear-prefix", prefix),
+    set: (key, value) => ipcRenderer.invoke("storage:set", key, value),
+    remove: (key) => ipcRenderer.invoke("storage:remove", key),
+    clearPrefix: (prefix) => ipcRenderer.invoke("storage:clear-prefix", prefix),
     export: () => ipcRenderer.invoke("storage:export"),
     import: (payload) => ipcRenderer.invoke("storage:import", payload),
   },

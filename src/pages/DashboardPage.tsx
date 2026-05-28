@@ -69,7 +69,7 @@ const CARD_LABELS: Record<CardId, string> = {
   todayPurchases:   "مشتريات اليوم",
   monthlySales:     "مبيعات الشهر",
   monthlyPurchases: "مشتريات الشهر",
-  receivables:      "مستحقات العملاء",
+  receivables:      "مستحقات من العملاء",
   payables:         "مستحقات الموردين",
   cashBalance:      "رصيد الخزينة",
   accountInvoices:  "فواتير آجل مفتوحة",
@@ -432,7 +432,7 @@ export function DashboardPage() {
       case "todayPurchases":   return <StatCard key={id} title="مشتريات اليوم" value={formatCurrency(stats.todayPurchases, cur)} icon={<TrendingDown className="w-5 h-5" />} tone="slate" />;
       case "monthlySales":     return <StatCard key={id} title="مبيعات الشهر" value={formatCurrency(stats.monthlySales, cur)} icon={<BarChart2 className="w-5 h-5" />} tone="green" delta="هذا الشهر" />;
       case "monthlyPurchases": return <StatCard key={id} title="مشتريات الشهر" value={formatCurrency(stats.monthlyPurchases, cur)} icon={<ShoppingBag className="w-5 h-5" />} tone="slate" delta="هذا الشهر" />;
-      case "receivables":      return <StatCard key={id} title="مستحقات العملاء" value={formatCurrency(stats.receivables, cur)} icon={<HandCoins className="w-5 h-5" />} tone="amber" />;
+      case "receivables":      return <StatCard key={id} title="مستحقات من العملاء" value={formatCurrency(stats.receivables, cur)} icon={<HandCoins className="w-5 h-5" />} tone="amber" />;
       case "payables":         return <StatCard key={id} title="مستحقات الموردين" value={formatCurrency(stats.payables, cur)} icon={<ShoppingBag className="w-5 h-5" />} tone="slate" />;
       case "cashBalance":      return <StatCard key={id} title="رصيد الخزينة الحالي" value={formatCurrency(stats.cashBalance, cur)} icon={<Wallet className="w-5 h-5" />} tone="green" />;
       case "accountInvoices":  return <StatCard key={id} title="فواتير آجل مفتوحة" value={formatCurrency(accountInvoicesTotal, cur)} icon={<Clock className="w-5 h-5" />} tone="indigo" delta={`${accountInvoicesCount} فاتورة`} />;

@@ -89,8 +89,9 @@ export function ProductFormDialog({
 
   function validate(): boolean {
     const e: Record<string, string> = {};
-    if (!form.name.trim()) e.name = "اسم المنتج مطلوب";
     if (!form.code.trim()) e.code = "الكود مطلوب";
+    if (!form.name.trim()) e.name = "اسم المنتج مطلوب";
+    if (!form.category.trim()) e.category = "الفئة مطلوبة";
     if (form.purchasePrice < 0) e.purchasePrice = "يجب أن يكون موجباً";
     if (form.wholesalePrice < 0) e.wholesalePrice = "يجب أن يكون موجباً";
     if (form.retailPrice < 0) e.retailPrice = "يجب أن يكون موجباً";
@@ -102,8 +103,7 @@ export function ProductFormDialog({
     }
     if (form.quantity < 0) e.quantity = "يجب أن يكون موجباً";
     if (form.minStock < 0) e.minStock = "يجب أن يكون موجباً";
-    if (form.hasExpiry && !form.expiryDate)
-      e.expiryDate = "تاريخ الصلاحية مطلوب";
+    if (form.hasExpiry && !form.expiryDate) e.expiryDate = "تاريخ الصلاحية مطلوب";
     setErrors(e);
     return Object.keys(e).length === 0;
   }
@@ -166,7 +166,9 @@ export function ProductFormDialog({
         </>
       }
     >
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-4">
+
+        {/* كود المنتج + اسم المنتج */}
         <Field label="كود المنتج" required error={errors.code}>
           <Input
             value={form.code}
@@ -181,7 +183,9 @@ export function ProductFormDialog({
             placeholder="مثل: أرز مصري 5 كجم"
           />
         </Field>
-        <Field label="الفئة">
+
+        {/* الفئة + الوحدة */}
+        <Field label="الفئة" required error={errors.category}>
           <div className="flex gap-2">
             <Select
               value={form.category}
@@ -275,7 +279,9 @@ export function ProductFormDialog({
             </div>
           )}
         </Field>
-        <Field label="سعر الشراء" error={errors.purchasePrice}>
+
+        {/* سعر الشراء + سعر الجملة */}
+        <Field label="سعر الشراء" required error={errors.purchasePrice}>
           <Input
             type="number"
             min={0}
@@ -293,6 +299,8 @@ export function ProductFormDialog({
             onChange={(e) => set("wholesalePrice", Number(e.target.value))}
           />
         </Field>
+
+        {/* سعر التجزئة + عدد القطع */}
         <Field
           label={form.piecesPerUnit ? `سعر ${form.retailUnit || "القطعة"}` : "سعر التجزئة للوحدة"}
           required
@@ -322,16 +330,32 @@ export function ProductFormDialog({
             placeholder={`مثل: 24 قطعة في ${form.unit}`}
           />
         </Field>
+
+        {/* حقول التجزئة - تظهر فقط لما يكون فيه عدد قطع */}
         {form.piecesPerUnit ? (
-          <Field label="اسم وحدة التجزئة" required error={errors.retailUnit}>
-            <Input
-              value={form.retailUnit ?? ""}
-              onChange={(e) => set("retailUnit", e.target.value || undefined)}
-              placeholder="مثل: قطعة، كيس، علبة صغيرة"
-            />
-          </Field>
-        ) : <div />}
-        <Field label={`الكمية الحالية (${form.unit})`} error={errors.quantity}>
+          <>
+            <Field label="اسم وحدة التجزئة" required error={errors.retailUnit}>
+              <Input
+                value={form.retailUnit ?? ""}
+                onChange={(e) => set("retailUnit", e.target.value || undefined)}
+                placeholder="مثل: قطعة، كيس، علبة صغيرة"
+              />
+            </Field>
+            <Field label={`القطع المفردة (${form.retailUnit || "قطعة"})`}>
+              <Input
+                type="number"
+                min={0}
+                max={form.piecesPerUnit - 1}
+                value={form.looseQuantity ?? 0}
+                onChange={(e) => set("looseQuantity", Number(e.target.value) || undefined)}
+                placeholder="0"
+              />
+            </Field>
+          </>
+        ) : null}
+
+        {/* الكمية الحالية + الحد الأدنى */}
+        <Field label={`الكمية الحالية (${form.unit})`} required error={errors.quantity}>
           <Input
             type="number"
             min={0}
@@ -339,19 +363,7 @@ export function ProductFormDialog({
             onChange={(e) => set("quantity", Number(e.target.value))}
           />
         </Field>
-        {form.piecesPerUnit ? (
-          <Field label={`القطع المفردة (${form.retailUnit || "قطعة"})`}>
-            <Input
-              type="number"
-              min={0}
-              max={form.piecesPerUnit - 1}
-              value={form.looseQuantity ?? 0}
-              onChange={(e) => set("looseQuantity", Number(e.target.value) || undefined)}
-              placeholder="0"
-            />
-          </Field>
-        ) : <div />}
-        <Field label="الحد الأدنى للمخزون" error={errors.minStock}>
+        <Field label="الحد الأدنى للمخزون" required error={errors.minStock}>
           <Input
             type="number"
             min={0}
@@ -359,18 +371,16 @@ export function ProductFormDialog({
             onChange={(e) => set("minStock", Number(e.target.value))}
           />
         </Field>
+
+        {/* المورد + تاريخ الصلاحية */}
         <Field label="المورد">
           <Select
             value={form.supplierId ?? ""}
-            onChange={(e) =>
-              set("supplierId", e.target.value ? e.target.value : undefined)
-            }
+            onChange={(e) => set("supplierId", e.target.value ? e.target.value : undefined)}
           >
             <option value="">— غير محدد —</option>
             {suppliers.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
+              <option key={s.id} value={s.id}>{s.name}</option>
             ))}
           </Select>
         </Field>
@@ -399,19 +409,19 @@ export function ProductFormDialog({
             </label>
           </div>
         </Field>
+
+        {/* تاريخ الصلاحية - يظهر فقط لو اختار نعم */}
         {form.hasExpiry ? (
-          <Field label="تاريخ الصلاحية" required error={errors.expiryDate}>
+          <Field label="تاريخ الصلاحية" required error={errors.expiryDate} className="col-span-2">
             <Input
               type="date"
               value={form.expiryDate ?? ""}
-              onChange={(e) =>
-                set("expiryDate", e.target.value || undefined)
-              }
+              onChange={(e) => set("expiryDate", e.target.value || undefined)}
             />
           </Field>
-        ) : (
-          <div />
-        )}
+        ) : null}
+
+        {/* ملاحظات - اختياري */}
         <Field label="ملاحظات" className="col-span-2">
           <Textarea
             rows={2}
@@ -419,6 +429,7 @@ export function ProductFormDialog({
             onChange={(e) => set("notes", e.target.value)}
           />
         </Field>
+
       </div>
     </Dialog>
   );

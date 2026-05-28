@@ -4,13 +4,8 @@ import {
   AlertTriangle,
   ArrowDownLeft,
   ArrowUpRight,
-  BellRing,
-  CalendarClock,
-  CheckCircle2,
-  Clock3,
   MessageCircle,
   Search,
-  WalletCards,
 } from "lucide-react";
 import { PageHeader } from "../components/layout/AppLayout";
 import { Badge } from "../components/ui/Badge";
@@ -325,7 +320,7 @@ export function DuesPage() {
         description="متابعة أرصدة العملاء والموردين ومواعيد التحصيل"
       />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
         <StatCard
           icon={<ArrowDownLeft className="w-5 h-5" />}
           label="فلوس لنا"
@@ -347,91 +342,56 @@ export function DuesPage() {
           detail={`${salesDueRows.filter((row) => row.status === "overdue").length} فاتورة متأخرة`}
           tone="amber"
         />
-        <StatCard
-          icon={<WalletCards className="w-5 h-5" />}
-          label="صافي الموقف"
-          value={formatCurrency(totals.net, settings.currency)}
-          detail={totals.net >= 0 ? "الصافي لصالحك" : "الصافي عليك"}
-          tone={totals.net >= 0 ? "blue" : "red"}
-        />
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-4">
-        <Card>
-          <CardHeader
-            title="تنبيهات التحصيل"
-            subtitle={`مستحق قريباً: ${formatCurrency(totals.dueSoonSales, settings.currency)} - بدون ميعاد: ${formatCurrency(totals.undatedSales, settings.currency)}`}
-            actions={
-              <Badge tone={priorityRows.length > 0 ? "amber" : "green"}>
-                {priorityRows.length > 0 ? `${priorityRows.length} أولوية` : "لا توجد أولويات"}
-              </Badge>
-            }
-          />
-          <CardBody className="space-y-3">
-            {priorityRows.length === 0 ? (
-              <div className="min-h-32 grid place-items-center text-sm text-slate-500">
-                لا توجد فواتير متأخرة أو مستحقة قريباً
-              </div>
-            ) : (
-              priorityRows.map((row) => (
-                <div
-                  key={row.invoice.id}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
-                >
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Link
-                        to={`/sales/${row.invoice.id}`}
-                        className="font-mono text-xs text-brand-700 hover:underline"
-                      >
-                        {row.invoice.invoiceNumber}
-                      </Link>
-                      <Badge tone={statusTone(row.status)}>
-                        {statusLabel(row.status, row.days)}
-                      </Badge>
-                    </div>
-                    <div className="mt-1 text-sm font-medium text-slate-900">
-                      {row.invoice.customerName}
-                    </div>
+      <Card>
+        <CardHeader
+          title="تنبيهات التحصيل"
+          subtitle={`مستحق قريباً: ${formatCurrency(totals.dueSoonSales, settings.currency)} - بدون ميعاد: ${formatCurrency(totals.undatedSales, settings.currency)}`}
+          actions={
+            <Badge tone={priorityRows.length > 0 ? "amber" : "green"}>
+              {priorityRows.length > 0 ? `${priorityRows.length} أولوية` : "لا توجد أولويات"}
+            </Badge>
+          }
+        />
+        <CardBody className="space-y-3">
+          {priorityRows.length === 0 ? (
+            <div className="min-h-32 grid place-items-center text-sm text-slate-500">
+              لا توجد فواتير متأخرة أو مستحقة قريباً
+            </div>
+          ) : (
+            priorityRows.map((row) => (
+              <div
+                key={row.invoice.id}
+                className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
+              >
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Link
+                      to={`/sales/${row.invoice.id}`}
+                      className="font-mono text-xs text-brand-700 hover:underline"
+                    >
+                      {row.invoice.invoiceNumber}
+                    </Link>
+                    <Badge tone={statusTone(row.status)}>
+                      {statusLabel(row.status, row.days)}
+                    </Badge>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-sm font-semibold text-rose-700">
-                      {formatCurrency(row.invoice.remaining, settings.currency)}
-                    </span>
-                    <ContactButton phone={row.customerPhone} />
+                  <div className="mt-1 text-sm font-medium text-slate-900">
+                    {row.invoice.customerName}
                   </div>
                 </div>
-              ))
-            )}
-          </CardBody>
-        </Card>
-
-        <Card>
-          <CardHeader title="تفصيل سريع" />
-          <CardBody className="space-y-3">
-            <QuickRow
-              label="رصيد دائن للعملاء"
-              value={formatCurrency(totals.customerCredits, settings.currency)}
-              tone="amber"
-            />
-            <QuickRow
-              label="رصيد لنا عند الموردين"
-              value={formatCurrency(totals.supplierCredits, settings.currency)}
-              tone="green"
-            />
-            <QuickRow
-              label="فواتير عملاء مفتوحة"
-              value={salesDueRows.length.toString()}
-              tone="blue"
-            />
-            <QuickRow
-              label="فواتير موردين مفتوحة"
-              value={purchaseDueRows.length.toString()}
-              tone="rose"
-            />
-          </CardBody>
-        </Card>
-      </div>
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-sm font-semibold text-rose-700">
+                    {formatCurrency(row.invoice.remaining, settings.currency)}
+                  </span>
+                  <ContactButton phone={row.customerPhone} />
+                </div>
+              </div>
+            ))
+          )}
+        </CardBody>
+      </Card>
 
       <Card>
         <CardBody className="flex flex-wrap items-center gap-2">
@@ -719,32 +679,6 @@ function StatCard({
   );
 }
 
-function QuickRow({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: string;
-  tone: "green" | "amber" | "blue" | "rose";
-}) {
-  const icons = {
-    green: <CheckCircle2 className="w-4 h-4" />,
-    amber: <Clock3 className="w-4 h-4" />,
-    blue: <CalendarClock className="w-4 h-4" />,
-    rose: <BellRing className="w-4 h-4" />,
-  };
-
-  return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2">
-      <div className="flex items-center gap-2 text-sm text-slate-700">
-        {icons[tone]}
-        <span>{label}</span>
-      </div>
-      <span className="font-mono text-sm font-semibold text-slate-900">{value}</span>
-    </div>
-  );
-}
 
 function ContactButton({ phone, compact }: { phone?: string; compact?: boolean }) {
   const href = whatsappHref(phone);

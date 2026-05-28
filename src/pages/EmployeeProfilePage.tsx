@@ -12,26 +12,27 @@ import {
 } from "lucide-react";
 import { Card, CardBody, CardHeader } from "../components/ui/Card";
 import { Badge } from "../components/ui/Badge";
-import { Field, Input } from "../components/ui/Input";
+import { Field, Input, Select } from "../components/ui/Input";
 import { Button } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Table, TBody, TD, TH, THead, TR } from "../components/ui/Table";
 import { PageHeader } from "../components/layout/AppLayout";
 import { useApp } from "../store/AppContext";
-import { formatCurrency } from "../lib/format";
+import { formatCurrency, formatDate } from "../lib/format";
 import { useToast } from "../components/ui/Toast";
+import type { AppUser, CashEntry, SalesInvoice } from "../types";
 
 export function EmployeeProfilePage() {
   const {
     currentUser,
     users,
-    employeeSalesStats,
     settings,
     salesInvoices,
+    cashEntries,
     updateCurrentUserProfile,
   } = useApp();
   const toast = useToast();
-  const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [selectedMonth, setSelectedMonth] = useState(() => monthValue(new Date()));
   const [profileName, setProfileName] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -50,11 +51,6 @@ export function EmployeeProfilePage() {
   }, [savedProfileName]);
 
   const employeeId = employee?.id;
-  const stats = employee ? employeeSalesStats(employee.id, selectedMonth) : null;
-  const hasTarget = Boolean(stats && stats.target > 0);
-  const targetDelta = stats ? Math.abs(stats.totalSales - stats.target) : 0;
-  const progress =
-    stats && hasTarget ? Math.min(100, (stats.totalSales / stats.target) * 100) : 0;
 
   const employeeInvoices = useMemo(
     () =>
@@ -64,19 +60,49 @@ export function EmployeeProfilePage() {
     [salesInvoices, employeeId]
   );
 
-  const monthlyInvoices = useMemo(() => {
-    const grouped = new Map<string, typeof employeeInvoices>();
-    employeeInvoices.forEach((invoice) => {
-      const month = invoice.date.slice(0, 7);
-      if (!grouped.has(month)) {
-        grouped.set(month, []);
-      }
-      grouped.get(month)!.push(invoice);
-    });
-    return grouped;
-  }, [employeeInvoices]);
+  const monthOptions = useMemo(() => {
+    const values = new Set<string>([monthValue(new Date())]);
+    const employeeInvoiceIds = new Set(employeeInvoices.map((invoice) => invoice.id));
 
-  const selectedMonthInvoices = monthlyInvoices.get(selectedMonth) || [];
+    employeeInvoices.forEach((invoice) => values.add(monthValue(invoice.date)));
+    cashEntries.forEach((entry) => {
+      if (
+        entry.type === "sales-receipt" &&
+        entry.referenceId &&
+        employeeInvoiceIds.has(entry.referenceId)
+      ) {
+        values.add(monthValue(entry.date));
+      }
+    });
+
+    // لكل سنة فيها بيانات (أو السنة الحالية)، أضف كل شهورها الـ 12
+    const years = new Set(Array.from(values).map((v) => v.slice(0, 4)));
+    years.forEach((year) => {
+      for (let m = 1; m <= 12; m++) {
+        values.add(`${year}-${String(m).padStart(2, "0")}`);
+      }
+    });
+
+    return Array.from(values).sort((a, b) => b.localeCompare(a));
+  }, [cashEntries, employeeInvoices]);
+
+  const stats = useMemo(
+    () =>
+      employee
+        ? calculateMonthCommissionStats({
+            employee,
+            invoices: employeeInvoices,
+            cashEntries,
+            month: selectedMonth,
+          })
+        : null,
+    [cashEntries, employee, employeeInvoices, selectedMonth]
+  );
+
+  const hasTarget = Boolean(stats && stats.target > 0);
+  const targetDelta = stats ? Math.abs(stats.commissionableSales - stats.target) : 0;
+  const progress =
+    stats && hasTarget ? Math.min(100, (stats.commissionableSales / stats.target) * 100) : 0;
 
   async function handleProfileSave() {
     const nextErrors: Record<string, string> = {};
@@ -167,10 +193,10 @@ export function EmployeeProfilePage() {
             <InfoRow label="اسم الموظف" value={employee.name || employee.username} icon={<UserRound />} />
             <InfoRow label="اسم الدخول" value={employee.username} icon={<UserRound />} />
             <InfoRow label="تاريخ الإنشاء" value={new Date(employee.createdAt).toLocaleDateString("ar-EG")} icon={<Calendar />} />
-            <InfoRow label="الراتب الشهري" value={formatCurrency(stats.salary, settings.currency)} icon={<DollarSign />} />
+            <InfoRow label="الراتب الشهري" value={formatCurrency(employee.monthlySalary ?? 0, settings.currency)} icon={<DollarSign />} />
             <InfoRow label="نسبة العمولة" value={`${employee.salesCommissionPct ?? 0}%`} icon={<Percent />} />
             {hasTarget && (
-              <InfoRow label="التارجت الشهري" value={formatCurrency(stats.target, settings.currency)} icon={<Target />} />
+              <InfoRow label="تارجت الربع" value={formatCurrency(stats.target, settings.currency)} icon={<Target />} />
             )}
           </div>
         </CardBody>
@@ -232,32 +258,44 @@ export function EmployeeProfilePage() {
       {/* Month Selection */}
       <Card className="mb-4">
         <CardBody>
-          <Field label="الشهر">
-            <Input
-              type="month"
+          <Field
+            label="الشهر"
+            hint="الإحصائيات الشهرية تعرض بيانات الشهر المحدد. العمولة الربع سنوية تُحسب على تحصيلات الربع الكامل المقابل."
+          >
+            <Select
               value={selectedMonth}
               onChange={(e) => setSelectedMonth(e.target.value)}
-              className="w-52"
-            />
+              className="w-56"
+            >
+              {monthOptions.map((month) => (
+                <option key={month} value={month}>
+                  {monthLabel(month)}
+                </option>
+              ))}
+            </Select>
           </Field>
         </CardBody>
       </Card>
 
-      {/* Monthly Stats Card */}
+      {/* Quarterly Stats Card */}
       <Card className="mb-4">
         <CardHeader
           title={
             <div className="flex items-center gap-2">
               <TrendingUp className="w-5 h-5 text-brand-600" />
-              <span>إحصائيات الشهر الحالي</span>
+              <span>إحصائيات الربع المحدد</span>
             </div>
           }
         />
         <CardBody className="space-y-4">
+          <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-700">
+            العمولة الربع سنوية تُحسب على الفلوس المحصلة فقط. البيع الآجل لا يدخل في العمولة إلا عند تحصيله.
+          </div>
+
           {hasTarget && (
             <div className="space-y-2">
               <div className="flex items-center justify-between text-xs text-slate-500">
-                <span>نسبة تحقيق التارجت</span>
+                <span>نسبة تحقيق التارجت الشهري من التحصيل المحتسب</span>
                 <span>{Math.round(progress)}%</span>
               </div>
               <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
@@ -271,14 +309,14 @@ export function EmployeeProfilePage() {
 
           <div className="divide-y divide-slate-100 border-y border-slate-100">
             <StatsRow
-              label="المبيعات"
-              value={formatCurrency(stats.totalSales, settings.currency)}
+              label="التحصيل المحتسب للعمولة (الشهر)"
+              value={formatCurrency(stats.commissionableSales, settings.currency)}
               icon={<Target />}
             />
             {hasTarget && (
               <>
                 <StatsRow
-                  label="التارجت"
+                  label="التارجت الشهري"
                   value={formatCurrency(stats.target, settings.currency)}
                   icon={<Target />}
                   suffix={
@@ -296,12 +334,12 @@ export function EmployeeProfilePage() {
               </>
             )}
             <StatsRow
-              label="الراتب"
+              label="الراتب الشهري"
               value={formatCurrency(stats.salary, settings.currency)}
               icon={<DollarSign />}
             />
             <StatsRow
-              label={`العمولة (${employee.salesCommissionPct ?? 0}%)`}
+              label={`العمولة الربع سنوية (${employee.salesCommissionPct ?? 0}%)`}
               value={formatCurrency(stats.commissionEarned, settings.currency)}
               icon={<Percent />}
             />
@@ -316,44 +354,58 @@ export function EmployeeProfilePage() {
         </CardBody>
       </Card>
 
-      {/* Invoices Card */}
+      {/* Commission Collections Card */}
       <Card>
         <CardHeader
           title={
             <div className="flex items-center gap-2">
               <FileText className="w-5 h-5 text-brand-600" />
-              <span>فواتير الشهر</span>
+              <span>تحصيلات الشهر المحتسبة للعمولة</span>
             </div>
           }
         />
         <CardBody>
-          {selectedMonthInvoices.length === 0 ? (
+          {stats.collectionRows.length === 0 ? (
             <EmptyState
               icon={<FileText className="w-5 h-5" />}
-              title="لا توجد فواتير"
-              description="لم تقم بإنشاء أي فواتير في هذا الشهر"
+              title="لا توجد تحصيلات محتسبة"
+              description="لا توجد فلوس محصلة داخل هذا الربع لفواتير هذا الموظف"
             />
           ) : (
             <Table>
               <THead>
                 <TR>
                   <TH>رقم الفاتورة</TH>
-                  <TH>التاريخ</TH>
+                  <TH>تاريخ الفاتورة</TH>
+                  <TH>تاريخ التحصيل</TH>
                   <TH>العميل</TH>
-                  <TH>المجموع</TH>
-                  <TH>الحالة</TH>
+                  <TH>نوع البيع</TH>
+                  <TH className="text-end">المبلغ المحتسب</TH>
+                  <TH className="text-end">مبلغ العمولة</TH>
+                  <TH>حالة الفاتورة الآن</TH>
                 </TR>
               </THead>
               <TBody>
-                {selectedMonthInvoices.map((invoice) => (
-                  <TR key={invoice.id}>
-                    <TD>{invoice.invoiceNumber}</TD>
-                    <TD>{new Date(invoice.date).toLocaleDateString("ar-EG")}</TD>
-                    <TD>{invoice.customerName}</TD>
-                    <TD>{formatCurrency(invoice.total, settings.currency)}</TD>
+                {stats.collectionRows.map((row) => (
+                  <TR key={row.id}>
+                    <TD>{row.invoiceNumber}</TD>
+                    <TD>{formatDate(row.invoiceDate)}</TD>
+                    <TD>{formatDate(row.collectionDate)}</TD>
+                    <TD>{row.customerName}</TD>
                     <TD>
-                      <Badge tone={invoice.status === "paid" ? "green" : invoice.status === "partial" ? "amber" : "red"}>
-                        {invoice.status === "paid" ? "مدفوع" : invoice.status === "partial" ? "مدفوع جزئياً" : "غير مدفوع"}
+                      <Badge tone={row.paymentType === "cash" ? "green" : "indigo"}>
+                        {row.paymentType === "cash" ? "كاش" : "آجل"}
+                      </Badge>
+                    </TD>
+                    <TD className="text-end font-semibold text-emerald-700">
+                      {formatCurrency(row.amount, settings.currency)}
+                    </TD>
+                    <TD className="text-end font-semibold text-brand-700">
+                      {formatCurrency(row.amount * (employee.salesCommissionPct ?? 0) / 100, settings.currency)}
+                    </TD>
+                    <TD>
+                      <Badge tone={row.status === "paid" ? "green" : row.status === "partial" ? "amber" : "red"}>
+                        {row.status === "paid" ? "مدفوع" : row.status === "partial" ? "مدفوع جزئياً" : "غير مدفوع"}
                       </Badge>
                     </TD>
                   </TR>
@@ -365,6 +417,166 @@ export function EmployeeProfilePage() {
       </Card>
     </>
   );
+}
+
+type CommissionCollectionRow = {
+  id: string;
+  invoiceNumber: string;
+  invoiceDate: string;
+  collectionDate: string;
+  customerName: string;
+  paymentType: SalesInvoice["paymentType"];
+  status: SalesInvoice["status"];
+  amount: number;
+};
+
+type QuarterCommissionStats = {
+  commissionableSales: number;
+  target: number;
+  achieved: boolean;
+  commissionEarned: number;
+  salary: number;
+  totalEarnings: number;
+  collectionRows: CommissionCollectionRow[];
+};
+
+function calculateMonthCommissionStats({
+  employee,
+  invoices,
+  cashEntries,
+  month,
+}: {
+  employee: AppUser;
+  invoices: SalesInvoice[];
+  cashEntries: CashEntry[];
+  month: string;
+}): QuarterCommissionStats {
+  const mRange = monthRange(month);
+  const qRange = quarterRangeForMonth(month);
+
+  const displayRows: CommissionCollectionRow[] = [];
+  let quarterlyCommissionable = 0;
+
+  invoices
+    .filter((invoice) => !invoice.cancelled)
+    .forEach((invoice) => {
+      const receiptEntries = cashEntries
+        .filter(
+          (entry) =>
+            entry.type === "sales-receipt" &&
+            entry.referenceId === invoice.id &&
+            entry.amount > 0
+        )
+        .sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+
+      const entries =
+        receiptEntries.length > 0
+          ? receiptEntries
+          : invoice.amountReceived > 0
+            ? [
+                {
+                  id: `legacy-${invoice.id}`,
+                  type: "sales-receipt" as const,
+                  amount: invoice.amountReceived,
+                  description: "",
+                  referenceId: invoice.id,
+                  date: invoice.date,
+                },
+              ]
+            : [];
+
+      let remainingCommissionable = invoice.total;
+
+      entries.forEach((entry) => {
+        if (remainingCommissionable <= 0) return;
+
+        const amount = Math.min(entry.amount, remainingCommissionable);
+        remainingCommissionable -= amount;
+
+        if (amount <= 0) return;
+
+        if (dateInRange(entry.date, qRange.start, qRange.end)) {
+          quarterlyCommissionable += amount;
+        }
+
+        if (!dateInRange(entry.date, mRange.start, mRange.end)) return;
+
+        displayRows.push({
+          id: entry.id,
+          invoiceNumber: invoice.invoiceNumber,
+          invoiceDate: invoice.date,
+          collectionDate: entry.date,
+          customerName: invoice.customerName,
+          paymentType: invoice.paymentType,
+          status: invoice.status,
+          amount,
+        });
+      });
+    });
+
+  displayRows.sort((a, b) => b.collectionDate.localeCompare(a.collectionDate) || a.invoiceNumber.localeCompare(b.invoiceNumber));
+
+  const commissionableSales = displayRows.reduce((sum, row) => sum + row.amount, 0);
+  const target = employee.monthlySalesTarget ?? 0;
+  const commissionPct = employee.salesCommissionPct ?? 0;
+  const commissionEarned = (quarterlyCommissionable * commissionPct) / 100;
+  const salary = employee.monthlySalary ?? 0;
+
+  return {
+    commissionableSales,
+    target,
+    achieved: target > 0 && commissionableSales >= target,
+    commissionEarned,
+    salary,
+    totalEarnings: salary + commissionEarned,
+    collectionRows: displayRows,
+  };
+}
+
+function monthValue(value: string | Date): string {
+  const date = typeof value === "string" ? new Date(value) : value;
+  if (Number.isNaN(date.getTime())) return monthValue(new Date());
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  return `${yyyy}-${mm}`;
+}
+
+function monthLabel(value: string): string {
+  const date = new Date(value + "-01");
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString("ar-EG", { year: "numeric", month: "long" });
+}
+
+function monthRange(value: string): { start: string; end: string } {
+  const date = new Date(value + "-01");
+  const year = date.getFullYear();
+  const month = date.getMonth();
+  return {
+    start: toDateOnly(new Date(year, month, 1)),
+    end: toDateOnly(new Date(year, month + 1, 0)),
+  };
+}
+
+function quarterRangeForMonth(monthStr: string): { start: string; end: string } {
+  const date = new Date(monthStr + "-01");
+  const year = date.getFullYear();
+  const quarterStart = Math.floor(date.getMonth() / 3) * 3;
+  return {
+    start: toDateOnly(new Date(year, quarterStart, 1)),
+    end: toDateOnly(new Date(year, quarterStart + 3, 0)),
+  };
+}
+
+function toDateOnly(date: Date): string {
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function dateInRange(date: string, start: string, end: string): boolean {
+  const value = date.slice(0, 10);
+  return value >= start && value <= end;
 }
 
 function InfoRow({ label, value, icon }: { label: string; value: string; icon: React.ReactNode }) {

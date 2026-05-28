@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useApp } from "../../store/AppContext";
 import { formatCurrency, formatDate } from "../../lib/format";
-import type { InvoiceLine } from "../../types";
+import type { InvoiceLine, SalesReturn } from "../../types";
 
 interface Props {
   kind: "sales" | "purchase";
@@ -12,11 +12,16 @@ interface Props {
   driverName?: string;
   lines: InvoiceLine[];
   total: number;
+  discount?: number;
   amountPaid: number;
   remaining: number;
   notes?: string;
   paymentLabel?: string;
   priceTypeLabel?: string;
+  returns?: SalesReturn[];
+  paymentDueDate?: string;
+  customerBalance?: number;
+  customerName?: string;
 }
 
 export function InvoicePrintLayout(props: Props) {
@@ -27,6 +32,7 @@ export function InvoicePrintLayout(props: Props) {
   }, [props.invoiceNumber, props.kind]);
 
   const isSales = props.kind === "sales";
+  const returnsTotal = (props.returns ?? []).reduce((a, r) => a + r.total, 0);
 
   return (
     <div className="min-h-screen bg-slate-200 py-8 px-4 print:p-0 print:bg-white" dir="rtl">
@@ -116,9 +122,12 @@ export function InvoicePrintLayout(props: Props) {
           </div>
 
           {/* ── INFO ROW ── */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 16 }}>
+          <div style={{ display: "grid", gridTemplateColumns: props.paymentDueDate ? "1fr 1fr 1fr 1fr" : "1fr 1fr 1fr", gap: 10, marginBottom: 16 }}>
             <InfoBox label={props.partyLabel} value={props.partyName} accent />
             <InfoBox label="طريقة الدفع" value={props.paymentLabel ?? "—"} sub={props.priceTypeLabel ? `نوع السعر: ${props.priceTypeLabel}` : undefined} />
+            {props.paymentDueDate ? (
+              <InfoBox label="تاريخ الاستحقاق" value={formatDate(props.paymentDueDate)} />
+            ) : null}
             <InfoBox label="السائق" value={props.driverName ?? "—"} />
           </div>
 
@@ -165,6 +174,44 @@ export function InvoicePrintLayout(props: Props) {
             </table>
           </div>
 
+          {/* ── RETURNS ── */}
+          {props.returns && props.returns.length > 0 && (
+            <div style={{ marginTop: 14 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#dc2626", marginBottom: 6, borderBottom: "1.5px solid #dc2626", paddingBottom: 4 }}>
+                المرتجعات
+              </div>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+                <thead>
+                  <tr>
+                    <Th center style={{ width: 28 }}>#</Th>
+                    <Th>الصنف</Th>
+                    <Th center style={{ width: 52 }}>الوحدة</Th>
+                    <Th center style={{ width: 52 }}>الكمية</Th>
+                    <Th center style={{ width: 80 }}>السعر</Th>
+                    <Th center style={{ width: 88 }}>الإجمالي</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {props.returns.flatMap((r) => r.lines).map((l, idx) => (
+                    <tr key={l.id} style={{ background: idx % 2 === 1 ? "#fff5f5" : "#ffffff" }}>
+                      <Td center muted>{idx + 1}</Td>
+                      <Td><span style={{ fontWeight: 600, color: "#0f172a" }}>{l.productName}</span></Td>
+                      <Td center muted>{l.unit}</Td>
+                      <Td center bold>{l.quantity}</Td>
+                      <Td center mono>{formatCurrency(l.price, settings.currency)}</Td>
+                      <Td center mono bold>{formatCurrency(l.subtotal, settings.currency)}</Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 6 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "#dc2626", background: "#fff5f5", border: "1px solid #fecaca", borderRadius: 6, padding: "4px 12px" }}>
+                  إجمالي المرتجع: {formatCurrency(props.returns.reduce((a, r) => a + r.total, 0), settings.currency)}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* ── TOTALS + SIGNATURES ── */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginTop: 14 }}>
 
@@ -176,16 +223,50 @@ export function InvoicePrintLayout(props: Props) {
 
             {/* Totals box */}
             <div style={{ width: 220, border: "1px solid #cbd5e1", borderRadius: 8, overflow: "hidden" }}>
-              <TotalRow label="الإجمالي" value={formatCurrency(props.total, settings.currency)} />
+              {props.discount ? (
+                <>
+                  <TotalRow label="الإجمالي قبل الخصم" value={formatCurrency(props.total + props.discount, settings.currency)} />
+                  <TotalRow label="خصم" value={`- ${formatCurrency(props.discount, settings.currency)}`} discount />
+                  <TotalRow label="صافي الفاتورة" value={formatCurrency(props.total, settings.currency)} />
+                </>
+              ) : (
+                <TotalRow label="الإجمالي" value={formatCurrency(props.total, settings.currency)} />
+              )}
+              {returnsTotal > 0 && (
+                <>
+                  <TotalRow
+                    label="المرتجع"
+                    value={`- ${formatCurrency(returnsTotal, settings.currency)}`}
+                    deduction
+                  />
+                  <TotalRow
+                    label="صافي بعد المرتجع"
+                    value={formatCurrency(Math.max(0, props.total - returnsTotal), settings.currency)}
+                  />
+                </>
+              )}
               <TotalRow
                 label={isSales ? "المبلغ المستلم" : "المبلغ المدفوع"}
                 value={formatCurrency(props.amountPaid, settings.currency)}
               />
               <TotalRow
                 label="المتبقي"
-                value={formatCurrency(props.remaining, settings.currency)}
+                value={props.remaining > 0 ? `- ${formatCurrency(props.remaining, settings.currency)}` : formatCurrency(props.remaining, settings.currency)}
                 highlight
               />
+              {isSales && props.customerBalance !== undefined && props.customerName ? (
+                <TotalRow
+                  label={`رصيد ${props.customerName}`}
+                  value={
+                    props.customerBalance > 0
+                      ? `- ${formatCurrency(props.customerBalance, settings.currency)}`
+                      : props.customerBalance < 0
+                        ? `دائن: ${formatCurrency(-props.customerBalance, settings.currency)}`
+                        : "لا يوجد مستحق"
+                  }
+                  deduction={props.customerBalance > 0}
+                />
+              ) : null}
             </div>
           </div>
 
@@ -208,7 +289,7 @@ export function InvoicePrintLayout(props: Props) {
               </div>
             )}
             <div style={{ textAlign: "center", fontSize: 9, color: "#cbd5e1", marginTop: 4 }}>
-              برمجة وتطوير: شركة هلبرز تكنولوجي — واتساب: 01118445625
+              هيلبيرز تكنولوجي
             </div>
           </div>
         </div>
@@ -277,16 +358,32 @@ function Td({ children, center, muted, bold, mono, accent }: {
   );
 }
 
-function TotalRow({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
+function TotalRow({ label, value, highlight, discount, deduction }: { label: string; value: string; highlight?: boolean; discount?: boolean; deduction?: boolean }) {
+  const bgColor = highlight
+    ? "#1e3a5f"
+    : discount
+    ? "#f0fdf4"
+    : deduction
+    ? "#fef2f2"
+    : "#f8fafc";
+
+  const textColor = highlight
+    ? "white"
+    : discount
+    ? "#16a34a"
+    : deduction
+    ? "#dc2626"
+    : "#334155";
+
   return (
     <div style={{
       display: "flex",
       justifyContent: "space-between",
       alignItems: "center",
       padding: highlight ? "10px 12px" : "7px 12px",
-      background: highlight ? "#1e3a5f" : "#f8fafc",
+      background: bgColor,
       borderBottom: highlight ? "none" : "1px solid #e2e8f0",
-      color: highlight ? "white" : "#334155",
+      color: textColor,
     }}>
       <span style={{ fontSize: highlight ? 13 : 12, fontWeight: highlight ? 700 : 500 }}>{label}</span>
       <span style={{ fontSize: highlight ? 14 : 12, fontWeight: 700, fontFamily: "monospace" }}>{value}</span>

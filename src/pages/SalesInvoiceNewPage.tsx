@@ -13,6 +13,7 @@ import type { InvoiceLine, Product, SalesPaymentType, SalesPriceType } from "../
 import { formatCurrency } from "../lib/format";
 import { Badge } from "../components/ui/Badge";
 import { DriverDialog } from "../features/drivers/DriverDialog";
+import { parseNumericInput } from "../lib/numberInput";
 
 interface LineDraft {
   id: string;
@@ -32,6 +33,7 @@ interface DraftState {
   paymentType: SalesPaymentType;
   priceType: SalesPriceType;
   paymentDueDate: string;
+  discount: number;
   amountReceived: number;
   notes: string;
   lines: LineDraft[];
@@ -63,7 +65,7 @@ function nextInvoiceNumber(existing: string[]): string {
 }
 
 export function SalesInvoiceNewPage() {
-  const { products, customers, drivers, salesInvoices, addSalesInvoice, settings } = useApp();
+  const { products, customers, drivers, salesInvoices, addSalesInvoice, settings, customerBalance } = useApp();
   const navigate = useNavigate();
   const toast = useToast();
 
@@ -77,6 +79,7 @@ export function SalesInvoiceNewPage() {
   const [paymentType, setPaymentType] = useState<SalesPaymentType>(() => loadDraft()?.paymentType ?? "cash");
   const [priceType, setPriceType] = useState<SalesPriceType>(() => loadDraft()?.priceType ?? "wholesale");
   const [paymentDueDate, setPaymentDueDate] = useState(() => loadDraft()?.paymentDueDate ?? "");
+  const [discount, setDiscount] = useState<number>(() => loadDraft()?.discount ?? 0);
   const [amountReceived, setAmountReceived] = useState<number>(() => loadDraft()?.amountReceived ?? 0);
   const [notes, setNotes] = useState(() => loadDraft()?.notes ?? "");
   const [lines, setLines] = useState<LineDraft[]>(() => loadDraft()?.lines ?? []);
@@ -87,8 +90,11 @@ export function SalesInvoiceNewPage() {
   }, [customers, customerId]);
 
   useEffect(() => {
-    saveDraft({ invoiceNumber, date, customerId, driverId, paymentType, priceType, paymentDueDate, amountReceived, notes, lines });
-  }, [invoiceNumber, date, customerId, driverId, paymentType, priceType, paymentDueDate, amountReceived, notes, lines]);
+    const timer = window.setTimeout(() => {
+      saveDraft({ invoiceNumber, date, customerId, driverId, paymentType, priceType, paymentDueDate, discount, amountReceived, notes, lines });
+    }, 150);
+    return () => window.clearTimeout(timer);
+  }, [invoiceNumber, date, customerId, driverId, paymentType, priceType, paymentDueDate, discount, amountReceived, notes, lines]);
 
   function handleClearDraft() {
     clearDraft();
@@ -105,17 +111,23 @@ export function SalesInvoiceNewPage() {
     setLines([]);
   }
 
-  const total = useMemo(
+  const gross = useMemo(
     () => lines.reduce((a, l) => a + (l.quantity || 0) * (l.price || 0), 0),
     [lines]
   );
-  const receivedForInvoice = Math.min(amountReceived, total);
-  const remainingDue = Math.max(0, total - amountReceived);
-  const customerChange = Math.max(0, amountReceived - total);
+  const invoiceNet = Math.max(0, gross - (discount || 0));
+  const receivedForInvoice = Math.min(amountReceived, invoiceNet);
+  const remainingDue = Math.max(0, invoiceNet - amountReceived);
+  const customerChange = Math.max(0, amountReceived - invoiceNet);
 
   useEffect(() => {
-    if (paymentType === "cash") setAmountReceived(total);
-  }, [paymentType, total]);
+    if (paymentType === "cash") setAmountReceived(invoiceNet);
+    else setAmountReceived(0);
+  }, [paymentType]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (paymentType === "cash") setAmountReceived(invoiceNet);
+  }, [invoiceNet]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (paymentType === "cash") setPaymentDueDate("");
@@ -219,8 +231,20 @@ export function SalesInvoiceNewPage() {
       );
       return;
     }
+    if (discount < 0 || discount > gross) {
+      toast.error("قيمة الخصم غير صحيحة");
+      return;
+    }
     if (amountReceived < 0) {
       toast.error("المبلغ المستلم غير صحيح");
+      return;
+    }
+    if (paymentType === "cash" && amountReceived <= 0) {
+      toast.error("أدخل المبلغ المستلم");
+      return;
+    }
+    if (paymentType === "account" && !paymentDueDate) {
+      toast.error("أدخل تاريخ الاستحقاق");
       return;
     }
 
@@ -241,8 +265,7 @@ export function SalesInvoiceNewPage() {
       };
     });
 
-    // If customer paid the full amount or more, treat as cash regardless of selected type
-    const effectivePaymentType: SalesPaymentType = receivedForInvoice >= total ? "cash" : paymentType;
+    const effectivePaymentType: SalesPaymentType = paymentType;
     const effectiveDueDate = effectivePaymentType === "account" && paymentDueDate ? paymentDueDate : undefined;
 
     const inv = addSalesInvoice({
@@ -253,7 +276,8 @@ export function SalesInvoiceNewPage() {
       driverId: driverId || undefined,
       driverName: driverId ? drivers.find(d => d.id === driverId)?.name : undefined,
       lines: invLines,
-      total,
+      total: invoiceNet,
+      discount: discount > 0 ? discount : undefined,
       amountReceived: receivedForInvoice,
       overpayment: customerChange > 0 ? customerChange : undefined,
       paymentType: effectivePaymentType,
@@ -345,8 +369,20 @@ export function SalesInvoiceNewPage() {
             </Field>
           </div>
           {customer ? (
-            <div className="mt-3 text-xs text-slate-500">
-              الهاتف: {customer.phone ?? "—"} • العنوان: {customer.address ?? "—"}
+            <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-500">
+              <span>الهاتف: {customer.phone ?? "—"}</span>
+              <span>العنوان: {customer.address ?? "—"}</span>
+              {(() => {
+                const bal = customerBalance(customerId);
+                if (bal === 0) return null;
+                return (
+                  <span className={`font-semibold ${bal > 0 ? "text-rose-600" : "text-emerald-700"}`}>
+                    {bal > 0
+                      ? `مديون: ${formatCurrency(bal, settings.currency)}`
+                      : `رصيد دائن: ${formatCurrency(-bal, settings.currency)}`}
+                  </span>
+                );
+              })()}
             </div>
           ) : null}
         </CardBody>
@@ -437,7 +473,9 @@ export function SalesInvoiceNewPage() {
                           min={1}
                           value={l.quantity}
                           onChange={(e) =>
-                            updateLine(l.id, { quantity: Math.max(0, Number(e.target.value)) })
+                            updateLine(l.id, {
+                              quantity: Math.max(0, parseNumericInput(e.target.value, l.quantity)),
+                            })
                           }
                           className={exceeds ? "border-rose-400" : ""}
                         />
@@ -449,7 +487,9 @@ export function SalesInvoiceNewPage() {
                           min={0}
                           value={l.price}
                           onChange={(e) =>
-                            updateLine(l.id, { price: Number(e.target.value) })
+                            updateLine(l.id, {
+                              price: Math.max(0, parseNumericInput(e.target.value, l.price)),
+                            })
                           }
                         />
                       </TD>
@@ -479,7 +519,7 @@ export function SalesInvoiceNewPage() {
         <Card>
           <CardHeader title="الدفع" />
           <CardBody className="space-y-3">
-            <Field label="طريقة الدفع">
+            <Field label="طريقة الدفع" required>
               <div className="flex items-center gap-2">
                 <label className="flex items-center gap-2 text-sm">
                   <input
@@ -500,21 +540,24 @@ export function SalesInvoiceNewPage() {
               </div>
             </Field>
             {paymentType === "account" ? (
-              <Field label="تاريخ الاستحقاق" hint="اختياري">
+              <Field label="تاريخ الاستحقاق" required>
                 <Input
                   type="date"
                   value={paymentDueDate}
                   onChange={(e) => setPaymentDueDate(e.target.value)}
+                  required
                 />
               </Field>
             ) : null}
-            <Field label="المبلغ المستلم">
+            <Field label="المبلغ المستلم" required>
               <Input
                 type="number"
                 min={0}
                 step="0.01"
                 value={amountReceived}
-                onChange={(e) => setAmountReceived(Number(e.target.value))}
+                onChange={(e) =>
+                  setAmountReceived(Math.max(0, parseNumericInput(e.target.value, amountReceived)))
+                }
               />
             </Field>
             <Field label="ملاحظات">
@@ -531,7 +574,24 @@ export function SalesInvoiceNewPage() {
         <Card>
           <CardHeader title="الملخص" />
           <CardBody className="space-y-2">
-            <Row label="إجمالي الفاتورة" value={formatCurrency(total, settings.currency)} />
+            <Row label="إجمالي البنود" value={formatCurrency(gross, settings.currency)} />
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm text-slate-600">خصم</span>
+              <Input
+                type="number"
+                min={0}
+                step="0.01"
+                value={discount || ""}
+                onChange={(e) =>
+                  setDiscount(Math.max(0, parseNumericInput(e.target.value, discount)))
+                }
+                placeholder="0.00"
+                className="w-28 h-8 text-sm"
+              />
+            </div>
+            {discount > 0 && (
+              <Row label="صافي الفاتورة" value={formatCurrency(invoiceNet, settings.currency)} bold />
+            )}
             <Row
               label="المبلغ المدفوع"
               value={formatCurrency(amountReceived, settings.currency)}

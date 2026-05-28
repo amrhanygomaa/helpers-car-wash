@@ -47,7 +47,8 @@ type PrintMode =
   | "suppliers"
   | "supplierDues"
   | "commissions"
-  | "monthlyProfit";
+  | "monthlyProfit"
+  | "customerDues";
 
 export function ReportsPage() {
   const {
@@ -364,6 +365,7 @@ export function ReportsPage() {
                 <option value="supplierDues">كشف فلوس علينا للموردين</option>
                 <option value="commissions">تقرير عمولات الموردين</option>
                 <option value="monthlyProfit">تقرير صافي الربح الشهري</option>
+                <option value="customerDues">كشف فلوس لدينا من عملاء</option>
               </Select>
               <Button variant="outline" onClick={() => window.print()}>
                 <Printer className="w-4 h-4" /> طباعة
@@ -381,7 +383,7 @@ export function ReportsPage() {
         {canViewEmployeeBonuses ? (
           <Stat icon={<UserRound className="w-5 h-5" />} tone="rose" label="بونص الموظفين" value={formatCurrency(totalEmployeeBonuses, settings.currency)} />
         ) : null}
-        <Stat icon={<Users className="w-5 h-5" />} tone="indigo" label="مستحقات العملاء" value={formatCurrency(totalReceivables, settings.currency)} />
+        <Stat icon={<Users className="w-5 h-5" />} tone="indigo" label="مستحقات من العملاء" value={formatCurrency(totalReceivables, settings.currency)} />
         <Stat icon={<UserRoundMinus className="w-5 h-5" />} tone="violet" label="فلوس علينا للعملاء" value={formatCurrency(customerCredits, settings.currency)} />
         <Stat icon={<HandCoins className="w-5 h-5" />} tone="rose" label="فلوس علينا للموردين" value={formatCurrency(supplierPayablesTotal, settings.currency)} />
       </div>
@@ -398,6 +400,7 @@ export function ReportsPage() {
           <TabsTrigger value="supplierDues">فلوس علينا للموردين</TabsTrigger>
           <TabsTrigger value="commissions">عمولات الموردين</TabsTrigger>
           <TabsTrigger value="monthlyProfit">صافي الربح الشهري</TabsTrigger>
+          <TabsTrigger value="customerDues">فلوس لدينا من عملاء</TabsTrigger>
           {canViewEmployeeBonuses ? <TabsTrigger value="employeeBonuses">بونص الموظفين</TabsTrigger> : null}
         </TabsList>
 
@@ -969,6 +972,47 @@ export function ReportsPage() {
           </Card>
         </TabsContent>
 
+        <TabsContent value="customerDues">
+          <Card>
+            <CardHeader
+              title="فلوس لدينا من عملاء"
+              subtitle={`الإجمالي المستحق: ${formatCurrency(totalReceivables, settings.currency)}`}
+            />
+            <CardBody>
+              {customers.every((c) => customerBalance(c.id) <= 0) ? (
+                <div className="text-sm text-slate-500 text-center py-6">لا يوجد عملاء لديهم أرصدة مستحقة</div>
+              ) : (
+                <Table>
+                  <THead>
+                    <TR>
+                      <TH>الكود</TH>
+                      <TH>العميل</TH>
+                      <TH>الهاتف</TH>
+                      <TH className="text-end">المبلغ المستحق</TH>
+                    </TR>
+                  </THead>
+                  <TBody>
+                    {customers
+                      .map((c) => ({ c, bal: customerBalance(c.id) }))
+                      .filter(({ bal }) => bal > 0)
+                      .sort((a, b) => b.bal - a.bal)
+                      .map(({ c, bal }) => (
+                        <TR key={c.id}>
+                          <TD className="font-mono text-xs text-slate-500">{c.code ?? "—"}</TD>
+                          <TD className="font-medium text-slate-900">{c.name}</TD>
+                          <TD className="text-slate-600">{c.phone ?? "—"}</TD>
+                          <TD className="text-end font-bold text-rose-700">
+                            {formatCurrency(bal, settings.currency)}
+                          </TD>
+                        </TR>
+                      ))}
+                  </TBody>
+                </Table>
+              )}
+            </CardBody>
+          </Card>
+        </TabsContent>
+
         {canViewEmployeeBonuses ? (
           <TabsContent value="employeeBonuses">
             <Card>
@@ -1115,6 +1159,7 @@ export function ReportsPage() {
               {printMode === "supplierDues" && "كشف الفلوس المطلوبة للموردين"}
               {printMode === "commissions" && "تقرير عمولات الموردين"}
               {printMode === "monthlyProfit" && "تقرير صافي الربح الشهري"}
+              {printMode === "customerDues" && "كشف فلوس لدينا من العملاء"}
             </h2>
             <p className="text-xs opacity-50">نظام الهلبرز لإدارة المستودعات</p>
           </div>
@@ -1502,6 +1547,51 @@ export function ReportsPage() {
                   <td className="py-3 text-left tabular-nums font-mono">{formatCurrency(totalSales, settings.currency)}</td>
                   <td className="py-3 text-left tabular-nums font-mono">{formatCurrency(totalPurchases, settings.currency)}</td>
                   <td className="py-3 text-left tabular-nums font-mono text-lg">{formatCurrency(totalSales - totalPurchases, settings.currency)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </section>
+        )}
+
+        {printMode === "customerDues" && (
+          <section>
+            <div className="grid grid-cols-2 gap-4 mb-6 text-sm">
+              <div className="border border-slate-200 rounded-lg p-3">
+                <div className="text-slate-500">إجمالي المستحق من العملاء</div>
+                <div className="font-bold text-lg">{formatCurrency(totalReceivables, settings.currency)}</div>
+              </div>
+              <div className="border border-slate-200 rounded-lg p-3">
+                <div className="text-slate-500">عدد العملاء لديهم أرصدة</div>
+                <div className="font-bold text-lg">{customers.filter((c) => customerBalance(c.id) > 0).length}</div>
+              </div>
+            </div>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b-2 border-slate-200">
+                  <th className="py-2 text-right">الكود</th>
+                  <th className="py-2 text-right">العميل</th>
+                  <th className="py-2 text-right">الهاتف</th>
+                  <th className="py-2 text-left">المبلغ المستحق</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {customers
+                  .map((c) => ({ c, bal: customerBalance(c.id) }))
+                  .filter(({ bal }) => bal > 0)
+                  .sort((a, b) => b.bal - a.bal)
+                  .map(({ c, bal }, i) => (
+                    <tr key={i}>
+                      <td className="py-2 text-right font-mono text-xs">{c.code || "—"}</td>
+                      <td className="py-2 text-right font-medium">{c.name}</td>
+                      <td className="py-2 text-right text-slate-500">{c.phone || "—"}</td>
+                      <td className="py-2 text-left font-bold tabular-nums font-mono">{formatCurrency(bal, settings.currency)}</td>
+                    </tr>
+                  ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-slate-900 font-bold bg-slate-50">
+                  <td colSpan={3} className="py-3 text-right">الإجمالي المستحق من العملاء</td>
+                  <td className="py-3 text-left tabular-nums font-mono text-lg">{formatCurrency(totalReceivables, settings.currency)}</td>
                 </tr>
               </tfoot>
             </table>

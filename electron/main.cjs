@@ -253,32 +253,59 @@ function openDatabase() {
     "CREATE TABLE IF NOT EXISTS kv_store (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL)"
   ).run();
   db.prepare("DELETE FROM kv_store WHERE key = ?").run(AUTH_STATE_KEY);
+
+  // Flush the WAL file periodically so it never grows unboundedly.
+  // A large WAL file makes every read slower over time — this is a key cause
+  // of the renderer freezing after hours of use.
+  setInterval(() => {
+    try { db?.pragma("wal_checkpoint(PASSIVE)"); } catch { /* ignore */ }
+  }, 10 * 60 * 1000); // every 10 minutes
+
   return db;
 }
 
+// Cached prepared statements — created once after DB is first opened.
+let _stmtGet = null;
+let _stmtSet = null;
+let _stmtRemove = null;
+let _stmtClearPrefix = null;
+
+function getStmtGet() {
+  if (!_stmtGet) _stmtGet = openDatabase().prepare("SELECT value FROM kv_store WHERE key = ?");
+  return _stmtGet;
+}
+function getStmtSet() {
+  if (!_stmtSet) _stmtSet = openDatabase().prepare(
+    "INSERT INTO kv_store (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at"
+  );
+  return _stmtSet;
+}
+function getStmtRemove() {
+  if (!_stmtRemove) _stmtRemove = openDatabase().prepare("DELETE FROM kv_store WHERE key = ?");
+  return _stmtRemove;
+}
+function getStmtClearPrefix() {
+  if (!_stmtClearPrefix) _stmtClearPrefix = openDatabase().prepare("DELETE FROM kv_store WHERE key LIKE ?");
+  return _stmtClearPrefix;
+}
+
 function storageGet(key) {
-  const row = openDatabase()
-    .prepare("SELECT value FROM kv_store WHERE key = ?")
-    .get(key);
+  const row = getStmtGet().get(key);
   return row?.value ?? null;
 }
 
 function storageSet(key, value) {
-  openDatabase()
-    .prepare(
-      "INSERT INTO kv_store (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at"
-    )
-    .run(key, String(value), new Date().toISOString());
+  getStmtSet().run(key, String(value), new Date().toISOString());
   return true;
 }
 
 function storageRemove(key) {
-  openDatabase().prepare("DELETE FROM kv_store WHERE key = ?").run(key);
+  getStmtRemove().run(key);
   return true;
 }
 
 function storageClearPrefix(prefix) {
-  openDatabase().prepare("DELETE FROM kv_store WHERE key LIKE ?").run(`${prefix}%`);
+  getStmtClearPrefix().run(`${prefix}%`);
   return true;
 }
 
@@ -806,7 +833,7 @@ function getInvoicePrintOptions() {
   return {
     silent: false,
     printBackground: true,
-    landscape: true,
+    landscape: false,
     pageSize: "A4",
     margins: { marginType: "default" },
   };
@@ -815,7 +842,7 @@ function getInvoicePrintOptions() {
 function getInvoicePdfOptions() {
   return {
     printBackground: true,
-    landscape: true,
+    landscape: false,
     pageSize: "A4",
     margins: { marginType: "default" },
     preferCSSPageSize: true,
@@ -865,6 +892,13 @@ function buildInvoicePrintHtml(route) {
   const partyLabel = isSales ? "العميل" : "المورد";
   const partyName = isSales ? invoice.customerName : invoice.supplierName;
   const amountPaid = isSales ? invoice.amountReceived : invoice.amountPaid;
+
+  const allSalesReturns = isSales ? readJsonKey(`${STORE_PREFIX}salesReturns`, []) : [];
+  const invoiceReturns = isSales && Array.isArray(allSalesReturns)
+    ? allSalesReturns.filter((r) => r.originalInvoiceId === invoice.id)
+    : [];
+  const allReturnLines = invoiceReturns.flatMap((r) => r.lines || []);
+  const returnsTotal = invoiceReturns.reduce((a, r) => a + (r.total || 0), 0);
   const paymentLabel = isSales
     ? invoice.paymentType === "cash"
       ? "نقدي"
@@ -897,6 +931,20 @@ function buildInvoicePrintHtml(route) {
     )
     .join("");
 
+  const returnRows = allReturnLines
+    .map(
+      (line, idx) => `
+        <tr style="background:${idx % 2 === 1 ? "#fff5f5" : "#ffffff"}">
+          <td class="center">${idx + 1}</td>
+          <td>${escapeHtml(line.productName)}</td>
+          <td class="center">${escapeHtml(line.unit)}</td>
+          <td class="center mono">${escapeHtml(String(line.quantity))}</td>
+          <td class="center mono">${escapeHtml(formatCurrency(line.price, settings.currency))}</td>
+          <td class="center mono bold">${escapeHtml(formatCurrency(line.subtotal, settings.currency))}</td>
+        </tr>`
+    )
+    .join("");
+
   return `<!doctype html>
 <html lang="ar" dir="rtl">
 <head>
@@ -904,7 +952,7 @@ function buildInvoicePrintHtml(route) {
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob: file:; style-src 'unsafe-inline'; script-src 'none'; connect-src 'none'; base-uri 'none'; form-action 'none';" />
   <title>${escapeHtml(title)} ${escapeHtml(invoice.invoiceNumber)}</title>
   <style>
-    @page { size: A4 landscape; margin: 10mm; }
+    @page { size: A4 portrait; margin: 10mm; }
     * { box-sizing: border-box; }
     body {
       margin: 0;
@@ -947,7 +995,12 @@ function buildInvoicePrintHtml(route) {
       color: rgba(255, 255, 255, 0.82);
       font-size: 11px;
     }
-    .page { width: 100%; padding: 14px; }
+    .page {
+      width: 210mm;
+      min-height: 297mm;
+      margin: 0 auto;
+      padding: 12mm;
+    }
     .header {
       display: flex;
       align-items: flex-start;
@@ -1048,15 +1101,36 @@ function buildInvoicePrintHtml(route) {
       color: #94a3b8;
       font-size: 10px;
     }
+    .returns-section { margin-bottom: 16px; }
+    .returns-title {
+      font-weight: 700;
+      color: #dc2626;
+      border-bottom: 1.5px solid #dc2626;
+      padding-bottom: 4px;
+      margin-bottom: 8px;
+      font-size: 12px;
+    }
+    .returns-total-line {
+      text-align: left;
+      margin-top: 6px;
+      color: #dc2626;
+      font-weight: 700;
+      font-size: 12px;
+    }
+    .return-deduction { color: #dc2626; }
     @media print {
       .print-toolbar { display: none; }
-      .page { padding: 0; }
+      .page {
+        width: 100%;
+        min-height: auto;
+        padding: 0;
+      }
     }
   </style>
 </head>
 <body>
   <div class="print-toolbar">
-    <button type="button" id="print-now-button">طباعة الآن</button>
+    <button type="button" id="print-now-button">طباعة</button>
     <button type="button" id="save-pdf-button">حفظ PDF</button>
     <button type="button" class="secondary" id="close-window-button">إغلاق</button>
     <span id="print-status" class="print-status"></span>
@@ -1107,9 +1181,30 @@ function buildInvoicePrintHtml(route) {
       </tbody>
     </table>
 
+    ${allReturnLines.length > 0 ? `
+    <div class="returns-section">
+      <div class="returns-title">المرتجعات</div>
+      <table>
+        <thead>
+          <tr>
+            <th class="center" style="width:42px">#</th>
+            <th>الصنف</th>
+            <th class="center" style="width:80px">الوحدة</th>
+            <th class="center" style="width:80px">الكمية</th>
+            <th class="center" style="width:130px">السعر</th>
+            <th class="center" style="width:130px">الإجمالي</th>
+          </tr>
+        </thead>
+        <tbody>${returnRows}</tbody>
+      </table>
+      <div class="returns-total-line">إجمالي المرتجع: ${escapeHtml(formatCurrency(returnsTotal, settings.currency))}</div>
+    </div>
+    ` : ""}
+
     <div class="totals">
       <div class="totals-box">
         <div class="total-row"><span>الإجمالي</span><span class="mono">${escapeHtml(formatCurrency(invoice.total, settings.currency))}</span></div>
+        ${returnsTotal > 0 ? `<div class="total-row return-deduction"><span>خصم المرتجع</span><span class="mono">- ${escapeHtml(formatCurrency(returnsTotal, settings.currency))}</span></div>` : ""}
         <div class="total-row"><span>${isSales ? "المبلغ المستلم" : "المبلغ المدفوع"}</span><span class="mono">${escapeHtml(formatCurrency(amountPaid, settings.currency))}</span></div>
         <div class="total-row final"><span>المتبقي</span><span class="mono">${escapeHtml(formatCurrency(invoice.remaining, settings.currency))}</span></div>
       </div>
@@ -1118,7 +1213,7 @@ function buildInvoicePrintHtml(route) {
     ${invoice.notes ? `<div class="notes"><strong>ملاحظات: </strong>${escapeHtml(invoice.notes)}</div>` : ""}
     <div class="footer">${escapeHtml(settings.invoiceFooter || "")}</div>
     <div class="developer-info">
-      برمجة وتطوير: م/ عمرو هاني — واتساب: 01118445625
+      هيلبيرز تكنولوجي
     </div>
   </div>
 </body>
@@ -1140,8 +1235,8 @@ function printRoute(route) {
       const meta = getInvoicePrintMeta(route);
       const html = buildInvoicePrintHtml(route);
       printWindow = new BrowserWindow({
-        width: 1200,
-        height: 850,
+        width: 900,
+        height: 1100,
         show: true,
         autoHideMenuBar: true,
         title: meta.windowTitle,
@@ -1176,17 +1271,6 @@ function printRoute(route) {
         printWindow.show();
         printWindow.focus();
         finish({ ok: true });
-        setTimeout(() => {
-          if (!printWindow || printWindow.isDestroyed()) return;
-          printWindow.webContents.print(
-            getInvoicePrintOptions(),
-            (success, failureReason) => {
-              if (!success && failureReason) {
-                console.warn(`Invoice print was not completed: ${failureReason}`);
-              }
-            }
-          );
-        }, 650);
       });
 
       printWindow.webContents.once("did-fail-load", (_event, _code, description) => {
@@ -1313,30 +1397,27 @@ function registerIpc() {
     const raw = storageGet(String(key));
     event.returnValue = raw === null ? null : storageValueForRenderer(key, raw);
   });
-  ipcMain.on("storage:set", (event, key, value) => {
+  ipcMain.handle("storage:set", (event, key, value) => {
     if (!isRendererStorageKey(key) || !canMutateRendererStorage(event, key)) {
-      event.returnValue = false;
-      return;
+      return false;
     }
     try {
-      event.returnValue = storageSet(String(key), normalizeRendererStorageValue(key, value));
+      return storageSet(String(key), normalizeRendererStorageValue(key, value));
     } catch {
-      event.returnValue = false;
+      return false;
     }
   });
-  ipcMain.on("storage:remove", (event, key) => {
+  ipcMain.handle("storage:remove", (event, key) => {
     if (!isRendererStorageKey(key) || !canMutateRendererStorage(event, key)) {
-      event.returnValue = false;
-      return;
+      return false;
     }
-    event.returnValue = storageRemove(String(key));
+    return storageRemove(String(key));
   });
-  ipcMain.on("storage:clear-prefix", (event, prefix) => {
+  ipcMain.handle("storage:clear-prefix", (event, prefix) => {
     if (String(prefix) !== STORE_PREFIX || !hasOwnerSession(event)) {
-      event.returnValue = false;
-      return;
+      return false;
     }
-    event.returnValue = storageClearPrefix(String(prefix));
+    return storageClearPrefix(String(prefix));
   });
 
   ipcMain.handle("storage:export", (event) => {
@@ -1452,15 +1533,22 @@ function registerIpc() {
     return result;
   });
   ipcMain.handle("print:route", (_event, route) => printRoute(route));
-  ipcMain.handle("print:current-window", (event) =>
-    new Promise((resolve) => {
-      event.sender.print(getInvoicePrintOptions(), (success, failureReason) => {
-        resolve(
-          success ? { ok: true } : { ok: false, error: failureReason || "print_cancelled" }
-        );
+  ipcMain.handle("print:current-window", async (event) => {
+    try {
+      const printOpts = getInvoicePrintOptions();
+      return new Promise((resolve) => {
+        event.sender.print(printOpts, (success, failureReason) => {
+          if (success) {
+            resolve({ ok: true });
+          } else {
+            resolve({ ok: false, error: failureReason || "print_failed" });
+          }
+        });
       });
-    })
-  );
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : "print_failed" };
+    }
+  });
   ipcMain.handle("print:save-current-pdf", async (event) => {
     const ownerWindow = BrowserWindow.fromWebContents(event.sender);
     const baseName =
@@ -1546,4 +1634,9 @@ app.whenReady().then(() => {
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
+});
+
+app.on("before-quit", () => {
+  try { db?.pragma("wal_checkpoint(TRUNCATE)"); } catch { /* ignore */ }
+  try { db?.close(); db = null; } catch { /* ignore */ }
 });

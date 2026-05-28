@@ -5,7 +5,7 @@ import { hasPermission } from "../lib/permissions";
 
 export function SalesInvoicePrintPage() {
   const { id } = useParams();
-  const { salesInvoices, currentUser, auth } = useApp();
+  const { salesInvoices, salesReturns, currentUser, auth, customerBalance } = useApp();
   if (!auth.isAuthenticated || !hasPermission(currentUser, "salesInvoices")) {
     return (
       <div className="min-h-screen grid place-items-center text-sm text-slate-500">
@@ -21,6 +21,9 @@ export function SalesInvoicePrintPage() {
       </div>
     );
   }
+  const invoiceReturns = salesReturns.filter((r) => r.originalInvoiceId === inv.id);
+  const effectiveRemaining = inv.remaining;
+  const totalBalance = customerBalance(inv.customerId);
   return (
     <InvoicePrintLayout
       kind="sales"
@@ -31,11 +34,16 @@ export function SalesInvoicePrintPage() {
       driverName={inv.driverName}
       lines={inv.lines}
       total={inv.total}
+      discount={inv.discount}
       amountPaid={inv.amountReceived}
-      remaining={inv.remaining}
+      remaining={effectiveRemaining}
       notes={inv.notes}
       paymentLabel={inv.paymentType === "cash" ? "نقدي" : "آجل (حساب)"}
       priceTypeLabel={inv.priceType === "retail" ? "تجزئة" : "جملة"}
+      returns={invoiceReturns.length > 0 ? invoiceReturns : undefined}
+      paymentDueDate={inv.paymentDueDate}
+      customerBalance={totalBalance}
+      customerName={inv.customerName}
     />
   );
 }

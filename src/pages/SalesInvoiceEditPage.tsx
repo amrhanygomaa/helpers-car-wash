@@ -12,6 +12,7 @@ import { useToast } from "../components/ui/Toast";
 import { uid } from "../lib/utils";
 import type { InvoiceLine, SalesPaymentType } from "../types";
 import { formatCurrency } from "../lib/format";
+import { parseNumericInput } from "../lib/numberInput";
 
 interface LineDraft {
   id: string;
@@ -25,7 +26,7 @@ export function SalesInvoiceEditPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const toast = useToast();
-  const { salesInvoices, products, drivers, updateSalesInvoice, settings } = useApp();
+  const { salesInvoices, products, drivers, updateSalesInvoice, settings, customerBalance } = useApp();
 
   const inv = salesInvoices.find((s) => s.id === id);
 
@@ -34,6 +35,7 @@ export function SalesInvoiceEditPage() {
   const [driverId, setDriverId] = useState(inv?.driverId ?? "");
   const [paymentType, setPaymentType] = useState<SalesPaymentType>(inv?.paymentType ?? "cash");
   const [paymentDueDate, setPaymentDueDate] = useState(inv?.paymentDueDate ?? "");
+  const [discount, setDiscount] = useState<number>(inv?.discount ?? 0);
   const [amountReceived, setAmountReceived] = useState(inv?.amountReceived ?? 0);
   const [notes, setNotes] = useState(inv?.notes ?? "");
   const [lines, setLines] = useState<LineDraft[]>(
@@ -51,10 +53,11 @@ export function SalesInvoiceEditPage() {
     if (paymentType === "cash") setPaymentDueDate("");
   }, [paymentType]);
 
-  const total = useMemo(
+  const gross = useMemo(
     () => lines.reduce((a, l) => a + (l.quantity || 0) * (l.price || 0), 0),
     [lines]
   );
+  const invoiceNet = Math.max(0, gross - (discount || 0));
 
   const stockWarnings = useMemo(() => {
     const map = new Map<string, number>();
@@ -119,8 +122,20 @@ export function SalesInvoiceEditPage() {
       );
       return;
     }
+    if (discount < 0 || discount > gross) {
+      toast.error("قيمة الخصم غير صحيحة");
+      return;
+    }
     if (amountReceived < 0) {
       toast.error("المبلغ المستلم غير صحيح");
+      return;
+    }
+    if (paymentType === "cash" && amountReceived <= 0) {
+      toast.error("أدخل المبلغ المستلم");
+      return;
+    }
+    if (paymentType === "account" && !paymentDueDate) {
+      toast.error("أدخل تاريخ الاستحقاق");
       return;
     }
 
@@ -140,7 +155,8 @@ export function SalesInvoiceEditPage() {
       };
     });
 
-    const effectivePaymentType: SalesPaymentType = amountReceived >= total ? "cash" : paymentType;
+    const receivedForInvoice = Math.min(amountReceived, invoiceNet);
+    const effectivePaymentType: SalesPaymentType = paymentType;
     const effectiveDueDate = effectivePaymentType === "account" && paymentDueDate ? paymentDueDate : undefined;
 
     updateSalesInvoice(inv.id, {
@@ -149,7 +165,9 @@ export function SalesInvoiceEditPage() {
       driverId: driverId || undefined,
       driverName: driverId ? drivers.find((d) => d.id === driverId)?.name : undefined,
       lines: invLines,
-      amountReceived,
+      total: invoiceNet,
+      discount: discount > 0 ? discount : undefined,
+      amountReceived: receivedForInvoice,
       paymentType: effectivePaymentType,
       priceType: inv.priceType,
       paymentDueDate: effectiveDueDate,
@@ -208,7 +226,20 @@ export function SalesInvoiceEditPage() {
           {/* Customer — read-only */}
           <div className="mb-4 bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-700">
             <span className="text-slate-400 text-xs block mb-0.5">العميل (غير قابل للتعديل)</span>
-            <span className="font-semibold text-slate-900">{inv.customerName}</span>
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-slate-900">{inv.customerName}</span>
+              {(() => {
+                const bal = customerBalance(inv.customerId);
+                if (bal === 0) return null;
+                return (
+                  <span className={`text-xs font-semibold ${bal > 0 ? "text-rose-600" : "text-emerald-700"}`}>
+                    {bal > 0
+                      ? `مديون: ${formatCurrency(bal, settings.currency)}`
+                      : `رصيد دائن: ${formatCurrency(-bal, settings.currency)}`}
+                  </span>
+                );
+              })()}
+            </div>
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
@@ -296,7 +327,11 @@ export function SalesInvoiceEditPage() {
                           type="number"
                           min={1}
                           value={l.quantity}
-                          onChange={(e) => updateLine(l.id, { quantity: Math.max(1, Number(e.target.value)) })}
+                          onChange={(e) =>
+                            updateLine(l.id, {
+                              quantity: Math.max(1, parseNumericInput(e.target.value, l.quantity)),
+                            })
+                          }
                           className={exceeds ? "border-rose-400" : ""}
                         />
                       </TD>
@@ -306,7 +341,11 @@ export function SalesInvoiceEditPage() {
                           step="0.01"
                           min={0}
                           value={l.price}
-                          onChange={(e) => updateLine(l.id, { price: Number(e.target.value) })}
+                          onChange={(e) =>
+                            updateLine(l.id, {
+                              price: Math.max(0, parseNumericInput(e.target.value, l.price)),
+                            })
+                          }
                         />
                       </TD>
                       <TD className="text-end font-medium">
@@ -335,7 +374,7 @@ export function SalesInvoiceEditPage() {
         <Card>
           <CardHeader title="الدفع" />
           <CardBody className="space-y-3">
-            <Field label="طريقة الدفع">
+            <Field label="طريقة الدفع" required>
               <div className="flex items-center gap-4">
                 <label className="flex items-center gap-2 text-sm">
                   <input type="radio" checked={paymentType === "cash"} onChange={() => setPaymentType("cash")} />
@@ -348,17 +387,19 @@ export function SalesInvoiceEditPage() {
               </div>
             </Field>
             {paymentType === "account" && (
-              <Field label="تاريخ الاستحقاق">
-                <Input type="date" value={paymentDueDate} onChange={(e) => setPaymentDueDate(e.target.value)} />
+              <Field label="تاريخ الاستحقاق" required>
+                <Input type="date" value={paymentDueDate} onChange={(e) => setPaymentDueDate(e.target.value)} required />
               </Field>
             )}
-            <Field label="المبلغ المستلم">
+            <Field label="المبلغ المستلم" required>
               <Input
                 type="number"
                 min={0}
                 step="0.01"
                 value={amountReceived}
-                onChange={(e) => setAmountReceived(Number(e.target.value))}
+                onChange={(e) =>
+                  setAmountReceived(Math.max(0, parseNumericInput(e.target.value, amountReceived)))
+                }
               />
             </Field>
             <Field label="ملاحظات">
@@ -371,16 +412,36 @@ export function SalesInvoiceEditPage() {
           <CardHeader title="الملخص" />
           <CardBody className="space-y-2 text-sm">
             <div className="flex justify-between text-slate-700">
-              <span>إجمالي الفاتورة</span>
-              <span className="font-mono">{formatCurrency(total, settings.currency)}</span>
+              <span>إجمالي البنود</span>
+              <span className="font-mono">{formatCurrency(gross, settings.currency)}</span>
             </div>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-slate-600">خصم</span>
+              <Input
+                type="number"
+                min={0}
+                step="0.01"
+                value={discount || ""}
+                onChange={(e) =>
+                  setDiscount(Math.max(0, parseNumericInput(e.target.value, discount)))
+                }
+                placeholder="0.00"
+                className="w-28 h-8"
+              />
+            </div>
+            {discount > 0 && (
+              <div className="flex justify-between text-slate-900 font-semibold">
+                <span>صافي الفاتورة</span>
+                <span className="font-mono">{formatCurrency(invoiceNet, settings.currency)}</span>
+              </div>
+            )}
             <div className="flex justify-between text-slate-700">
               <span>المبلغ المستلم</span>
-              <span className="font-mono">{formatCurrency(Math.min(amountReceived, total), settings.currency)}</span>
+              <span className="font-mono">{formatCurrency(Math.min(amountReceived, invoiceNet), settings.currency)}</span>
             </div>
             <div className="border-t border-slate-200 pt-2 flex justify-between text-lg font-bold text-amber-700">
               <span>المتبقي</span>
-              <span className="font-mono">{formatCurrency(Math.max(0, total - amountReceived), settings.currency)}</span>
+              <span className="font-mono">{formatCurrency(Math.max(0, invoiceNet - amountReceived), settings.currency)}</span>
             </div>
             <div className="pt-2">
               <Button onClick={submit} size="lg" className="w-full">

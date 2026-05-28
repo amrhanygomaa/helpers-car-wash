@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -31,6 +32,7 @@ import type {
 import { lsClearAll, lsGet, lsRemove, lsSet } from "../lib/storage";
 import { hashPassword, verifyFallbackPassword } from "../lib/auth";
 import { normalizeUser } from "../lib/permissions";
+import { formatSupplierCode, nextSupplierCodeFromExisting } from "../lib/codes";
 import {
   seedCashEntries,
   seedCustomers,
@@ -65,8 +67,8 @@ interface AppState {
   stockMovements: StockMovement[];
   cashEntries: CashEntry[];
   nextProductCode: number;
-  nextCustomerCode: number;
   nextSupplierCode: number;
+  nextCustomerCode: number;
   users: AppUser[];
   currentUser: AppUser | null;
   salesReturns: SalesReturn[];
@@ -149,7 +151,7 @@ interface AppActions {
   ) => SalesInvoice;
   updateSalesInvoice: (
     id: string,
-    patch: Omit<SalesInvoice, "id" | "createdAt" | "customerId" | "customerName" | "status" | "remaining" | "total">
+    patch: Omit<SalesInvoice, "id" | "createdAt" | "customerId" | "customerName" | "status" | "remaining">
   ) => void;
   recordSalesReceipt: (id: string, amount: number) => void;
   cancelSalesInvoice: (id: string) => void;
@@ -194,7 +196,7 @@ interface AppActions {
   // Backup & Import
   exportBackup: () => void;
   importBackup: (file: File) => Promise<boolean>;
-  exportToCSV: (dataType: "products" | "customers" | "suppliers" | "sales" | "purchases" | "stock" | "commissions") => void;
+  exportToCSV: (dataType: "products" | "customers" | "suppliers" | "sales" | "purchases" | "stock" | "supplierDues" | "commissions") => void;
 }
 
 type AppContextValue = AppState & AppActions;
@@ -288,27 +290,22 @@ function settleSalesInvoiceReturn(
   invoice: SalesInvoice,
   ret: Pick<SalesReturn, "lines" | "total" | "refundCash">
 ) {
-  const adjusted = applyReturnToInvoiceLines(invoice.lines, ret.lines);
-  const returnTotal = Math.min(
-    invoice.total,
-    ret.total,
-    adjusted.appliedTotal
-  );
+  // Keep original lines and total unchanged — returns are shown as separate records.
+  const returnTotal = Math.min(invoice.total, ret.total);
   const paidAndCredit = invoice.amountReceived + (invoice.overpayment ?? 0);
   const cashRefund = ret.refundCash ? Math.min(returnTotal, paidAndCredit) : 0;
   const paidAndCreditAfterReturn = Math.max(0, paidAndCredit - cashRefund);
-  const amountReceived = Math.min(adjusted.total, paidAndCreditAfterReturn);
+  const effectiveTotal = Math.max(0, invoice.total - returnTotal);
+  const amountReceived = Math.min(effectiveTotal, paidAndCreditAfterReturn);
   const overpayment = Math.max(0, paidAndCreditAfterReturn - amountReceived);
-  const remaining = Math.max(0, adjusted.total - amountReceived);
+  const remaining = Math.max(0, effectiveTotal - amountReceived);
 
   return {
     invoice: {
       ...invoice,
-      lines: adjusted.lines,
-      total: adjusted.total,
       amountReceived,
       remaining,
-      status: computeStatus(adjusted.total, amountReceived),
+      status: computeStatus(effectiveTotal, amountReceived),
       overpayment: overpayment > 0 ? overpayment : undefined,
       paymentDueDate: remaining > 0 ? invoice.paymentDueDate : undefined,
     },
@@ -504,11 +501,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [nextProductCode, setNextProductCode] = useState<number>(() =>
     lsGet<number>("nextProductCode", 1000)
   );
+  const [nextSupplierCode, setNextSupplierCode] = useState<number>(() => {
+    const storedSuppliers = lsGet<Supplier[]>("suppliers", seedSuppliers);
+    return Math.max(
+      lsGet<number>("nextSupplierCode", 1),
+      nextSupplierCodeFromExisting(storedSuppliers)
+    );
+  });
   const [nextCustomerCode, setNextCustomerCode] = useState<number>(() =>
     lsGet<number>("nextCustomerCode", 1)
-  );
-  const [nextSupplierCode, setNextSupplierCode] = useState<number>(() =>
-    lsGet<number>("nextSupplierCode", 1)
   );
   const [users, setUsers] = useState<AppUser[]>(() =>
     lsGet<AppUser[]>("users", seedUsers).map(normalizeUser)
@@ -525,7 +526,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const storedSettings = lsGet<Settings>("settings", seedSettings);
     setSettings(applyLicenseSettings(storedSettings, licenseStatus));
     setProducts(lsGet<LegacyProduct[]>("products", seedProducts).map(normalizeProduct));
-    setSuppliers(lsGet<Supplier[]>("suppliers", seedSuppliers));
+    const storedSuppliers = lsGet<Supplier[]>("suppliers", seedSuppliers);
+    setSuppliers(storedSuppliers);
     setCustomers(lsGet<Customer[]>("customers", seedCustomers));
     setPurchaseInvoices(lsGet<PurchaseInvoice[]>("purchaseInvoices", seedPurchaseInvoices));
     setSalesInvoices(
@@ -536,6 +538,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setStockMovements(lsGet<StockMovement[]>("stockMovements", seedStockMovements));
     setCashEntries(lsGet<CashEntry[]>("cashEntries", seedCashEntries));
     setNextProductCode(lsGet<number>("nextProductCode", 1000));
+    setNextSupplierCode(
+      Math.max(
+        lsGet<number>("nextSupplierCode", 1),
+        nextSupplierCodeFromExisting(storedSuppliers)
+      )
+    );
+    setNextCustomerCode(lsGet<number>("nextCustomerCode", 1));
     setUsers(lsGet<AppUser[]>("users", []).map(normalizeUser));
     setSalesReturns(lsGet<SalesReturn[]>("salesReturns", []));
     setPurchaseReturns(lsGet<PurchaseReturn[]>("purchaseReturns", []));
@@ -552,6 +561,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setStockMovements(seedStockMovements);
     setCashEntries(seedCashEntries);
     setNextProductCode(1000);
+    setNextSupplierCode(nextSupplierCodeFromExisting(seedSuppliers));
+    setNextCustomerCode(1);
     setUsers([]);
     setSalesReturns([]);
     setPurchaseReturns([]);
@@ -591,42 +602,57 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  // --- Auto Backup Logic ---
+  // Keep a ref to the latest state so the auto-backup timer can read it without
+  // being listed as a dependency (avoids re-scheduling the interval on every change).
+  const liveStateRef = useRef({
+    settings, products, suppliers, customers, purchaseInvoices, salesInvoices,
+    stockMovements, cashEntries, nextProductCode, nextSupplierCode, users,
+    salesReturns, purchaseReturns, drivers,
+  });
+  useEffect(() => {
+    liveStateRef.current = {
+      settings, products, suppliers, customers, purchaseInvoices, salesInvoices,
+      stockMovements, cashEntries, nextProductCode, nextSupplierCode, users,
+      salesReturns, purchaseReturns, drivers,
+    };
+  }, [settings, products, suppliers, customers, purchaseInvoices, salesInvoices, stockMovements, cashEntries, nextProductCode, nextSupplierCode, users, salesReturns, purchaseReturns, drivers]);
+
+  // --- Auto Backup Logic (timer-based — never blocks on state changes) ---
   useEffect(() => {
     if (!settings.autoBackupEnabled) return;
 
-    const now = new Date();
-    const lastBackup = settings.lastBackupDate;
+    function checkAndBackup() {
+      const s = liveStateRef.current;
+      if (!s.settings.autoBackupEnabled) return;
 
-    let shouldBackup = false;
-    if (!lastBackup) {
-      shouldBackup = true;
-    } else {
-      const last = new Date(lastBackup);
-      const diffMs = now.getTime() - last.getTime();
-      const diffDays = diffMs / (1000 * 60 * 60 * 24);
+      const now = new Date();
+      const lastBackup = s.settings.lastBackupDate;
+      let shouldBackup = false;
+      if (!lastBackup) {
+        shouldBackup = true;
+      } else {
+        const diffDays = (now.getTime() - new Date(lastBackup).getTime()) / (1000 * 60 * 60 * 24);
+        if (s.settings.autoBackupFrequency === "daily" && diffDays >= 1) shouldBackup = true;
+        if (s.settings.autoBackupFrequency === "weekly" && diffDays >= 7) shouldBackup = true;
+        if (s.settings.autoBackupFrequency === "monthly" && diffDays >= 30) shouldBackup = true;
+      }
 
-      if (settings.autoBackupFrequency === "daily" && diffDays >= 1) shouldBackup = true;
-      if (settings.autoBackupFrequency === "weekly" && diffDays >= 7) shouldBackup = true;
-      if (settings.autoBackupFrequency === "monthly" && diffDays >= 30) shouldBackup = true;
+      if (shouldBackup) {
+        const safeUsers = redactUserPasswordHashes(s.users);
+        const data = {
+          version: "1.0",
+          timestamp: now.toISOString(),
+          state: { ...s, users: safeUsers },
+        };
+        lsSet("inventory_auto_backup_internal", data);
+        setSettings((current) => ({ ...current, lastBackupDate: now.toISOString() }));
+      }
     }
 
-    if (shouldBackup) {
-      const safeUsers = redactUserPasswordHashes(users);
-      const data = {
-        version: "1.0",
-        timestamp: now.toISOString(),
-        state: {
-          settings, products, suppliers, customers, purchaseInvoices, salesInvoices,
-          stockMovements, cashEntries, nextProductCode, users: safeUsers, salesReturns, purchaseReturns, drivers
-        }
-      };
-      lsSet("inventory_auto_backup_internal", data);
-      setSettings((current) => ({ ...current, lastBackupDate: now.toISOString() }));
-      // SECURITY: Use a non-sensitive log message
-      void 0; // Auto-backup performed silently
-    }
-  }, [settings, products, suppliers, customers, purchaseInvoices, salesInvoices, stockMovements, cashEntries, nextProductCode, users, salesReturns, purchaseReturns, drivers]);
+    checkAndBackup(); // run once immediately on mount / when enabled
+    const timer = window.setInterval(checkAndBackup, 30 * 60 * 1000); // then every 30 min
+    return () => window.clearInterval(timer);
+  }, [settings.autoBackupEnabled]); // only re-schedules if user toggles the setting
 
   // Session backup
   useEffect(() => {
@@ -637,14 +663,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         timestamp: new Date().toISOString(),
         state: {
           settings, products, suppliers, customers, purchaseInvoices, salesInvoices,
-          stockMovements, cashEntries, nextProductCode, users: safeUsers, salesReturns, purchaseReturns, drivers
+          stockMovements, cashEntries, nextProductCode, nextSupplierCode, users: safeUsers, salesReturns, purchaseReturns, drivers
         }
       };
       lsSet("inventory_last_session_backup", data);
     };
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [settings, products, suppliers, customers, purchaseInvoices, salesInvoices, stockMovements, cashEntries, nextProductCode, users, salesReturns, purchaseReturns, drivers]);
+  }, [settings, products, suppliers, customers, purchaseInvoices, salesInvoices, stockMovements, cashEntries, nextProductCode, nextSupplierCode, users, salesReturns, purchaseReturns, drivers]);
 
   const currentUser = useMemo(() => {
     if (!auth.isAuthenticated) return null;
@@ -662,24 +688,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     lsRemove("auth");
   }, []);
-  useEffect(() => lsSet("settings", settings), [settings]);
-  useEffect(() => lsSet("products", products), [products]);
-  useEffect(() => lsSet("suppliers", suppliers), [suppliers]);
-  useEffect(() => lsSet("customers", customers), [customers]);
-  useEffect(
-    () => lsSet("purchaseInvoices", purchaseInvoices),
-    [purchaseInvoices]
-  );
-  useEffect(() => lsSet("salesInvoices", salesInvoices), [salesInvoices]);
-  useEffect(() => lsSet("stockMovements", stockMovements), [stockMovements]);
-  useEffect(() => lsSet("cashEntries", cashEntries), [cashEntries]);
-  useEffect(() => lsSet("nextProductCode", nextProductCode), [nextProductCode]);
-  useEffect(() => lsSet("nextCustomerCode", nextCustomerCode), [nextCustomerCode]);
-  useEffect(() => lsSet("nextSupplierCode", nextSupplierCode), [nextSupplierCode]);
-  useEffect(() => lsSet("users", users), [users]);
-  useEffect(() => lsSet("salesReturns", salesReturns), [salesReturns]);
-  useEffect(() => lsSet("purchaseReturns", purchaseReturns), [purchaseReturns]);
-  useEffect(() => lsSet("drivers", drivers), [drivers]);
+
+  // Batch all storage writes into a single debounced flush (400 ms).
+  // Previously 14 separate effects fired independently on every state change,
+  // causing up to 14 synchronous IPC + SQLite writes per interaction.
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      lsSet("settings", settings);
+      lsSet("products", products);
+      lsSet("suppliers", suppliers);
+      lsSet("customers", customers);
+      lsSet("purchaseInvoices", purchaseInvoices);
+      lsSet("salesInvoices", salesInvoices);
+      lsSet("stockMovements", stockMovements);
+      lsSet("cashEntries", cashEntries);
+      lsSet("nextProductCode", nextProductCode);
+      lsSet("nextSupplierCode", nextSupplierCode);
+      lsSet("nextCustomerCode", nextCustomerCode);
+      lsSet("users", users);
+      lsSet("salesReturns", salesReturns);
+      lsSet("purchaseReturns", purchaseReturns);
+      lsSet("drivers", drivers);
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [settings, products, suppliers, customers, purchaseInvoices, salesInvoices, stockMovements, cashEntries, nextProductCode, nextSupplierCode, nextCustomerCode, users, salesReturns, purchaseReturns, drivers]);
 
   const login = useCallback(async (username: string, passwordRaw: string) => {
     const attemptKey = loginAttemptKey(username);
@@ -764,6 +796,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setStockMovements(seedStockMovements);
     setCashEntries(seedCashEntries);
     setNextProductCode(1000);
+    setNextSupplierCode(nextSupplierCodeFromExisting(seedSuppliers));
+    setNextCustomerCode(1);
     setUsers(seedUsers.map(normalizeUser));
     setSalesReturns([]);
     setPurchaseReturns([]);
@@ -981,16 +1015,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const addSupplier: AppActions["addSupplier"] = (s) => {
     const sup: Supplier = {
       ...s,
+      code: formatSupplierCode(nextSupplierCode),
       id: uid("sup"),
       createdAt: new Date().toISOString(),
     };
-    setSuppliers((list) => [sup, ...list]);
     setNextSupplierCode((prev) => prev + 1);
+    setSuppliers((list) => [sup, ...list]);
     return sup;
   };
   const updateSupplier: AppActions["updateSupplier"] = (id, patch) => {
     setSuppliers((list) =>
-      list.map((s) => (s.id === id ? { ...s, ...patch } : s))
+      list.map((s) => {
+        if (s.id !== id) return s;
+        const editablePatch = { ...patch };
+        delete editablePatch.code;
+        return { ...s, ...editablePatch };
+      })
     );
   };
   const deleteSupplier: AppActions["deleteSupplier"] = (id) => {
@@ -1369,7 +1409,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return [...kept, ...next];
     });
 
-    const newTotal = patch.lines.reduce((a, l) => a + l.subtotal, 0);
+    const linesTotal = patch.lines.reduce((a, l) => a + l.subtotal, 0);
+    const newTotal = Math.max(0, linesTotal - (patch.discount ?? 0));
     const cappedReceived = Math.min(patch.amountReceived, newTotal);
     const newOverpayment = Math.max(0, patch.amountReceived - newTotal);
     const newRemaining = Math.max(0, newTotal - cappedReceived);
@@ -1681,7 +1722,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       timestamp: new Date().toISOString(),
       state: {
         settings, products, suppliers, customers, purchaseInvoices, salesInvoices,
-        stockMovements, cashEntries, nextProductCode, users: safeUsers, salesReturns, purchaseReturns, drivers
+        stockMovements, cashEntries, nextProductCode, nextSupplierCode, users: safeUsers, salesReturns, purchaseReturns, drivers
       }
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
@@ -1691,7 +1732,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     link.download = `backup_${new Date().toISOString().slice(0, 10)}.json`;
     link.click();
     URL.revokeObjectURL(url);
-  }, [settings, products, suppliers, customers, purchaseInvoices, salesInvoices, stockMovements, cashEntries, nextProductCode, users, salesReturns, purchaseReturns, drivers]);
+  }, [settings, products, suppliers, customers, purchaseInvoices, salesInvoices, stockMovements, cashEntries, nextProductCode, nextSupplierCode, users, salesReturns, purchaseReturns, drivers]);
 
   const importBackup: AppActions["importBackup"] = useCallback(async (file) => {
     try {
@@ -1715,6 +1756,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (Array.isArray(s.stockMovements)) setStockMovements(s.stockMovements);
       if (Array.isArray(s.cashEntries)) setCashEntries(s.cashEntries);
       if (typeof s.nextProductCode === "number") setNextProductCode(s.nextProductCode);
+      const importedSuppliers = Array.isArray(s.suppliers) ? s.suppliers : [];
+      if (typeof s.nextSupplierCode === "number") {
+        setNextSupplierCode(Math.max(s.nextSupplierCode, nextSupplierCodeFromExisting(importedSuppliers)));
+      } else if (importedSuppliers.length > 0) {
+        setNextSupplierCode(nextSupplierCodeFromExisting(importedSuppliers));
+      }
       // SECURITY: Users with [REDACTED] passwords are NOT imported — keep current users
       if (Array.isArray(s.users)) {
         const hasValidPasswords = s.users.every((u: Record<string, unknown>) => typeof u.passwordHash === "string" && u.passwordHash !== "[REDACTED]");
@@ -1752,6 +1799,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } else if (type === "stock") {
       headers = ["الكود", "المنتج", "الكمية", "قيمة المخزون"];
       rows = products.map(p => [p.code, p.name, p.quantity, p.quantity * p.purchasePrice]);
+    } else if (type === "supplierDues") {
+      headers = ["رقم الفاتورة", "التاريخ", "المورد", "الهاتف", "الإجمالي", "المدفوع", "المتبقي", "الحالة", "عمر الفاتورة بالأيام"];
+      rows = purchaseInvoices
+        .filter((p) => p.remaining > 0)
+        .sort((a, b) => {
+          const byDate = a.date.localeCompare(b.date);
+          return byDate !== 0 ? byDate : b.remaining - a.remaining;
+        })
+        .map((p) => {
+          const supplier = suppliers.find((s) => s.id === p.supplierId);
+          const issuedAt = new Date(p.date);
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          issuedAt.setHours(0, 0, 0, 0);
+          const ageDays = Number.isNaN(issuedAt.getTime())
+            ? 0
+            : Math.max(0, Math.floor((today.getTime() - issuedAt.getTime()) / (1000 * 60 * 60 * 24)));
+          return [
+            p.invoiceNumber,
+            p.date,
+            p.supplierName,
+            supplier?.phone,
+            p.total,
+            p.amountPaid,
+            p.remaining,
+            p.status,
+            ageDays,
+          ];
+        });
     } else if (type === "commissions") {
       headers = ["المورد", "إجمالي المشتريات", "البونص المستحق"];
       rows = suppliers.map(s => {
@@ -1788,6 +1864,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       stockMovements,
       cashEntries,
       nextProductCode,
+      nextSupplierCode,
       nextCustomerCode,
       nextSupplierCode,
       salesReturns,
@@ -1859,6 +1936,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       stockMovements,
       cashEntries,
       nextProductCode,
+      nextSupplierCode,
       nextCustomerCode,
       nextSupplierCode,
       salesReturns,

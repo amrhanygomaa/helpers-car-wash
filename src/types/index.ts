@@ -165,6 +165,7 @@ export interface SalesInvoice {
   driverName?: string;
   lines: InvoiceLine[];
   total: number;
+  discount?: number;
   amountReceived: number;
   remaining: number;
   overpayment?: number;

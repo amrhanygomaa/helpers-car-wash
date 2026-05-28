@@ -474,17 +474,20 @@ export function SuppliersPage() {
         }
       >
         <div className="space-y-4">
-          <Field label="الحد الأدنى للمشتريات (Threshold)" required>
-            <Input 
-              type="number" 
-              value={tierForm.threshold} 
-              onChange={e => setTierForm({...tierForm, threshold: Number(e.target.value)})} 
+          <Field label="الحد الأدنى للمشتريات" required hint="المبلغ الذي يجب تجاوزه لاستحقاق العمولة">
+            <Input
+              type="number"
+              min={0}
+              step="0.01"
+              value={tierForm.threshold || ""}
+              placeholder="مثلاً: 50000"
+              onChange={e => setTierForm({...tierForm, threshold: e.target.value === "" ? 0 : Number(e.target.value)})}
             />
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="نوع العمولة">
-              <Select 
-                value={tierForm.commissionType} 
+              <Select
+                value={tierForm.commissionType}
                 onChange={e => setTierForm({...tierForm, commissionType: e.target.value as CommissionType})}
               >
                 <option value="percentage">نسبة مئوية (%)</option>
@@ -492,19 +495,24 @@ export function SuppliersPage() {
               </Select>
             </Field>
             <Field label="القيمة">
-              <Input 
-                type="number" 
-                value={tierForm.commissionValue} 
-                onChange={e => setTierForm({...tierForm, commissionValue: Number(e.target.value)})} 
+              <Input
+                type="number"
+                min={0}
+                step="0.01"
+                value={tierForm.commissionValue || ""}
+                placeholder={tierForm.commissionType === "percentage" ? "مثلاً: 2" : "مثلاً: 500"}
+                onChange={e => setTierForm({...tierForm, commissionValue: e.target.value === "" ? 0 : Number(e.target.value)})}
               />
             </Field>
           </div>
           <Field label="الفترة الزمنية (أيام)">
-            <Input 
-              type="number" 
-              value={tierForm.periodDays} 
-              onChange={e => setTierForm({...tierForm, periodDays: Number(e.target.value)})} 
-              placeholder="مثلاً: 30 يوم"
+            <Input
+              type="number"
+              min={1}
+              step={1}
+              value={tierForm.periodDays || ""}
+              placeholder="مثلاً: 30"
+              onChange={e => setTierForm({...tierForm, periodDays: e.target.value === "" ? 30 : Number(e.target.value)})}
             />
           </Field>
         </div>

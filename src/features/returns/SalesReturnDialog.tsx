@@ -17,11 +17,22 @@ export function SalesReturnDialog({
   onClose: () => void;
   invoice: SalesInvoice;
 }) {
-  const { addSalesReturn, settings } = useApp();
+  const { addSalesReturn, settings, salesReturns } = useApp();
   const toast = useToast();
 
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [refundCash, setRefundCash] = useState(false);
+
+  // Compute already-returned quantities per line so users can't over-return
+  const returnedQtyByLineId = new Map<string, number>();
+  salesReturns
+    .filter((r) => r.originalInvoiceId === invoice.id)
+    .forEach((r) =>
+      r.lines.forEach((rl) => {
+        const key = rl.sourceLineId ?? rl.id;
+        returnedQtyByLineId.set(key, (returnedQtyByLineId.get(key) ?? 0) + rl.quantity);
+      })
+    );
 
   const selectedLines = invoice.lines.filter((l) => (quantities[l.id] || 0) > 0);
   const total = selectedLines.reduce(
@@ -106,34 +117,40 @@ export function SalesReturnDialog({
             </TR>
           </THead>
           <TBody>
-            {invoice.lines.map((l) => {
-              const q = quantities[l.id] || 0;
-              return (
-                <TR key={l.id}>
-                  <TD>{l.productName}</TD>
-                  <TD>{formatCurrency(l.price, settings.currency)}</TD>
-                  <TD>{l.quantity}</TD>
-                  <TD>
-                    <input
-                      type="number"
-                      min={0}
-                      max={l.quantity}
-                      className="w-full border-slate-200 rounded-md text-sm p-1.5 focus:border-brand-500 focus:ring-brand-500"
-                      value={q || ""}
-                      onChange={(e) => {
-                        let val = Number(e.target.value);
-                        if (val < 0) val = 0;
-                        if (val > l.quantity) val = l.quantity;
-                        setQuantities((prev) => ({ ...prev, [l.id]: val }));
-                      }}
-                    />
-                  </TD>
-                  <TD className="text-end font-medium">
-                    {formatCurrency(q * l.price, settings.currency)}
-                  </TD>
-                </TR>
-              );
-            })}
+            {invoice.lines
+              .map((l) => ({
+                ...l,
+                availableQty: Math.max(0, l.quantity - (returnedQtyByLineId.get(l.id) ?? 0)),
+              }))
+              .filter((l) => l.availableQty > 0)
+              .map((l) => {
+                const q = quantities[l.id] || 0;
+                return (
+                  <TR key={l.id}>
+                    <TD>{l.productName}</TD>
+                    <TD>{formatCurrency(l.price, settings.currency)}</TD>
+                    <TD>{l.availableQty}</TD>
+                    <TD>
+                      <input
+                        type="number"
+                        min={0}
+                        max={l.availableQty}
+                        className="w-full border-slate-200 rounded-md text-sm p-1.5 focus:border-brand-500 focus:ring-brand-500"
+                        value={q || ""}
+                        onChange={(e) => {
+                          let val = Number(e.target.value);
+                          if (val < 0) val = 0;
+                          if (val > l.availableQty) val = l.availableQty;
+                          setQuantities((prev) => ({ ...prev, [l.id]: val }));
+                        }}
+                      />
+                    </TD>
+                    <TD className="text-end font-medium">
+                      {formatCurrency(q * l.price, settings.currency)}
+                    </TD>
+                  </TR>
+                );
+              })}
           </TBody>
         </Table>
 

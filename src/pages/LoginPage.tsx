@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
-import { Boxes, ShieldCheck } from "lucide-react";
+import { Boxes, Eye, EyeOff, MessageCircle, ShieldCheck } from "lucide-react";
 import { useApp } from "../store/AppContext";
 import { Button } from "../components/ui/Button";
 import { Field, Input } from "../components/ui/Input";
@@ -22,6 +22,7 @@ export function LoginPage() {
   const [supportCodeRequesting, setSupportCodeRequesting] = useState(false);
   const [machineCode, setMachineCode] = useState("");
   const [lockRemaining, setLockRemaining] = useState(0);
+  const [showPassword, setShowPassword] = useState(false);
   const submitInFlight = useRef(false);
 
   useEffect(() => {
@@ -194,12 +195,23 @@ export function LoginPage() {
             />
           </Field>
           <Field label="كلمة المرور" required>
-            <Input
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              type="password"
-            />
+            <div className="relative">
+              <Input
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                type={showPassword ? "text" : "password"}
+                className="pl-10"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                tabIndex={-1}
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
           </Field>
           <Button
             type="submit"
@@ -221,6 +233,15 @@ export function LoginPage() {
           <div className="text-[10px] text-slate-400 text-center">
             هذا النظام محمي ومشفر — Helpers Technologies © 2026
           </div>
+          <a
+            href="https://wa.me/201118445625"
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center justify-center gap-2 w-full h-9 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 text-sm font-medium hover:bg-emerald-100 transition-colors"
+          >
+            <MessageCircle className="w-4 h-4" />
+            تواصل مع الدعم الفني عبر واتساب
+          </a>
           {window.desktopAPI?.auth && (
             <button
               type="button"

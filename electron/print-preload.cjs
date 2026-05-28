@@ -27,12 +27,12 @@ function setBusy(button, busy) {
 async function printNow() {
   const button = document.getElementById("print-now-button");
   setBusy(button, true);
-  setStatus("جاري فتح نافذة الطباعة...");
+  setStatus("جاري تجهيز الطباعة...");
   try {
     const result = await api.printNow();
-    setStatus(result && result.ok ? "" : "تعذر فتح الطباعة");
+    setStatus(result && result.ok ? "تمت الطباعة" : "تعذرت الطباعة");
   } catch {
-    setStatus("تعذر فتح الطباعة");
+    setStatus("تعذرت الطباعة");
   } finally {
     setBusy(button, false);
   }

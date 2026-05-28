@@ -60,7 +60,8 @@ export function SalesInvoiceDetailPage() {
   const customer = customers.find((c) => c.id === inv.customerId);
   const totalCustomerBalance = customerBalance(inv.customerId);
   const linkedReturns = salesReturns.filter((r) => r.originalInvoiceId === inv.id);
-  const canCreateReturn = canAddReturn && inv.lines.some((line) => line.quantity > 0);
+  const totalReturns = linkedReturns.reduce((a, r) => a + r.total, 0);
+  const canCreateReturn = canAddReturn && !inv.cancelled && totalReturns < inv.total;
   const priceTypeLabel = inv.priceType === "retail" ? "تجزئة" : "جملة";
   const dueDatePassed = (() => {
     if (!inv.paymentDueDate || inv.remaining <= 0) return false;
@@ -134,6 +135,15 @@ export function SalesInvoiceDetailPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
         <Stat label="الإجمالي" value={formatCurrency(inv.total, settings.currency)} />
+        {inv.discount && inv.discount > 0 ? (
+          <Stat label="الخصم" value={`- ${formatCurrency(inv.discount, settings.currency)}`} tone="green" />
+        ) : null}
+        {totalReturns > 0 && (
+          <Stat label="المرتجعات" value={`- ${formatCurrency(totalReturns, settings.currency)}`} tone="red" />
+        )}
+        {totalReturns > 0 && (
+          <Stat label="صافي بعد المرتجع" value={formatCurrency(Math.max(0, inv.total - totalReturns), settings.currency)} />
+        )}
         <Stat label="المستلم" value={formatCurrency(inv.amountReceived, settings.currency)} tone="green" />
         <Stat label="المتبقي على هذه الفاتورة" value={formatCurrency(inv.remaining, settings.currency)} tone={inv.remaining > 0 ? "amber" : "slate"} />
         {inv.overpayment && inv.overpayment > 0 ? (
@@ -152,7 +162,7 @@ export function SalesInvoiceDetailPage() {
           label={`إجمالي رصيد ${inv.customerName}`}
           value={
             totalCustomerBalance > 0
-              ? formatCurrency(totalCustomerBalance, settings.currency)
+              ? `- ${formatCurrency(totalCustomerBalance, settings.currency)}`
               : totalCustomerBalance < 0
                 ? `رصيد دائن: ${formatCurrency(-totalCustomerBalance, settings.currency)}`
                 : "لا يوجد مستحق"

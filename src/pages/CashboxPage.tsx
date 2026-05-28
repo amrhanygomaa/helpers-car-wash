@@ -151,7 +151,7 @@ export function CashboxPage() {
         <Stat icon={<Wallet className="w-5 h-5" />} label="الرصيد الحالي" value={formatCurrency(currentCashBalance(), settings.currency)} tone="green" />
         <Stat icon={<HandCoins className="w-5 h-5" />} label="إجمالي المحصل" value={formatCurrency(totalReceived, settings.currency)} tone="blue" />
         <Stat icon={<Factory className="w-5 h-5" />} label="مدفوعات الموردين" value={formatCurrency(totalPurchasePayments, settings.currency)} tone="amber" />
-        <Stat icon={<Users className="w-5 h-5" />} label="مستحقات العملاء" value={formatCurrency(receivables, settings.currency)} tone="rose" />
+        <Stat icon={<Users className="w-5 h-5" />} label="مستحقات من العملاء" value={formatCurrency(receivables, settings.currency)} tone="rose" />
         <Stat icon={<UserRoundMinus className="w-5 h-5" />} label="فلوس علينا للعملاء" value={formatCurrency(customerCredits, settings.currency)} tone="violet" />
       </div>
 
