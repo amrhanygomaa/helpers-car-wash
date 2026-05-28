@@ -46,5 +46,17 @@ private-code-signing-backup*/
 # Internal dev handbook — NEVER `git add -f` (keep full doc outside public repo)
 DEVELOPMENT_TEAM.md
 
+# Internal task tracking and feature specs (keep local, not for public repo)
+task-*.md
+tasks-*.md
+
 # Deployment license public key (never commit — distribute via private channel)
 electron/license-public-key.cjs
+
+# AI coding assistant workspace (Claude Code, Copilot, Codex, etc.)
+.claude/
+.codex-dev/
+.codex/
+
+# Scratch / temporary files
+test-invoice.mjs
