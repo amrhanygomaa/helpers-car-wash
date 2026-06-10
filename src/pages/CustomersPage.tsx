@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Pencil, Plus, Trash2, Eye, Users, Search } from "lucide-react";
+import { Pencil, Plus, Trash2, Eye, Users, Search, ScrollText, Archive, ArchiveRestore } from "lucide-react";
 import { PageHeader } from "../components/layout/AppLayout";
 import { Card, CardBody, CardHeader } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -21,7 +21,7 @@ import { Link } from "react-router-dom";
 import { hasPermission } from "../lib/permissions";
 
 export function CustomersPage() {
-  const { customers, addCustomer, updateCustomer, deleteCustomer, nextCustomerCode } = useCatalog();
+  const { customers, addCustomer, updateCustomer, deleteCustomer, archiveCustomer, nextCustomerCode } = useCatalog();
   const { salesInvoices } = useInvoicing();
   const { customerBalance } = useReporting();
   const { currentUser } = useAuth();
@@ -47,6 +47,7 @@ export function CustomersPage() {
   const [editing, setEditing] = useState<Customer | null>(null);
   const [viewing, setViewing] = useState<Customer | null>(null);
   const [toDelete, setToDelete] = useState<Customer | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
 
   const [form, setForm] = useState<Omit<Customer, "id" | "createdAt">>({
     code: "",
@@ -57,10 +58,13 @@ export function CustomersPage() {
     notes: "",
   });
 
+  const archivedCount = useMemo(() => customers.filter((c) => c.archived).length, [customers]);
+
   const filtered = useMemo(() => {
-    if (!q.trim()) return customers;
+    const active = customers.filter((c) => !c.archived);
+    if (!q.trim()) return active;
     const t = q.trim().toLowerCase();
-    return customers.filter(
+    return active.filter(
       (c) =>
         c.name.toLowerCase().includes(t) ||
         (c.phone ?? "").toLowerCase().includes(t)
@@ -113,8 +117,12 @@ export function CustomersPage() {
   function handleDelete() {
     if (!toDelete) return;
     const ok = deleteCustomer(toDelete.id);
-    if (ok) toast.success("تم حذف العميل");
-    else toast.error("لا يمكن الحذف", "العميل لديه فواتير مسجلة");
+    if (ok) {
+      toast.success("تم حذف العميل");
+    } else {
+      archiveCustomer(toDelete.id, true);
+      toast.success("تم أرشفة العميل", "العميل محفوظ في الأرشيف ويمكن استعادته");
+    }
     setToDelete(null);
   }
 
@@ -138,7 +146,20 @@ export function CustomersPage() {
       />
 
       <Card>
-        <CardHeader title="قائمة العملاء" />
+        <CardHeader
+          title="قائمة العملاء"
+          actions={archivedCount > 0 ? (
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5 text-slate-600"
+              onClick={() => setShowArchived((v) => !v)}
+            >
+              <Archive className="w-3.5 h-3.5" />
+              {showArchived ? "إخفاء الأرشيف" : `الأرشيف (${archivedCount})`}
+            </Button>
+          ) : undefined}
+        />
         <CardBody className="space-y-3">
           <div className="relative w-72">
             <Search className="w-4 h-4 absolute top-1/2 -translate-y-1/2 end-3 text-slate-400" />
@@ -201,6 +222,13 @@ export function CustomersPage() {
                       </TD>
                       <TD className="text-end">
                         <div className="inline-flex items-center gap-1">
+                          <Link
+                            to={`/customers/${c.id}/statement`}
+                            title="كشف حساب"
+                            className="inline-flex items-center justify-center w-8 h-8 rounded-md text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors"
+                          >
+                            <ScrollText className="w-4 h-4" />
+                          </Link>
                           <Button size="icon" variant="ghost" onClick={() => setViewing(c)}>
                             <Eye className="w-4 h-4" />
                           </Button>
@@ -224,6 +252,38 @@ export function CustomersPage() {
                     </TR>
                   );
                 })}
+                {showArchived && customers.filter((c) => c.archived).map((c) => (
+                  <TR key={c.id} className="opacity-50 bg-slate-50">
+                    <TD className="text-slate-400 font-mono text-xs">{c.code ?? "—"}</TD>
+                    <TD className="text-slate-500 line-through">{c.name}</TD>
+                    <TD className="text-slate-400">{c.phone ?? "—"}</TD>
+                    <TD />
+                    <TD />
+                    <TD className="text-end">
+                      <div className="inline-flex items-center gap-1">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="gap-1 text-slate-600 h-7 text-xs"
+                          onClick={() => { archiveCustomer(c.id, false); toast.success("تمت الاستعادة"); }}
+                        >
+                          <ArchiveRestore className="w-3 h-3" />
+                          استعادة
+                        </Button>
+                        {canDeleteCustomer && (
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="text-red-600 hover:bg-red-50 w-7 h-7"
+                            onClick={() => setToDelete(c)}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        )}
+                      </div>
+                    </TD>
+                  </TR>
+                ))}
               </TBody>
             </Table>
           )}

@@ -34,6 +34,7 @@ export const seedSettings: Settings = {
   warrantyType: "none",
   warrantyStartDate: "",
   warrantyMonths: 0,
+  idleLockMinutes: 0,
 };
 
 export const seedUsers: AppUser[] = [];

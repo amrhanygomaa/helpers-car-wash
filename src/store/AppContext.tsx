@@ -15,8 +15,11 @@ import type {
   Customer,
   Product,
   PurchaseInvoice,
+  Quotation,
   SalesInvoice,
   Settings,
+  Stocktake,
+  StocktakeItem,
   StockMovement,
   Supplier,
   AppUser,
@@ -54,6 +57,7 @@ import {
   applyPieceAddition,
   settleSalesInvoiceReturn,
   settlePurchaseInvoiceReturn,
+  quotationConversionFields,
 } from "./_pure";
 import { SettingsContext } from "./SettingsContext";
 import { AuditLogContext } from "./AuditLogContext";
@@ -86,6 +90,8 @@ interface AppState {
   purchaseReturns: PurchaseReturn[];
   drivers: Driver[];
   auditLogs: AuditLog[];
+  quotations: Quotation[];
+  stocktakes: Stocktake[];
 }
 
 interface AppActions {
@@ -144,7 +150,7 @@ interface AppActions {
     id: string,
     patch: { lines: InvoiceLine[]; date: string; notes?: string }
   ) => void;
-  recordPurchasePayment: (id: string, amount: number) => void;
+  recordPurchasePayment: (id: string, amount: number, paymentMethod?: import("../types").PaymentMethod) => void;
   deletePurchaseInvoice: (id: string) => boolean;
 
   // Sales invoices
@@ -155,10 +161,11 @@ interface AppActions {
     id: string,
     patch: Omit<SalesInvoice, "id" | "createdAt" | "customerId" | "customerName" | "status" | "remaining">
   ) => void;
-  recordSalesReceipt: (id: string, amount: number) => void;
+  recordSalesReceipt: (id: string, amount: number, paymentMethod?: import("../types").PaymentMethod) => void;
   cancelSalesInvoice: (id: string, refundMode?: "cash" | "credit") => void;
   deleteSalesInvoice: (id: string) => boolean;
   settleAllDues: (customerId: ID) => number;
+  settleSupplierDues: (supplierId: string) => number;
 
   // Returns
   addSalesReturn: (
@@ -167,6 +174,29 @@ interface AppActions {
   addPurchaseReturn: (
     r: Omit<PurchaseReturn, "id" | "createdAt" | "returnNumber">
   ) => PurchaseReturn;
+
+  // Stocktakes
+  addStocktake: (s: Omit<Stocktake, "id" | "createdAt" | "status">) => Stocktake;
+  updateStocktakeItems: (stocktakeId: string, items: StocktakeItem[]) => void;
+  applyStocktake: (stocktakeId: string) => void;
+  deleteStocktake: (stocktakeId: string) => void;
+
+  // Quotations
+  addQuotation: (q: Omit<Quotation, "id" | "createdAt" | "status">) => Quotation;
+  convertQuotation: (
+    quotationId: string,
+    opts: {
+      invoiceNumber: string;
+      date: string;
+      paymentType: import("../types").SalesPaymentType;
+      priceType: import("../types").SalesPriceType;
+      amountReceived: number;
+      paymentDueDate?: string;
+      driverId?: string;
+      driverName?: string;
+    }
+  ) => SalesInvoice;
+  deleteQuotation: (id: string) => void;
 
   // Cashbox
   addCashEntry: (
@@ -178,6 +208,7 @@ interface AppActions {
   customerBalance: (customerId: string) => number;
   customerCredit: (customerId: string) => number;
   supplierBalance: (supplierId: string) => number;
+  supplierCredit: (supplierId: string) => number;
   calculateSupplierCommission: (supplierId: string) => {
     tierId: string;
     threshold: number;
@@ -211,10 +242,16 @@ function monthsBetween(start?: string | null, end?: string | null): number {
   const startDate = new Date(start);
   const endDate = new Date(end);
   if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) return 0;
-  return Math.max(
-    0,
-    Math.round((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 30))
-  );
+  // Calendar months, rounded to the nearest month by day-of-month — a
+  // 12-calendar-month license shows exactly 12 (the old ÷30-days approximation
+  // drifted on long subscriptions).
+  let months =
+    (endDate.getFullYear() - startDate.getFullYear()) * 12 +
+    (endDate.getMonth() - startDate.getMonth());
+  const dayDelta = endDate.getDate() - startDate.getDate();
+  if (dayDelta < -15) months -= 1;
+  else if (dayDelta > 15) months += 1;
+  return Math.max(0, months);
 }
 
 function applyLicenseSettings(settings: Settings, status: LicenseStatus | null): Settings {
@@ -223,7 +260,7 @@ function applyLicenseSettings(settings: Settings, status: LicenseStatus | null):
   return {
     ...settings,
     subscriptionType: license.subscriptionType,
-    subscriptionStartDate: license.subscriptionStartDate.slice(0, 10),
+    subscriptionStartDate: license.subscriptionStartDate?.slice(0, 10) || settings.subscriptionStartDate,
     subscriptionMonths:
       license.subscriptionType === "limited"
         ? monthsBetween(license.subscriptionStartDate, license.subscriptionExpiresAt)
@@ -341,6 +378,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
   );
   const [auth, setAuth] = useState<AuthState>({ isAuthenticated: false });
+  const [isLocked, setIsLocked] = useState(false);
   const [desktopOwnerExists, setDesktopOwnerExists] = useState<boolean | null>(
     () => (isDesktop ? null : false)
   );
@@ -394,6 +432,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
   const [drivers, setDrivers] = useState<Driver[]>(() => lsGet("drivers", []));
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => lsGet<AuditLog[]>("auditLogs", []));
+  const [quotations, setQuotations] = useState<Quotation[]>(() => lsGet<Quotation[]>("quotations", []));
+  const [stocktakes, setStocktakes] = useState<Stocktake[]>(() => lsGet<Stocktake[]>("stocktakes", []));
   const currentUserRef = useRef<AppUser | null>(null);
 
   const logAudit = useCallback((action: AuditAction, entityLabel: string, details?: string) => {
@@ -439,6 +479,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setPurchaseReturns(lsGet<PurchaseReturn[]>("purchaseReturns", []));
     setDrivers(lsGet<Driver[]>("drivers", []));
     setAuditLogs(lsGet<AuditLog[]>("auditLogs", []));
+    setQuotations(lsGet<Quotation[]>("quotations", []));
+    setStocktakes(lsGet<Stocktake[]>("stocktakes", []));
   }, [licenseStatus]);
 
   const clearDesktopRendererState = useCallback(() => {
@@ -458,6 +500,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setPurchaseReturns([]);
     setDrivers([]);
     setAuditLogs([]);
+    setQuotations([]);
+    setStocktakes([]);
   }, [licenseStatus]);
 
   const refreshLicenseStatus = useCallback(async () => {
@@ -498,15 +542,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const liveStateRef = useRef({
     settings, products, suppliers, customers, purchaseInvoices, salesInvoices,
     stockMovements, cashEntries, nextProductCode, nextSupplierCode, nextCustomerCode, users,
-    salesReturns, purchaseReturns, drivers, auditLogs,
+    salesReturns, purchaseReturns, drivers, auditLogs, quotations, stocktakes,
   });
+  // True while state has changed but the 2s-debounced flush hasn't run yet —
+  // lets the shutdown handler skip its synchronous full-state write when
+  // everything is already persisted.
+  const unflushedChangesRef = useRef(false);
   useEffect(() => {
     liveStateRef.current = {
       settings, products, suppliers, customers, purchaseInvoices, salesInvoices,
       stockMovements, cashEntries, nextProductCode, nextSupplierCode, nextCustomerCode, users,
-      salesReturns, purchaseReturns, drivers, auditLogs,
+      salesReturns, purchaseReturns, drivers, auditLogs, quotations, stocktakes,
     };
-  }, [settings, products, suppliers, customers, purchaseInvoices, salesInvoices, stockMovements, cashEntries, nextProductCode, nextSupplierCode, nextCustomerCode, users, salesReturns, purchaseReturns, drivers, auditLogs]);
+    unflushedChangesRef.current = true;
+  }, [settings, products, suppliers, customers, purchaseInvoices, salesInvoices, stockMovements, cashEntries, nextProductCode, nextSupplierCode, nextCustomerCode, users, salesReturns, purchaseReturns, drivers, auditLogs, quotations, stocktakes]);
 
   // --- Auto Backup Logic (timer-based — never blocks on state changes) ---
   useEffect(() => {
@@ -545,23 +594,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => window.clearInterval(timer);
   }, [settings.autoBackupEnabled]); // only re-schedules if user toggles the setting
 
-  // Session backup
+  // Session backup — uses liveStateRef so the handler always reads current
+  // state without needing to re-register on every state change.
   useEffect(() => {
     const handleBeforeUnload = () => {
-      const safeUsers = redactUserPasswordHashes(users);
-      const data = {
-        version: "1.0",
-        timestamp: new Date().toISOString(),
-        state: {
-          settings, products, suppliers, customers, purchaseInvoices, salesInvoices,
-          stockMovements, cashEntries, nextProductCode, nextSupplierCode, nextCustomerCode, users: safeUsers, salesReturns, purchaseReturns, drivers, auditLogs,
-        }
-      };
-      lsSet("inventory_last_session_backup", data);
+      // Everything already flushed by the debounced batch write — skip the
+      // synchronous full-state serialization so shutdown stays instant.
+      if (!unflushedChangesRef.current) return;
+      try {
+        const s = liveStateRef.current;
+        const safeUsers = redactUserPasswordHashes(s.users);
+        const data = {
+          version: "1.0",
+          timestamp: new Date().toISOString(),
+          state: { ...s, users: safeUsers },
+        };
+        lsSet("inventory_last_session_backup", data);
+      } catch {
+        // Ignore serialization errors during shutdown
+      }
     };
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [settings, products, suppliers, customers, purchaseInvoices, salesInvoices, stockMovements, cashEntries, nextProductCode, nextSupplierCode, nextCustomerCode, users, salesReturns, purchaseReturns, drivers, auditLogs]);
+  }, []);
 
   const currentUser = useMemo(() => {
     if (!auth.isAuthenticated) return null;
@@ -608,10 +663,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
         purchaseReturns,
         drivers,
         auditLogs,
+        quotations,
+        stocktakes,
       });
+      unflushedChangesRef.current = false;
     }, 2000);
     return () => window.clearTimeout(timer);
-  }, [settings, products, suppliers, customers, purchaseInvoices, salesInvoices, stockMovements, cashEntries, nextProductCode, nextSupplierCode, nextCustomerCode, users, salesReturns, purchaseReturns, drivers, auditLogs]);
+  }, [settings, products, suppliers, customers, purchaseInvoices, salesInvoices, stockMovements, cashEntries, nextProductCode, nextSupplierCode, nextCustomerCode, users, salesReturns, purchaseReturns, drivers, auditLogs, quotations, stocktakes]);
 
   const login = useCallback(async (username: string, passwordRaw: string) => {
     const attemptKey = loginAttemptKey(username);
@@ -647,8 +705,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
       void window.desktopAPI.auth.logout();
       clearDesktopRendererState();
     }
+    setIsLocked(false);
     setAuth({ isAuthenticated: false });
   }, [clearDesktopRendererState]);
+
+  const lockSession = useCallback(() => {
+    setIsLocked(true);
+  }, []);
+
+  const unlockSession = useCallback(async (username: string, password: string) => {
+    const result = await login(username, password);
+    if (result.ok) setIsLocked(false);
+    return result;
+  }, [login]);
 
   const activateLicense = useCallback(async (serial: string) => {
     if (!window.desktopAPI?.license) {
@@ -703,6 +772,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setPurchaseReturns([]);
     setDrivers([]);
     setAuditLogs([]);
+    setQuotations([]);
+    setStocktakes([]);
   }, []);
 
   const updateSettings = useCallback((patch: Partial<Settings>) => {
@@ -876,6 +947,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return true;
   };
 
+  const archiveProduct = useCallback((id: string, archived: boolean) => {
+    setProducts((list) => list.map((p) => (p.id === id ? { ...p, archived } : p)));
+    const name = products.find((p) => p.id === id)?.name ?? id;
+    logAudit(archived ? "product_archived" : "product_restored", name);
+  }, [products, logAudit]);
+
 
 
   const adjustStock: AppActions["adjustStock"] = (productId, delta, reason, looseDelta) => {
@@ -909,7 +986,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         date: new Date().toISOString().slice(0, 10),
       };
       setStockMovements((l) => [mv, ...l]);
-      logAudit("stock_adjusted", prod.name, `${delta > 0 ? "+" : ""}${delta} ${prod.unit} — ${reason}`);
+      const looseNote =
+        looseDelta !== undefined && looseDelta !== 0
+          ? ` و${looseDelta > 0 ? "+" : ""}${looseDelta} قطعة`
+          : "";
+      logAudit("stock_adjusted", prod.name, `${delta > 0 ? "+" : ""}${delta} ${prod.unit}${looseNote} — ${reason}`);
     }
   };
 
@@ -942,6 +1023,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSuppliers((list) => list.filter((s) => s.id !== id));
     return true;
   };
+
+  const archiveSupplier = useCallback((id: string, archived: boolean) => {
+    setSuppliers((list) => list.map((s) => (s.id === id ? { ...s, archived } : s)));
+    const name = suppliers.find((s) => s.id === id)?.name ?? id;
+    logAudit(archived ? "supplier_archived" : "supplier_restored", name);
+  }, [suppliers, logAudit]);
 
   const addCommissionTier: AppActions["addCommissionTier"] = (supplierId, tier) => {
     setSuppliers(list => list.map(s => {
@@ -994,6 +1081,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setCustomers((list) => list.filter((c) => c.id !== id));
     return true;
   };
+
+  const archiveCustomer = useCallback((id: string, archived: boolean) => {
+    setCustomers((list) => list.map((c) => (c.id === id ? { ...c, archived } : c)));
+    const name = customers.find((c) => c.id === id)?.name ?? id;
+    logAudit(archived ? "customer_archived" : "customer_restored", name);
+  }, [customers, logAudit]);
 
   // Drivers
   const addDriver: AppActions["addDriver"] = (d) => {
@@ -1136,7 +1229,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const recordPurchasePayment: AppActions["recordPurchasePayment"] = (
     id,
-    amount
+    amount,
+    paymentMethod
   ) => {
     if (amount <= 0) return;
     setPurchaseInvoices((list) =>
@@ -1163,6 +1257,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         description: `دفعة على فاتورة مشتريات ${inv.invoiceNumber} — ${inv.supplierName}`,
         referenceId: id,
         date: new Date().toISOString().slice(0, 10),
+        paymentMethod,
       };
       setCashEntries((list) => [ce, ...list]);
     }
@@ -1190,8 +1285,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const id = uid("sal");
     const status = computeStatus(inv.total, inv.amountReceived);
     const remaining = Math.max(0, inv.total - inv.amountReceived);
+    const enrichedLines = inv.lines.map((l) => {
+      if (l.costPrice !== undefined) return l;
+      const prod = products.find((p) => p.id === l.productId);
+      return prod ? { ...l, costPrice: prod.purchasePrice } : l;
+    });
     const full: SalesInvoice = {
       ...inv,
+      lines: enrichedLines,
       id,
       priceType: inv.priceType ?? "wholesale",
       createdByUserId: inv.createdByUserId ?? currentUser?.id,
@@ -1240,7 +1341,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
     return full;
   };
-  const recordSalesReceipt: AppActions["recordSalesReceipt"] = (id, amount) => {
+  const recordSalesReceipt: AppActions["recordSalesReceipt"] = (id, amount, paymentMethod) => {
     if (amount <= 0) return;
     setSalesInvoices((list) =>
       list.map((inv) => {
@@ -1266,6 +1367,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         description: `دفعة على فاتورة مبيعات ${inv.invoiceNumber} — ${inv.customerName}`,
         referenceId: id,
         date: new Date().toISOString().slice(0, 10),
+        paymentMethod,
       };
       setCashEntries((list) => [ce, ...list]);
     }
@@ -1444,7 +1546,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const addSalesReturn: AppActions["addSalesReturn"] = (r) => {
     const id = uid("sr");
     const salesReturnNums = salesReturns.map((x) => parseInt(x.returnNumber.replace(/\D/g, ""), 10)).filter((n) => !isNaN(n));
-    const nextSRNum = salesReturnNums.length ? Math.max(...salesReturnNums) + 1 : 1;
+    const nextSRNum = salesReturnNums.length ? salesReturnNums.reduce((a, b) => (a > b ? a : b), 0) + 1 : 1;
     const num = `SR-${nextSRNum.toString().padStart(4, "0")}`;
     const full: SalesReturn = {
       ...r,
@@ -1515,7 +1617,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const addPurchaseReturn: AppActions["addPurchaseReturn"] = (r) => {
     const id = uid("pr");
     const purchaseReturnNums = purchaseReturns.map((x) => parseInt(x.returnNumber.replace(/\D/g, ""), 10)).filter((n) => !isNaN(n));
-    const nextPRNum = purchaseReturnNums.length ? Math.max(...purchaseReturnNums) + 1 : 1;
+    const nextPRNum = purchaseReturnNums.length ? purchaseReturnNums.reduce((a, b) => (a > b ? a : b), 0) + 1 : 1;
     const num = `PR-${nextPRNum.toString().padStart(4, "0")}`;
     const full: PurchaseReturn = {
       ...r,
@@ -1555,6 +1657,99 @@ export function AppProvider({ children }: { children: ReactNode }) {
     );
 
     return full;
+  };
+
+  // Stocktakes
+  const addStocktake: AppActions["addStocktake"] = (s) => {
+    const full: Stocktake = {
+      ...s,
+      id: uid("stk"),
+      status: "draft",
+      createdAt: new Date().toISOString(),
+    };
+    setStocktakes((list) => [full, ...list]);
+    return full;
+  };
+
+  const updateStocktakeItems: AppActions["updateStocktakeItems"] = (stocktakeId, items) => {
+    setStocktakes((list) =>
+      list.map((s) => (s.id === stocktakeId ? { ...s, items } : s))
+    );
+  };
+
+  const applyStocktake: AppActions["applyStocktake"] = (stocktakeId) => {
+    const stk = stocktakes.find((s) => s.id === stocktakeId);
+    if (!stk || stk.status !== "draft") return;
+    stk.items.forEach((item) => {
+      if (item.countedQty === null && item.countedLoose == null) return;
+      const prod = products.find((p) => p.id === item.productId);
+      if (!prod) return;
+      const delta = item.countedQty !== null ? item.countedQty - prod.quantity : 0;
+      const looseDelta =
+        prod.piecesPerUnit && item.countedLoose != null
+          ? item.countedLoose - (prod.looseQuantity ?? 0)
+          : 0;
+      if (delta === 0 && looseDelta === 0) return;
+      adjustStock(item.productId, delta, `جرد دوري ${stk.date}`, looseDelta !== 0 ? looseDelta : undefined);
+    });
+    setStocktakes((list) =>
+      list.map((s) =>
+        s.id === stocktakeId
+          ? { ...s, status: "applied", appliedAt: new Date().toISOString() }
+          : s
+      )
+    );
+  };
+
+  const deleteStocktake: AppActions["deleteStocktake"] = (stocktakeId) => {
+    setStocktakes((list) => list.filter((s) => s.id !== stocktakeId));
+  };
+
+  // Quotations
+  const addQuotation: AppActions["addQuotation"] = (q) => {
+    const full: Quotation = {
+      ...q,
+      id: uid("quot"),
+      status: "draft",
+      createdAt: new Date().toISOString(),
+    };
+    setQuotations((list) => [full, ...list]);
+    return full;
+  };
+
+  const deleteQuotation: AppActions["deleteQuotation"] = (id) => {
+    setQuotations((list) => list.filter((q) => q.id !== id));
+  };
+
+  const convertQuotation: AppActions["convertQuotation"] = (quotationId, opts) => {
+    const quot = quotations.find((q) => q.id === quotationId);
+    if (!quot) throw new Error("Quotation not found");
+    if (quot.status === "converted") throw new Error("Quotation already converted");
+    const conversion = quotationConversionFields(quot, opts.amountReceived);
+    const inv = addSalesInvoice({
+      invoiceNumber: opts.invoiceNumber,
+      date: opts.date,
+      customerId: quot.customerId,
+      customerName: quot.customerName,
+      driverId: opts.driverId,
+      driverName: opts.driverName,
+      lines: quot.lines,
+      total: conversion.total,
+      discount: quot.discount,
+      amountReceived: conversion.amountReceived,
+      overpayment: conversion.overpayment,
+      paymentType: opts.paymentType,
+      priceType: opts.priceType,
+      paymentDueDate: opts.paymentDueDate,
+      notes: quot.notes,
+      createdByUserId: undefined,
+    });
+    setQuotations((list) =>
+      list.map((q) =>
+        q.id === quotationId ? { ...q, status: "converted", convertedInvoiceId: inv.id } : q
+      )
+    );
+    return inv;
   };
 
   // Cashbox
@@ -1656,11 +1851,77 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [salesInvoices, logAudit]
   );
 
+  const settleSupplierDues = useCallback(
+    (supplierId: string): number => {
+      const supplierInvoices = purchaseInvoices.filter(
+        (inv) => inv.supplierId === supplierId
+      );
+      const targets = supplierInvoices
+        .filter((inv) => inv.remaining > 0)
+        .sort((a, b) => a.date.localeCompare(b.date));
+      const sources = supplierInvoices
+        .filter((inv) => (inv.overpayment ?? 0) > 0)
+        .sort((a, b) => b.date.localeCompare(a.date));
+      if (targets.length === 0 || sources.length === 0) return 0;
+
+      const updates = new Map<string, Partial<PurchaseInvoice>>();
+      let creditPool = sources.reduce((sum, inv) => sum + (inv.overpayment ?? 0), 0);
+      let totalSettled = 0;
+
+      for (const target of targets) {
+        if (creditPool <= 0) break;
+        const apply = Math.min(creditPool, target.remaining);
+        const newPaid = target.amountPaid + apply;
+        updates.set(target.id, {
+          amountPaid: newPaid,
+          remaining: Math.max(0, target.total - newPaid),
+          status: computeStatus(target.total, newPaid),
+        });
+        creditPool -= apply;
+        totalSettled += apply;
+      }
+
+      let toReduce = totalSettled;
+      for (const source of sources) {
+        if (toReduce <= 0) break;
+        const credit = source.overpayment ?? 0;
+        const reduced = Math.min(toReduce, credit);
+        const existing = updates.get(source.id) ?? {};
+        updates.set(source.id, { ...existing, overpayment: Math.max(0, credit - reduced) || undefined });
+        toReduce -= reduced;
+      }
+
+      if (totalSettled === 0) return 0;
+
+      setPurchaseInvoices((list) =>
+        list.map((inv) => {
+          const patch = updates.get(inv.id);
+          return patch ? { ...inv, ...patch } : inv;
+        })
+      );
+
+      const supplierName =
+        purchaseInvoices.find((inv) => inv.supplierId === supplierId)?.supplierName ?? supplierId;
+      logAudit("invoice_purchase_updated", supplierName, `تسوية رصيد مورد دائن: ${totalSettled}`);
+      return totalSettled;
+    },
+    [purchaseInvoices, logAudit]
+  );
+
   const supplierBalance = useCallback(
     (supplierId: string) => {
       return purchaseInvoices
         .filter((p) => p.supplierId === supplierId)
         .reduce((a, p) => a + p.remaining - (p.overpayment ?? 0), 0);
+    },
+    [purchaseInvoices]
+  );
+
+  const supplierCredit = useCallback(
+    (supplierId: string) => {
+      return purchaseInvoices
+        .filter((p) => p.supplierId === supplierId)
+        .reduce((a, p) => a + (p.overpayment ?? 0), 0);
     },
     [purchaseInvoices]
   );
@@ -1770,10 +2031,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       timestamp: new Date().toISOString(),
       state: {
         settings, products, suppliers, customers, purchaseInvoices, salesInvoices,
-        stockMovements, cashEntries, nextProductCode, nextSupplierCode, nextCustomerCode, users: safeUsers, salesReturns, purchaseReturns, drivers, auditLogs,
+        stockMovements, cashEntries, nextProductCode, nextSupplierCode, nextCustomerCode, users: safeUsers, salesReturns, purchaseReturns, drivers, auditLogs, quotations, stocktakes,
       }
     };
-  }, [settings, products, suppliers, customers, purchaseInvoices, salesInvoices, stockMovements, cashEntries, nextProductCode, nextSupplierCode, nextCustomerCode, users, salesReturns, purchaseReturns, drivers, auditLogs]);
+  }, [settings, products, suppliers, customers, purchaseInvoices, salesInvoices, stockMovements, cashEntries, nextProductCode, nextSupplierCode, nextCustomerCode, users, salesReturns, purchaseReturns, drivers, auditLogs, quotations, stocktakes]);
 
   const exportBackup: AppActions["exportBackup"] = useCallback(() => {
     const blob = new Blob([JSON.stringify(buildBackupData(), null, 2)], { type: "application/json" });
@@ -1871,6 +2132,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (Array.isArray(s.purchaseReturns)) setPurchaseReturns(s.purchaseReturns);
       if (Array.isArray(s.drivers)) setDrivers(s.drivers);
       if (Array.isArray(s.auditLogs)) setAuditLogs(s.auditLogs);
+      if (Array.isArray(s.quotations)) setQuotations(s.quotations);
+      if (Array.isArray(s.stocktakes)) setStocktakes(s.stocktakes);
 
       return true;
     } catch {
@@ -2031,7 +2294,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
       customerBalance,
       customerCredit,
       settleAllDues,
+      settleSupplierDues,
       supplierBalance,
+      supplierCredit,
+      quotations,
+      addQuotation,
+      convertQuotation,
+      deleteQuotation,
+      stocktakes,
+      addStocktake,
+      updateStocktakeItems,
+      applyStocktake,
+      deleteStocktake,
       auditLogs,
       calculateSupplierCommission,
       employeeSalesStats,
@@ -2062,6 +2336,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       purchaseReturns,
       drivers,
       auditLogs,
+      quotations,
+      stocktakes,
       users,
       currentUser,
       login,
@@ -2091,8 +2367,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       licenseStatus,
       ownerExists,
       ownerCheckPending,
+      isLocked,
       login,
       logout,
+      lockSession,
+      unlockSession,
       createOwner,
       activateLicense,
       refreshLicenseStatus,
@@ -2105,8 +2384,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       licenseStatus,
       ownerExists,
       ownerCheckPending,
+      isLocked,
       login,
       logout,
+      lockSession,
+      unlockSession,
       createOwner,
       activateLicense,
       refreshLicenseStatus,
@@ -2123,23 +2405,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // F3-6: Reporting slice — derived selectors only (all are stable useCallbacks).
   const reportingValue = useMemo(
-    () => ({ customerBalance, customerCredit, supplierBalance, calculateSupplierCommission, employeeSalesStats, exportToExcel }),
-    [customerBalance, customerCredit, supplierBalance, calculateSupplierCommission, employeeSalesStats, exportToExcel]
+    () => ({ customerBalance, customerCredit, supplierBalance, supplierCredit, calculateSupplierCommission, employeeSalesStats, exportToExcel }),
+    [customerBalance, customerCredit, supplierBalance, supplierCredit, calculateSupplierCommission, employeeSalesStats, exportToExcel]
   );
 
   // F3-6: Invoicing slice — sales/purchase invoices, returns, cashbox, stock movements + actions.
   // Same intentional pattern as catalogValue: memoize on data arrays only.
   const invoicingValue = useMemo(
     () => ({
+      quotations, addQuotation, convertQuotation, deleteQuotation,
       salesInvoices, purchaseInvoices, salesReturns, purchaseReturns, cashEntries, stockMovements,
       addSalesInvoice, updateSalesInvoice, recordSalesReceipt, cancelSalesInvoice,
-      deleteSalesInvoice, settleAllDues,
+      deleteSalesInvoice, settleAllDues, settleSupplierDues,
       addPurchaseInvoice, updatePurchaseInvoice, recordPurchasePayment, deletePurchaseInvoice,
       addSalesReturn, addPurchaseReturn,
       addCashEntry, currentCashBalance,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [salesInvoices, purchaseInvoices, salesReturns, purchaseReturns, cashEntries, stockMovements]
+    [quotations, salesInvoices, purchaseInvoices, salesReturns, purchaseReturns, cashEntries, stockMovements]
   );
 
   // F3-6: Catalog slice — products / suppliers / customers / drivers + their CRUD actions.
@@ -2147,16 +2430,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // (same pattern as the main value useMemo above) and only invalidate on data changes.
   const catalogValue = useMemo(
     () => ({
-      products, suppliers, customers, drivers,
+      products, suppliers, customers, drivers, stocktakes,
       nextProductCode, nextSupplierCode, nextCustomerCode,
-      addProduct, updateProduct, deleteProduct, adjustStock,
-      addSupplier, updateSupplier, deleteSupplier,
+      addProduct, updateProduct, deleteProduct, archiveProduct, adjustStock,
+      addSupplier, updateSupplier, deleteSupplier, archiveSupplier,
       addCommissionTier, updateCommissionTier, deleteCommissionTier,
-      addCustomer, updateCustomer, deleteCustomer,
+      addCustomer, updateCustomer, deleteCustomer, archiveCustomer,
       addDriver, updateDriver, deleteDriver,
+      addStocktake, updateStocktakeItems, applyStocktake, deleteStocktake,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [products, suppliers, customers, drivers, nextProductCode, nextSupplierCode, nextCustomerCode]
+    [products, suppliers, customers, drivers, stocktakes, nextProductCode, nextSupplierCode, nextCustomerCode]
   );
 
   return (

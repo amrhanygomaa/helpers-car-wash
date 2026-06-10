@@ -2,7 +2,7 @@
  * E2E-009  Employee with no permissions is blocked from ownerOnly routes.
  *
  * Scenario:
- *   1. First-run setup — owner account created and login succeeds.
+ *   1. First-run setup — owner account created, session auto-opens on dashboard.
  *   2. Owner creates an employee account with ALL permissions disabled.
  *   3. Owner logs out.
  *   4. Employee logs in.
@@ -27,29 +27,25 @@ test("E2E-009: employee without permissions is blocked from ownerOnly routes", a
   try {
     const { window } = handle;
 
-    // ── Step 1: First-run setup ────────────────────────────────────────────
+    // ── Step 1: First-run setup (auto-logs into the dashboard as owner) ───
     const setup = new FirstRunScreen(window);
     await expect(setup.heading()).toBeVisible();
     await setup.createOwner(OWNER_USERNAME, OWNER_PASSWORD);
-    await expect(window.locator('[role="status"]', { hasText: /تم إنشاء المدير/ })).toBeVisible();
-
-    // ── Step 2: Login as owner ─────────────────────────────────────────────
-    const login = new LoginScreen(window);
-    await expect(login.usernameInput()).toBeVisible();
-    await login.loginAs(OWNER_USERNAME, OWNER_PASSWORD);
     await expect(window.getByText(/أهلاً بك في/)).toBeVisible();
 
-    // ── Step 3: Navigate to /users page ───────────────────────────────────
+    const login = new LoginScreen(window);
+
+    // ── Step 2: Navigate to /users page ───────────────────────────────────
     await window.getByRole("link", { name: "المستخدمين" }).click();
     await expect(window.getByRole("heading", { name: /مستخدمي النظام/ })).toBeVisible();
 
-    // ── Step 4: Open the "add user" dialog ────────────────────────────────
+    // ── Step 3: Open the "add user" dialog ────────────────────────────────
     await window.getByRole("button", { name: /إضافة مستخدم/ }).click();
 
     const dialog = window.getByRole("dialog");
     await expect(dialog).toBeVisible();
 
-    // ── Step 5: Fill in the employee form (no permissions granted) ────────
+    // ── Step 4: Fill in the employee form (no permissions granted) ────────
     await dialog.getByPlaceholder("مثال: أحمد محمد").fill("موظف اختبار");
 
     // Username input: second non-password input in the dialog.
@@ -63,20 +59,25 @@ test("E2E-009: employee without permissions is blocked from ownerOnly routes", a
 
     await expect(window.locator('[role="status"]', { hasText: /تم إضافة المستخدم/ })).toBeVisible();
 
-    // ── Step 6: Logout as owner ────────────────────────────────────────────
+    // State reaches the encrypted store (which auth:login validates against)
+    // on a 2-second debounced flush — wait it out before logging out, or the
+    // freshly created employee won't exist yet for the login below.
+    await window.waitForTimeout(2_600);
+
+    // ── Step 5: Logout as owner ────────────────────────────────────────────
     await window.getByRole("button", { name: "تسجيل الخروج" }).click();
     await expect(login.usernameInput()).toBeVisible();
 
-    // ── Step 7: Login as employee ──────────────────────────────────────────
+    // ── Step 6: Login as employee ──────────────────────────────────────────
     await login.loginAs(EMP_USERNAME, EMP_PASSWORD);
     await expect(window.getByText(/أهلاً بك في/)).toBeVisible();
 
-    // ── Step 8: Verify sidebar does NOT show ownerOnly links ───────────────
+    // ── Step 7: Verify sidebar does NOT show ownerOnly links ───────────────
     await expect(window.getByRole("link", { name: "المستخدمين" })).not.toBeVisible();
     await expect(window.getByRole("link", { name: "الإعدادات" })).not.toBeVisible();
     await expect(window.getByRole("link", { name: /تقرير الموظفين/ })).not.toBeVisible();
 
-    // ── Step 9: Directly navigate to /users via hash and verify redirect ───
+    // ── Step 8: Directly navigate to /users via hash and verify redirect ───
     await window.evaluate(() => {
       window.location.hash = "#/users";
     });

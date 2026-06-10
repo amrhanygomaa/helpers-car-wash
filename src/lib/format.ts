@@ -29,3 +29,12 @@ export function formatDateTime(iso: string): string {
     d.getMinutes()
   ).padStart(2, "0")}`;
 }
+
+export const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  cash: "نقدي",
+  bank: "تحويل بنكي",
+  vodafone: "فودافون كاش",
+  instapay: "انستاباي",
+  other: "أخرى",
+};
+

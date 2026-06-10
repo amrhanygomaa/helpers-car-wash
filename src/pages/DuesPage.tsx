@@ -112,9 +112,9 @@ export function DuesPage() {
   const navigate = useNavigate();
   const toast = useToast();
   const { customers, suppliers } = useCatalog();
-  const { salesInvoices, purchaseInvoices, settleAllDues } = useInvoicing();
+  const { salesInvoices, purchaseInvoices, settleAllDues, settleSupplierDues } = useInvoicing();
   const { settings } = useSettings();
-  const { customerBalance, customerCredit, supplierBalance } = useReporting();
+  const { customerBalance, customerCredit, supplierBalance, supplierCredit } = useReporting();
 
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<DueStatus | "all">("all");
@@ -576,6 +576,28 @@ export function DuesPage() {
                                   title={`تسوية الرصيد الدائن ${formatCurrency(customerCredit(row.id), settings.currency)} من مستحقات ${row.name}`}
                                   onClick={() => {
                                     const settled = settleAllDues(row.id);
+                                    if (settled > 0) {
+                                      toast.success(
+                                        "تسوية الرصيد",
+                                        `تم تسوية ${formatCurrency(settled, settings.currency)} من رصيد ${row.name}`
+                                      );
+                                    }
+                                  }}
+                                >
+                                  <Shuffle className="w-3.5 h-3.5" />
+                                  تسوية
+                                </Button>
+                              )}
+                            {row.type === "supplier" &&
+                              supplierCredit(row.id) > 0 &&
+                              row.openInvoices > 0 && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="text-emerald-700 border-emerald-300 hover:bg-emerald-50 gap-1"
+                                  title={`تسوية الرصيد الدائن ${formatCurrency(supplierCredit(row.id), settings.currency)} من مستحقات ${row.name}`}
+                                  onClick={() => {
+                                    const settled = settleSupplierDues(row.id);
                                     if (settled > 0) {
                                       toast.success(
                                         "تسوية الرصيد",

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowRight, Ban, HandCoins, Pencil, Printer, Trash2 } from "lucide-react";
+import { ArrowRight, Ban, HandCoins, MessageCircle, Pencil, Printer, Trash2 } from "lucide-react";
 import { PageHeader } from "../components/layout/AppLayout";
 import { Card, CardBody, CardHeader } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -12,9 +12,10 @@ import { useAuth } from "../store/AuthContext";
 import { useSettings } from "../store/SettingsContext";
 import { useReporting } from "../store/ReportingContext";
 import { useToast } from "../components/ui/Toast";
-import { formatCurrency, formatDate } from "../lib/format";
+import { formatCurrency, formatDate, PAYMENT_METHOD_LABELS } from "../lib/format";
 import { ConfirmDialog, Dialog } from "../components/ui/Dialog";
-import { Field, Input } from "../components/ui/Input";
+import { Field, Input, Select } from "../components/ui/Input";
+import type { PaymentMethod } from "../types";
 import { SalesReturnDialog } from "../features/returns/SalesReturnDialog";
 import { printAppRoute } from "../lib/print";
 import { hasPermission } from "../lib/permissions";
@@ -36,6 +37,7 @@ export function SalesInvoiceDetailPage() {
   const canAddReturn = hasPermission(currentUser, "returns", "add");
   const [payOpen, setPayOpen] = useState(false);
   const [payAmount, setPayAmount] = useState(0);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
   const [cancelOpen, setCancelOpen] = useState(false);
   const [delOpen, setDelOpen] = useState(false);
   const [returnOpen, setReturnOpen] = useState(false);
@@ -98,6 +100,29 @@ export function SalesInvoiceDetailPage() {
             >
               <Printer className="w-4 h-4" /> طباعة
             </Button>
+            {customer?.phone ? (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  const phone = String(customer.phone ?? "").replace(/\D/g, "");
+                  const normalized = phone.startsWith("0") ? `20${phone.slice(1)}` : phone;
+                  const msg = [
+                    `مرحباً ${inv.customerName}،`,
+                    ``,
+                    `نود إحاطتكم بتفاصيل الفاتورة رقم *${inv.invoiceNumber}*:`,
+                    `📅 التاريخ: ${formatDate(inv.date)}`,
+                    `💰 الإجمالي: ${formatCurrency(inv.total, settings.currency)}`,
+                    inv.remaining > 0 ? `⏳ المتبقي: ${formatCurrency(inv.remaining, settings.currency)}` : `✅ الفاتورة مسددة بالكامل`,
+                    ``,
+                    settings.companyNameAr || settings.companyName,
+                  ].join("\n");
+                  const href = `https://wa.me/${normalized}?text=${encodeURIComponent(msg)}`;
+                  window.open(href, "_blank");
+                }}
+              >
+                <MessageCircle className="w-4 h-4" /> واتساب
+              </Button>
+            ) : null}
             {!inv.cancelled && inv.remaining > 0 && canReceiveSales ? (
               <Button onClick={() => { setPayAmount(inv.remaining); setPayOpen(true); }}>
                 <HandCoins className="w-4 h-4" /> تسجيل دفعة
@@ -284,12 +309,13 @@ export function SalesInvoiceDetailPage() {
                   toast.error("المبلغ يجب أن يكون أكبر من صفر");
                   return;
                 }
-                recordSalesReceipt(inv.id, payAmount);
+                recordSalesReceipt(inv.id, payAmount, paymentMethod);
                 const msg = payAmount > inv.remaining
                   ? `تم التسجيل — رصيد دائن: ${formatCurrency(payAmount - inv.remaining, settings.currency)}`
                   : "تم تسجيل الدفعة";
                 toast.success(msg);
                 setPayOpen(false);
+                setPaymentMethod("cash");
               }}
             >
               تسجيل
@@ -297,15 +323,24 @@ export function SalesInvoiceDetailPage() {
           </>
         }
       >
-        <Field label="المبلغ" required>
-          <Input
-            type="number"
-            min={0.01}
-            step="0.01"
-            value={payAmount}
-            onChange={(e) => setPayAmount(Number(e.target.value))}
-          />
-        </Field>
+        <div className="space-y-3">
+          <Field label="المبلغ" required>
+            <Input
+              type="number"
+              min={0.01}
+              step="0.01"
+              value={payAmount}
+              onChange={(e) => setPayAmount(Number(e.target.value))}
+            />
+          </Field>
+          <Field label="وسيلة الدفع">
+            <Select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}>
+              {Object.entries(PAYMENT_METHOD_LABELS).map(([k, v]) => (
+                <option key={k} value={k}>{v}</option>
+              ))}
+            </Select>
+          </Field>
+        </div>
       </Dialog>
 
       {totalCollected > 0 ? (

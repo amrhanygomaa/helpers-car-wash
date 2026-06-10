@@ -1,10 +1,12 @@
 /**
- * E2E-001  First-run setup → owner creation → login → dashboard.
+ * E2E-001  First-run setup → owner creation → auto-login → manual re-login.
  *
  * Covers the complete activation path for a brand-new installation:
  *   1. Fresh DB  →  FirstRunSetupPage is shown (license bypassed in E2E mode).
- *   2. Owner creates account  →  success toast, redirect to LoginPage.
- *   3. Owner logs in with the new credentials  →  DashboardPage is shown.
+ *   2. Owner creates account  →  success toast and the session opens
+ *      automatically (no login screen) landing on the dashboard.
+ *   3. Logout  →  LoginPage appears.
+ *   4. Owner logs back in with the same credentials  →  dashboard again.
  *
  * TC-E2E-001 — P0 / e2e
  */
@@ -16,7 +18,7 @@ import { LoginScreen } from "../screens/LoginScreen";
 const OWNER_USERNAME = "test_owner";
 const OWNER_PASSWORD = "Owner!E2E26";
 
-test("E2E-001: first-run setup → owner creation → login → dashboard", async () => {
+test("E2E-001: first-run setup → owner creation → auto-login → manual re-login", async () => {
   const handle = await launchElectron();
   try {
     const { window } = handle;
@@ -28,25 +30,20 @@ test("E2E-001: first-run setup → owner creation → login → dashboard", asyn
     // ── Step 2: Create the owner account ────────────────────────────────
     await setup.createOwner(OWNER_USERNAME, OWNER_PASSWORD);
 
-    // Success toast confirms owner was created.
-    await expect(
-      window.locator('[role="status"]', { hasText: /تم إنشاء المدير/ })
-    ).toBeVisible();
+    // Success toast confirms owner was created and the session opened.
+    await expect(setup.toast(/تم إنشاء المدير/)).toBeVisible();
 
-    // ── Step 3: Login page appears after owner creation ─────────────────
+    // ── Step 3: Auto-login lands directly on the dashboard ──────────────
+    // The dashboard greeting contains "أهلاً بك في" followed by the company name.
+    await expect(window.getByText(/أهلاً بك في/)).toBeVisible();
+
+    // ── Step 4: Logout shows the login page ─────────────────────────────
+    await window.getByRole("button", { name: "تسجيل الخروج" }).click();
     const login = new LoginScreen(window);
     await expect(login.usernameInput()).toBeVisible();
 
-    // ── Step 4: Log in with the newly created owner ──────────────────────
+    // ── Step 5: Manual login with the created credentials works ─────────
     await login.loginAs(OWNER_USERNAME, OWNER_PASSWORD);
-
-    // Success toast acknowledges the login.
-    await expect(
-      window.locator('[role="status"]', { hasText: /تم تسجيل الدخول/ })
-    ).toBeVisible();
-
-    // ── Step 5: Dashboard is rendered ────────────────────────────────────
-    // The dashboard greeting contains "أهلاً بك في" followed by the company name.
     await expect(window.getByText(/أهلاً بك في/)).toBeVisible();
   } finally {
     await closeElectron(handle);

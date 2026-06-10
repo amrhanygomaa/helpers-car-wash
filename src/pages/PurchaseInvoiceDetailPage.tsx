@@ -11,9 +11,10 @@ import { useCatalog } from "../store/CatalogContext";
 import { useAuth } from "../store/AuthContext";
 import { useSettings } from "../store/SettingsContext";
 import { useToast } from "../components/ui/Toast";
-import { formatCurrency, formatDate } from "../lib/format";
+import { formatCurrency, formatDate, PAYMENT_METHOD_LABELS } from "../lib/format";
 import { ConfirmDialog, Dialog } from "../components/ui/Dialog";
-import { Field, Input } from "../components/ui/Input";
+import { Field, Input, Select } from "../components/ui/Input";
+import type { PaymentMethod } from "../types";
 import { PurchaseReturnDialog } from "../features/returns/PurchaseReturnDialog";
 import { printAppRoute } from "../lib/print";
 import { hasPermission } from "../lib/permissions";
@@ -33,6 +34,7 @@ export function PurchaseInvoiceDetailPage() {
   const canAddReturn = hasPermission(currentUser, "returns", "add");
   const [payOpen, setPayOpen] = useState(false);
   const [payAmount, setPayAmount] = useState(0);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
   const [delOpen, setDelOpen] = useState(false);
   const [returnOpen, setReturnOpen] = useState(false);
 
@@ -220,9 +222,10 @@ export function PurchaseInvoiceDetailPage() {
                   toast.error("المبلغ غير صحيح");
                   return;
                 }
-                recordPurchasePayment(inv.id, payAmount);
+                recordPurchasePayment(inv.id, payAmount, paymentMethod);
                 toast.success("تم تسجيل الدفعة");
                 setPayOpen(false);
+                setPaymentMethod("cash");
               }}
             >
               تسجيل
@@ -230,16 +233,25 @@ export function PurchaseInvoiceDetailPage() {
           </>
         }
       >
-        <Field label="المبلغ" required>
-          <Input
-            type="number"
-            min={0.01}
-            max={inv.remaining}
-            step="0.01"
-            value={payAmount}
-            onChange={(e) => setPayAmount(Number(e.target.value))}
-          />
-        </Field>
+        <div className="space-y-3">
+          <Field label="المبلغ" required>
+            <Input
+              type="number"
+              min={0.01}
+              max={inv.remaining}
+              step="0.01"
+              value={payAmount}
+              onChange={(e) => setPayAmount(Number(e.target.value))}
+            />
+          </Field>
+          <Field label="وسيلة الدفع">
+            <Select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}>
+              {Object.entries(PAYMENT_METHOD_LABELS).map(([k, v]) => (
+                <option key={k} value={k}>{v}</option>
+              ))}
+            </Select>
+          </Field>
+        </div>
       </Dialog>
 
       <ConfirmDialog

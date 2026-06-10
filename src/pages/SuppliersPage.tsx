@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Pencil, Plus, Trash2, Eye, Factory, Search } from "lucide-react";
+import { Pencil, Plus, Trash2, Eye, Factory, Search, ScrollText, Archive, ArchiveRestore } from "lucide-react";
 import { PageHeader } from "../components/layout/AppLayout";
 import { Card, CardBody, CardHeader } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -21,9 +21,10 @@ import type { Supplier, CommissionTier, CommissionType } from "../types";
 import { Select } from "../components/ui/Input";
 import { hasPermission } from "../lib/permissions";
 import { formatSupplierCode } from "../lib/codes";
+import { Link } from "react-router-dom";
 
 export function SuppliersPage() {
-  const { suppliers, addSupplier, updateSupplier, deleteSupplier, addCommissionTier, updateCommissionTier, deleteCommissionTier, nextSupplierCode } = useCatalog();
+  const { suppliers, addSupplier, updateSupplier, deleteSupplier, archiveSupplier, addCommissionTier, updateCommissionTier, deleteCommissionTier, nextSupplierCode } = useCatalog();
   const { purchaseInvoices } = useInvoicing();
   const { supplierBalance, calculateSupplierCommission } = useReporting();
   const { currentUser } = useAuth();
@@ -50,6 +51,7 @@ export function SuppliersPage() {
   const [editing, setEditing] = useState<Supplier | null>(null);
   const [viewing, setViewing] = useState<Supplier | null>(null);
   const [toDelete, setToDelete] = useState<Supplier | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
   
   const [tierDialogOpen, setTierDialogOpen] = useState(false);
   const [editingTier, setEditingTier] = useState<CommissionTier | null>(null);
@@ -69,10 +71,13 @@ export function SuppliersPage() {
     commissionNote: "",
   });
 
+  const archivedCount = useMemo(() => suppliers.filter((s) => s.archived).length, [suppliers]);
+
   const filtered = useMemo(() => {
-    if (!q.trim()) return suppliers;
+    const active = suppliers.filter((s) => !s.archived);
+    if (!q.trim()) return active;
     const t = q.trim().toLowerCase();
-    return suppliers.filter(
+    return active.filter(
       (s) =>
         s.name.toLowerCase().includes(t) ||
         (s.phone ?? "").toLowerCase().includes(t) ||
@@ -125,8 +130,12 @@ export function SuppliersPage() {
   function handleDelete() {
     if (!toDelete) return;
     const ok = deleteSupplier(toDelete.id);
-    if (ok) toast.success("تم حذف المورد");
-    else toast.error("لا يمكن حذف المورد", "المورد مرتبط بفواتير أو منتجات");
+    if (ok) {
+      toast.success("تم حذف المورد");
+    } else {
+      archiveSupplier(toDelete.id, true);
+      toast.success("تم أرشفة المورد", "المورد محفوظ في الأرشيف ويمكن استعادته");
+    }
     setToDelete(null);
   }
 
@@ -150,7 +159,20 @@ export function SuppliersPage() {
       />
 
       <Card>
-        <CardHeader title="قائمة الموردين" />
+        <CardHeader
+          title="قائمة الموردين"
+          actions={archivedCount > 0 ? (
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5 text-slate-600"
+              onClick={() => setShowArchived((v) => !v)}
+            >
+              <Archive className="w-3.5 h-3.5" />
+              {showArchived ? "إخفاء الأرشيف" : `الأرشيف (${archivedCount})`}
+            </Button>
+          ) : undefined}
+        />
         <CardBody className="space-y-3">
           <div className="relative w-72">
             <Search className="w-4 h-4 absolute top-1/2 -translate-y-1/2 end-3 text-slate-400" />
@@ -213,6 +235,13 @@ export function SuppliersPage() {
                       </TD>
                       <TD className="text-end">
                         <div className="inline-flex items-center gap-1">
+                          <Link
+                            to={`/suppliers/${s.id}/statement`}
+                            title="كشف حساب"
+                            className="inline-flex items-center justify-center w-8 h-8 rounded-md text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors"
+                          >
+                            <ScrollText className="w-4 h-4" />
+                          </Link>
                           <Button size="icon" variant="ghost" onClick={() => setViewing(s)}>
                             <Eye className="w-4 h-4" />
                           </Button>
@@ -236,6 +265,41 @@ export function SuppliersPage() {
                     </TR>
                   );
                 })}
+                {showArchived && suppliers.filter((s) => s.archived).map((s) => (
+                  <TR key={s.id} className="opacity-50 bg-slate-50">
+                    <TD className="text-slate-400 font-mono text-xs">{s.code ?? "—"}</TD>
+                    <TD className="text-slate-500 line-through">{s.name}</TD>
+                    <TD className="text-slate-400">{s.phone ?? "—"}</TD>
+                    <TD />
+                    <TD />
+                    <TD />
+                    <TD className="text-end">
+                      <div className="inline-flex items-center gap-1">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="gap-1 text-slate-600 h-7 text-xs"
+                          onClick={() => { archiveSupplier(s.id, false); toast.success("تمت الاستعادة"); }}
+                          title="استعادة من الأرشيف"
+                        >
+                          <ArchiveRestore className="w-3 h-3" />
+                          استعادة
+                        </Button>
+                        {canDeleteSupplier && (
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="text-red-600 hover:bg-red-50 w-7 h-7"
+                            onClick={() => setToDelete(s)}
+                            title="حذف نهائي"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        )}
+                      </div>
+                    </TD>
+                  </TR>
+                ))}
               </TBody>
             </Table>
           )}

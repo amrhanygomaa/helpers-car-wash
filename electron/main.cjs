@@ -426,7 +426,7 @@ function evaluateLicense(serial, persistSeen) {
 }
 
 function getLicenseStatus() {
-  if (HW_E2E) return buildLicenseStatus("active", { license: { subscriptionType: "lifetime", subscriptionExpiresAt: null } });
+  if (HW_E2E) return buildLicenseStatus("active", { license: { subscriptionType: "lifetime", subscriptionStartDate: new Date().toISOString(), subscriptionExpiresAt: null } });
   return evaluateLicense(storageGet(LICENSE_TOKEN_KEY), true);
 }
 

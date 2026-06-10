@@ -95,7 +95,20 @@ export function AlertsPage() {
   const overdueAccountCount = accountDueInvoices.filter(
     ({ diffDays }) => diffDays < 0
   ).length;
-  // supplier balances are summarized inline from purchaseInvoices below
+
+  const overdueSupplierInvoices = useMemo(() => {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 30);
+    cutoff.setHours(0, 0, 0, 0);
+    return purchaseInvoices
+      .filter((p) => {
+        if (p.remaining <= 0) return false;
+        const d = new Date(p.date);
+        return !Number.isNaN(d.getTime()) && d < cutoff;
+      })
+      .sort((a, b) => a.date.localeCompare(b.date));
+  }, [purchaseInvoices]);
+
   void suppliers;
   void supplierBalance;
 
@@ -106,12 +119,13 @@ export function AlertsPage() {
         description="كل ما تحتاج لمتابعته اليوم في مكان واحد"
       />
 
-      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3">
         <Stat icon={<AlertTriangle className="w-4 h-4" />} label="منتهى المخزون" value={outOfStock.length} tone="red" />
         <Stat icon={<AlertTriangle className="w-4 h-4" />} label="اقتراب انتهاء الكمية" value={lowStockOnly.length} tone="amber" />
         <Stat icon={<CalendarClock className="w-4 h-4" />} label="قريب انتهاء الصلاحية" value={expiringSoon.length} tone="rose" />
         <Stat icon={<CalendarX className="w-4 h-4" />} label="منتهي الصلاحية" value={expired.length} tone="red" />
         <Stat icon={<Receipt className="w-4 h-4" />} label="فواتير آجل متأخرة" value={overdueAccountCount} tone="red" />
+        <Stat icon={<Factory className="w-4 h-4" />} label="موردين متأخرون +30 يوم" value={overdueSupplierInvoices.length} tone="red" />
         <Stat icon={<Users className="w-4 h-4" />} label="عملاء مديونون" value={unpaidCustomers.length} tone="indigo" />
         <Stat icon={<Coins className="w-4 h-4" />} label="رصيد دائن للعملاء" value={customersWithCredit.length} tone="blue" />
       </div>
@@ -335,33 +349,41 @@ export function AlertsPage() {
         </Card>
 
         <Card className="lg:col-span-2">
-          <CardHeader title="فواتير موردين غير مسددة" />
+          <CardHeader
+            title="فواتير موردين غير مسددة"
+            subtitle={overdueSupplierInvoices.length > 0 ? `${overdueSupplierInvoices.length} متأخرة أكثر من 30 يوم` : undefined}
+          />
           <CardBody className="divide-y divide-slate-100 p-0">
             {purchaseInvoices.filter(p=>p.remaining>0).length === 0 ? (
               <EmptyState icon={<Factory className="w-5 h-5" />} title="لا توجد فواتير متأخرة" />
             ) : (
               purchaseInvoices
                 .filter((p) => p.remaining > 0)
-                .slice(0, 8)
-                .map((p) => (
-                  <div key={p.id} className="flex items-center gap-3 p-3">
-                    <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-600 grid place-items-center">
-                      <Factory className="w-4 h-4" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium text-slate-900 truncate">
-                        {p.invoiceNumber} — {p.supplierName}
+                .sort((a, b) => a.date.localeCompare(b.date))
+                .slice(0, 10)
+                .map((p) => {
+                  const isOverdue = overdueSupplierInvoices.some((o) => o.id === p.id);
+                  return (
+                    <div key={p.id} className={`flex items-center gap-3 p-3 ${isOverdue ? "bg-red-50/40" : ""}`}>
+                      <div className={`w-9 h-9 rounded-lg grid place-items-center ${isOverdue ? "bg-red-100 text-red-600" : "bg-blue-50 text-blue-600"}`}>
+                        <Factory className="w-4 h-4" />
                       </div>
-                      <div className="text-xs text-slate-500">{formatDate(p.date)}</div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium text-slate-900 truncate">
+                          {p.invoiceNumber} — {p.supplierName}
+                        </div>
+                        <div className="text-xs text-slate-500">{formatDate(p.date)}</div>
+                      </div>
+                      {isOverdue && <Badge tone="red">متأخرة</Badge>}
+                      <Badge tone="amber">
+                        متبقي {formatCurrency(p.remaining, settings.currency)}
+                      </Badge>
+                      <Link to={`/purchases/${p.id}`}>
+                        <Button variant="outline" size="sm">عرض</Button>
+                      </Link>
                     </div>
-                    <Badge tone="amber">
-                      متبقي {formatCurrency(p.remaining, settings.currency)}
-                    </Badge>
-                    <Link to={`/purchases/${p.id}`}>
-                      <Button variant="outline" size="sm">عرض</Button>
-                    </Link>
-                  </div>
-                ))
+                  );
+                })
             )}
           </CardBody>
         </Card>

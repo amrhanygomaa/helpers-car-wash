@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useBlocker, useNavigate } from "react-router-dom";
 import { ArrowRight, Plus, Save, Trash2 } from "lucide-react";
 import { PageHeader } from "../components/layout/AppLayout";
 import { Card, CardBody, CardHeader } from "../components/ui/Card";
@@ -15,6 +15,7 @@ import { uid } from "../lib/utils";
 import type { InvoiceLine, Product, SalesPaymentType, SalesPriceType } from "../types";
 import { formatCurrency } from "../lib/format";
 import { Badge } from "../components/ui/Badge";
+import { ConfirmDialog } from "../components/ui/Dialog";
 import { DriverDialog } from "../features/drivers/DriverDialog";
 import { BarcodeScanInput } from "../features/products/BarcodeScanInput";
 import { parseNumericInput } from "../lib/numberInput";
@@ -70,7 +71,9 @@ function nextInvoiceNumber(existing: string[]): string {
 }
 
 export function SalesInvoiceNewPage() {
-  const { products, customers, drivers } = useCatalog();
+  const { products: allProducts, customers: allCustomers, drivers } = useCatalog();
+  const products = useMemo(() => allProducts.filter((p) => !p.archived), [allProducts]);
+  const customers = useMemo(() => allCustomers.filter((c) => !c.archived), [allCustomers]);
   const { salesInvoices, addSalesInvoice } = useInvoicing();
   const { settings } = useSettings();
   const { customerBalance, customerCredit } = useReporting();
@@ -92,6 +95,10 @@ export function SalesInvoiceNewPage() {
   const [notes, setNotes] = useState(() => loadDraft()?.notes ?? "");
   const [lines, setLines] = useState<LineDraft[]>(() => loadDraft()?.lines ?? []);
   const [newDriverOpen, setNewDriverOpen] = useState(false);
+  const [pendingPriceType, setPendingPriceType] = useState<SalesPriceType | null>(null);
+  const isDirtyRef = useRef(false);
+  useEffect(() => { isDirtyRef.current = lines.length > 0; }, [lines]);
+  const blocker = useBlocker(useCallback(() => isDirtyRef.current, []));
 
   useEffect(() => {
     if (!customerId && customers[0]) setCustomerId(customers[0].id);
@@ -206,9 +213,13 @@ export function SalesInvoiceNewPage() {
   function changePriceType(nextPriceType: SalesPriceType) {
     if (nextPriceType === priceType) return;
     if (lines.length > 0) {
-      const ok = confirm("تغيير نوع السعر سيحدّث أسعار جميع الأصناف، هل تريد المتابعة؟");
-      if (!ok) return;
+      setPendingPriceType(nextPriceType);
+      return;
     }
+    applyPriceType(nextPriceType);
+  }
+
+  function applyPriceType(nextPriceType: SalesPriceType) {
     setPriceType(nextPriceType);
     setLines((arr) =>
       arr.map((line) => {
@@ -316,6 +327,7 @@ export function SalesInvoiceNewPage() {
       paymentDueDate: effectiveDueDate,
       notes: notes.trim() || undefined,
     });
+    isDirtyRef.current = false;
     clearDraft();
     toast.success("تم حفظ الفاتورة", `رقم ${inv.invoiceNumber}`);
     navigate(`/sales/${inv.id}`);
@@ -679,6 +691,26 @@ export function SalesInvoiceNewPage() {
         open={newDriverOpen}
         onClose={() => setNewDriverOpen(false)}
         onSaved={(drv) => setDriverId(drv.id)}
+      />
+      <ConfirmDialog
+        open={blocker.state === "blocked"}
+        onClose={() => blocker.reset?.()}
+        onConfirm={() => blocker.proceed?.()}
+        title="الخروج بدون حفظ؟"
+        message="لديك بنود غير محفوظة. هل تريد الخروج وفقدان التغييرات؟"
+        confirmText="خروج"
+        variant="danger"
+      />
+      <ConfirmDialog
+        open={pendingPriceType !== null}
+        onClose={() => setPendingPriceType(null)}
+        onConfirm={() => {
+          if (pendingPriceType) applyPriceType(pendingPriceType);
+          setPendingPriceType(null);
+        }}
+        title="تغيير نوع السعر"
+        message="تغيير نوع السعر سيحدّث أسعار جميع الأصناف، هل تريد المتابعة؟"
+        confirmText="متابعة"
       />
     </>
   );

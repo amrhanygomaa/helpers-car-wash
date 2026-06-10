@@ -20,6 +20,9 @@ import {
   PanelRightClose,
   PanelRightOpen,
   Shield,
+  FileText,
+  ClipboardList,
+  Upload,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useAuth } from "../../store/AuthContext";
@@ -40,10 +43,13 @@ const NAV: NavItem[] = [
   { to: "/", label: "لوحة التحكم", icon: LayoutDashboard },
   { to: "/products", label: "المنتجات", icon: Package, permission: "products" },
   { to: "/inventory", label: "المخزون", icon: Warehouse, permission: "inventory" },
+  { to: "/stocktakes", label: "الجرد الدوري", icon: ClipboardList, permission: "inventory" },
+  { to: "/import", label: "استيراد بيانات", icon: Upload },
   { to: "/suppliers", label: "الموردين", icon: Factory, permission: "suppliers" },
   { to: "/customers", label: "العملاء", icon: Users, permission: "customers" },
   { to: "/purchases", label: "فواتير المشتريات", icon: ShoppingBag, permission: "purchaseInvoices" },
   { to: "/sales", label: "فواتير المبيعات", icon: Receipt, permission: "salesInvoices" },
+  { to: "/quotations", label: "عروض الأسعار", icon: FileText, permission: "salesInvoices" },
   { to: "/drivers", label: "السائقين", icon: Truck, permission: "drivers" },
   { to: "/returns", label: "المرتجعات", icon: ArrowLeftRight, permission: "returns" },
   { to: "/alerts", label: "التنبيهات", icon: Bell, permission: "alerts" },

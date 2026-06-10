@@ -35,8 +35,11 @@ export interface AuthContextValue {
   licenseStatus: LicenseStatus | null;
   ownerExists: boolean;
   ownerCheckPending: boolean;
+  isLocked: boolean;
   login: (username: string, password: string) => Promise<LoginResult>;
   logout: () => void;
+  lockSession: () => void;
+  unlockSession: (username: string, password: string) => Promise<LoginResult>;
   createOwner: (username: string, password: string) => Promise<boolean>;
   activateLicense: (serial: string) => Promise<{ ok: boolean; status: LicenseStatus }>;
   refreshLicenseStatus: () => Promise<LicenseStatus | null>;

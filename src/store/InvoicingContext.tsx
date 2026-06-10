@@ -3,14 +3,32 @@ import type {
   CashEntry,
   ID,
   InvoiceLine,
+  PaymentMethod,
   PurchaseInvoice,
   PurchaseReturn,
+  Quotation,
   SalesInvoice,
   SalesReturn,
   StockMovement,
 } from "../types";
 
 export interface InvoicingContextValue {
+  quotations: Quotation[];
+  addQuotation: (q: Omit<Quotation, "id" | "createdAt" | "status">) => Quotation;
+  convertQuotation: (
+    quotationId: string,
+    opts: {
+      invoiceNumber: string;
+      date: string;
+      paymentType: import("../types").SalesPaymentType;
+      priceType: import("../types").SalesPriceType;
+      amountReceived: number;
+      paymentDueDate?: string;
+      driverId?: string;
+      driverName?: string;
+    }
+  ) => SalesInvoice;
+  deleteQuotation: (id: string) => void;
   salesInvoices: SalesInvoice[];
   purchaseInvoices: PurchaseInvoice[];
   salesReturns: SalesReturn[];
@@ -24,10 +42,11 @@ export interface InvoicingContextValue {
     id: string,
     patch: Omit<SalesInvoice, "id" | "createdAt" | "customerId" | "customerName" | "status" | "remaining">
   ) => void;
-  recordSalesReceipt: (id: string, amount: number) => void;
+  recordSalesReceipt: (id: string, amount: number, paymentMethod?: PaymentMethod) => void;
   cancelSalesInvoice: (id: string, refundMode?: "cash" | "credit") => void;
   deleteSalesInvoice: (id: string) => boolean;
   settleAllDues: (customerId: ID) => number;
+  settleSupplierDues: (supplierId: string) => number;
   addPurchaseInvoice: (
     inv: Omit<PurchaseInvoice, "id" | "createdAt" | "status" | "remaining">
   ) => PurchaseInvoice;
@@ -35,7 +54,7 @@ export interface InvoicingContextValue {
     id: string,
     patch: { lines: InvoiceLine[]; date: string; notes?: string }
   ) => void;
-  recordPurchasePayment: (id: string, amount: number) => void;
+  recordPurchasePayment: (id: string, amount: number, paymentMethod?: PaymentMethod) => void;
   deletePurchaseInvoice: (id: string) => boolean;
   addSalesReturn: (
     r: Omit<SalesReturn, "id" | "createdAt" | "returnNumber">

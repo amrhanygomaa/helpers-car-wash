@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Pencil, Plus, Trash2, Eye, Package, Search } from "lucide-react";
+import { Pencil, Plus, Trash2, Eye, Package, Search, Archive, ArchiveRestore } from "lucide-react";
 import { PageHeader } from "../components/layout/AppLayout";
 import { Card, CardBody, CardHeader } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -22,7 +22,7 @@ import { hasPermission } from "../lib/permissions";
 type SortKey = "name" | "quantity" | "wholesalePrice" | "retailPrice" | "purchasePrice";
 
 export function ProductsPage() {
-  const { products, suppliers, deleteProduct } = useCatalog();
+  const { products, suppliers, deleteProduct, archiveProduct } = useCatalog();
   const { currentUser } = useAuth();
   const { settings } = useSettings();
   const toast = useToast();
@@ -42,13 +42,16 @@ export function ProductsPage() {
   const [editing, setEditing] = useState<Product | null>(null);
   const [viewing, setViewing] = useState<Product | null>(null);
   const [toDelete, setToDelete] = useState<Product | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
 
   const categories = useMemo(() => {
     return Array.from(new Set(products.map((p) => p.category)));
   }, [products]);
 
+  const archivedCount = useMemo(() => products.filter((p) => p.archived).length, [products]);
+
   const filtered = useMemo(() => {
-    let list = products;
+    let list = products.filter((p) => !p.archived);
     if (q.trim()) {
       const t = q.trim().toLowerCase();
       list = list.filter(
@@ -88,8 +91,12 @@ export function ProductsPage() {
   function handleDelete() {
     if (!toDelete) return;
     const ok = deleteProduct(toDelete.id);
-    if (ok) toast.success("تم حذف المنتج");
-    else toast.error("لا يمكن حذف المنتج", "المنتج مستخدم في فواتير قائمة.");
+    if (ok) {
+      toast.success("تم حذف المنتج");
+    } else {
+      archiveProduct(toDelete.id, true);
+      toast.success("تم أرشفة المنتج", "المنتج محفوظ في الأرشيف ويمكن استعادته");
+    }
     setToDelete(null);
   }
 
@@ -117,6 +124,17 @@ export function ProductsPage() {
         <CardHeader
           title="قائمة المنتجات"
           subtitle="ابحث أو صفّي حسب الفئة، المورد، الحالة"
+          actions={archivedCount > 0 ? (
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5 text-slate-600"
+              onClick={() => setShowArchived((v) => !v)}
+            >
+              <Archive className="w-3.5 h-3.5" />
+              {showArchived ? "إخفاء الأرشيف" : `الأرشيف (${archivedCount})`}
+            </Button>
+          ) : undefined}
         />
         <CardBody className="space-y-3">
           <div className="flex flex-wrap gap-2 items-center">
@@ -283,6 +301,42 @@ export function ProductsPage() {
                     </TR>
                   );
                 })}
+                {showArchived && products.filter((p) => p.archived).map((p) => (
+                  <TR key={p.id} className="opacity-50 bg-slate-50">
+                    <TD className="text-slate-400 font-mono text-xs">{p.code}</TD>
+                    <TD className="text-slate-500 line-through">{p.name}</TD>
+                    <TD className="text-slate-400">{p.category}</TD>
+                    <TD />
+                    <TD />
+                    <TD />
+                    <TD />
+                    <TD className="text-end">
+                      <div className="inline-flex items-center gap-1">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="gap-1 text-slate-600 h-7 text-xs"
+                          onClick={() => { archiveProduct(p.id, false); toast.success("تمت الاستعادة"); }}
+                          title="استعادة من الأرشيف"
+                        >
+                          <ArchiveRestore className="w-3 h-3" />
+                          استعادة
+                        </Button>
+                        {canDeleteProduct && (
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="text-red-600 hover:bg-red-50 w-7 h-7"
+                            onClick={() => setToDelete(p)}
+                            title="حذف نهائي"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        )}
+                      </div>
+                    </TD>
+                  </TR>
+                ))}
               </TBody>
             </Table>
           )}

@@ -53,8 +53,8 @@ export function lsGet<T>(key: string, fallback: T): T {
 
 export function lsSet<T>(key: string, value: T): void {
   const fullKey = PREFIX + key;
-  const json = JSON.stringify(value);
   try {
+    const json = JSON.stringify(value);
     // Always update the in-memory cache so subsequent lsGet calls see
     // the new value immediately (no round-trip needed).
     _cache.set(fullKey, json);
@@ -65,23 +65,40 @@ export function lsSet<T>(key: string, value: T): void {
     }
     localStorage.setItem(fullKey, json);
   } catch {
-    /* ignore quota errors */
+    /* ignore quota / serialization errors */
   }
 }
 
 /**
  * Write all keys to persistent storage in a single IPC + SQLite transaction.
+ * Only serializes and sends keys whose reference has actually changed since
+ * the last flush — avoids re-serializing megabytes of unchanged data.
  * Falls back to per-key writes if the batch API is unavailable.
  */
+const _lastFlushedRef = new Map<string, unknown>();
+
 export function lsSetBatch(entries: Record<string, unknown>): void {
   const batch: Record<string, string> = {};
+  let changeCount = 0;
   for (const [key, value] of Object.entries(entries)) {
     const fullKey = PREFIX + key;
-    const json = JSON.stringify(value);
-    // Update in-memory cache immediately
-    _cache.set(fullKey, json);
-    batch[fullKey] = json;
+    // Skip keys whose object reference hasn't changed since last flush
+    if (_lastFlushedRef.get(key) === value) continue;
+    _lastFlushedRef.set(key, value);
+    try {
+      const json = JSON.stringify(value);
+      // Update in-memory cache immediately
+      _cache.set(fullKey, json);
+      batch[fullKey] = json;
+      changeCount++;
+    } catch (e) {
+      // JSON.stringify can throw on very large arrays (RangeError) or
+      // circular references. Log and skip the key instead of crashing.
+      console.error(`[storage] Failed to serialize key "${key}":`, e);
+    }
   }
+  // Nothing changed — skip the IPC call entirely
+  if (changeCount === 0) return;
   try {
     if (window.desktopAPI?.storage?.setBatch) {
       window.desktopAPI.storage.setBatch(batch);
@@ -101,6 +118,7 @@ export function lsSetBatch(entries: Record<string, unknown>): void {
     /* ignore */
   }
 }
+
 
 export function lsRemove(key: string): void {
   const fullKey = PREFIX + key;

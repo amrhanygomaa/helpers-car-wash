@@ -105,13 +105,11 @@ export function ReportsPage() {
   }, [suppliers, calculateSupplierCommission]);
 
   const estimatedProfit = useMemo(() => {
-    // approximate profit based on productId cost vs sale price per line
     let p = 0;
     salesInRange.forEach((inv) => {
       inv.lines.forEach((l) => {
-        const prod = products.find((x) => x.id === l.productId);
-        if (!prod) return;
-        p += (l.price - prod.purchasePrice) * l.quantity;
+        const cost = l.costPrice ?? products.find((x) => x.id === l.productId)?.purchasePrice ?? 0;
+        p += (l.price - cost) * l.quantity;
       });
     });
     return p;
@@ -268,23 +266,21 @@ export function ReportsPage() {
   }, [from, to, salesInRange, purchasesInRange]);
 
   const topProducts = useMemo(() => {
-    const map = new Map<string, { name: string; qty: number; revenue: number }>();
+    const map = new Map<string, { name: string; qty: number; revenue: number; grossProfit: number }>();
     salesInRange.forEach((inv) => {
       inv.lines.forEach((l) => {
-        const e = map.get(l.productId) ?? {
-          name: l.productName,
-          qty: 0,
-          revenue: 0,
-        };
+        const e = map.get(l.productId) ?? { name: l.productName, qty: 0, revenue: 0, grossProfit: 0 };
+        const cost = l.costPrice ?? products.find((x) => x.id === l.productId)?.purchasePrice ?? 0;
         e.qty += l.quantity;
         e.revenue += l.subtotal;
+        e.grossProfit += (l.price - cost) * l.quantity;
         map.set(l.productId, e);
       });
     });
     return Array.from(map.values())
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, 8);
-  }, [salesInRange]);
+  }, [salesInRange, products]);
 
   const categoryShare = useMemo(() => {
     const map = new Map<string, number>();
@@ -498,6 +494,7 @@ export function ReportsPage() {
                       <TH>المنتج</TH>
                       <TH className="text-end">الكمية المباعة</TH>
                       <TH className="text-end">الإيراد</TH>
+                      <TH className="text-end">هامش الربح</TH>
                     </TR>
                   </THead>
                   <TBody>
@@ -506,6 +503,9 @@ export function ReportsPage() {
                         <TD className="font-medium text-slate-900">{t.name}</TD>
                         <TD className="text-end">{t.qty}</TD>
                         <TD className="text-end">{formatCurrency(t.revenue, settings.currency)}</TD>
+                        <TD className={`text-end font-medium ${t.grossProfit >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
+                          {formatCurrency(t.grossProfit, settings.currency)}
+                        </TD>
                       </TR>
                     ))}
                   </TBody>
@@ -1210,6 +1210,7 @@ export function ReportsPage() {
                       <th className="py-2 text-right">المنتج</th>
                       <th className="py-2 text-center">الكمية المباعة</th>
                       <th className="py-2 text-left">إجمالي الإيراد</th>
+                      <th className="py-2 text-left">هامش الربح</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -1218,6 +1219,7 @@ export function ReportsPage() {
                         <td className="py-2 text-right font-medium">{p.name}</td>
                         <td className="py-2 text-center tabular-nums">{p.qty}</td>
                         <td className="py-2 text-left tabular-nums font-mono">{formatCurrency(p.revenue, settings.currency)}</td>
+                        <td className="py-2 text-left tabular-nums font-mono">{formatCurrency(p.grossProfit, settings.currency)}</td>
                       </tr>
                     ))}
                   </tbody>

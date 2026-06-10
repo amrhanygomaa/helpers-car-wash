@@ -199,6 +199,19 @@ export function SettingsPage() {
                 عرض أسماء الشركة والقوائم بالعربية
               </label>
             </Field>
+            <Field label="قفل الجلسة بعد عدم النشاط" hint="عدد الدقائق قبل قفل الشاشة تلقائياً — 0 لتعطيل الميزة">
+              <Select
+                value={String(form.idleLockMinutes ?? 0)}
+                onChange={(e) => setForm({ ...form, idleLockMinutes: Number(e.target.value) })}
+              >
+                <option value="0">معطّل</option>
+                <option value="5">5 دقائق</option>
+                <option value="10">10 دقائق</option>
+                <option value="15">15 دقيقة</option>
+                <option value="30">30 دقيقة</option>
+                <option value="60">ساعة كاملة</option>
+              </Select>
+            </Field>
           </CardBody>
         </Card>
 

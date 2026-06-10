@@ -84,6 +84,7 @@ export interface Supplier {
   notes?: string;
   commissionNote?: string;
   commissionTiers?: CommissionTier[];
+  archived?: boolean;
   createdAt: string;
 }
 
@@ -95,6 +96,7 @@ export interface Customer {
   address?: string;
   shippingDirection?: "qibli" | "bahri";
   notes?: string;
+  archived?: boolean;
   createdAt: string;
 }
 
@@ -126,6 +128,7 @@ export interface Product {
   expiryDate?: string;
   supplierId?: ID;
   notes?: string;
+  archived?: boolean;
   createdAt: string;
 }
 
@@ -136,6 +139,8 @@ export interface InvoiceLine {
   unit: string;
   quantity: number;
   price: number;
+  /** Purchase cost per unit at time of sale — used for gross profit calculation. */
+  costPrice?: number;
   expiryDate?: string;
   subtotal: number;
   isRetailUnit?: boolean;
@@ -241,12 +246,57 @@ export interface StockMovement {
   date: string;
 }
 
+export interface StocktakeItem {
+  productId: ID;
+  productName: string;
+  systemQty: number;
+  countedQty: number | null;
+  /** Snapshot of the product's piecesPerUnit — set only for piece-enabled products. */
+  piecesPerUnit?: number;
+  /** Loose pieces in the system at snapshot time (piece-enabled products only). */
+  systemLoose?: number;
+  /** Counted loose pieces (piece-enabled products only). */
+  countedLoose?: number | null;
+}
+
+export type StocktakeStatus = "draft" | "applied";
+
+export interface Stocktake {
+  id: ID;
+  date: string;
+  status: StocktakeStatus;
+  notes?: string;
+  items: StocktakeItem[];
+  appliedAt?: string;
+  createdAt: string;
+}
+
+export type QuotationStatus = "draft" | "converted";
+
+export interface Quotation {
+  id: ID;
+  quotationNumber: string;
+  date: string;
+  validUntil?: string;
+  customerId: ID;
+  customerName: string;
+  lines: InvoiceLine[];
+  total: number;
+  discount?: number;
+  notes?: string;
+  status: QuotationStatus;
+  convertedInvoiceId?: ID;
+  createdAt: string;
+}
+
 export type CashEntryType =
   | "sales-receipt"
   | "purchase-payment"
   | "manual-add"
   | "manual-remove"
   | "adjustment";
+
+export type PaymentMethod = "cash" | "bank" | "vodafone" | "instapay" | "other";
 
 export interface CashEntry {
   id: ID;
@@ -255,6 +305,7 @@ export interface CashEntry {
   description: string;
   referenceId?: ID;
   date: string;
+  paymentMethod?: PaymentMethod;
 }
 
 export interface Settings {
@@ -280,6 +331,8 @@ export interface Settings {
   warrantyType: "none" | "limited";
   warrantyStartDate: string;
   warrantyMonths: number;
+  /** Minutes of inactivity before session locks. 0 = disabled. */
+  idleLockMinutes: number;
 }
 
 export interface ActivityItem {
@@ -304,8 +357,14 @@ export type AuditAction =
   | "return_purchase_created"
   | "stock_adjusted"
   | "product_deleted"
+  | "product_archived"
+  | "product_restored"
   | "customer_deleted"
+  | "customer_archived"
+  | "customer_restored"
   | "supplier_deleted"
+  | "supplier_archived"
+  | "supplier_restored"
   | "cash_manual_add"
   | "cash_manual_remove";
 

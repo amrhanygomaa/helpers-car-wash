@@ -19,6 +19,13 @@ import { SalesInvoiceEditPage } from "./pages/SalesInvoiceEditPage";
 import { SalesInvoiceDetailPage } from "./pages/SalesInvoiceDetailPage";
 import { SalesInvoicePrintPage } from "./pages/SalesInvoicePrintPage";
 import { AlertsPage } from "./pages/AlertsPage";
+import { QuotationsPage } from "./pages/QuotationsPage";
+import { StocktakesPage } from "./pages/StocktakesPage";
+import { ImportPage } from "./pages/ImportPage";
+import { StocktakeDetailPage } from "./pages/StocktakeDetailPage";
+import { QuotationNewPage } from "./pages/QuotationNewPage";
+import { QuotationDetailPage } from "./pages/QuotationDetailPage";
+import { QuotationPrintPage } from "./pages/QuotationPrintPage";
 import { CashboxPage } from "./pages/CashboxPage";
 import { DuesPage } from "./pages/DuesPage";
 import { ReportsPage } from "./pages/ReportsPage";
@@ -29,6 +36,8 @@ import { ReturnsPage } from "./pages/ReturnsPage";
 import { DriversPage } from "./pages/DriversPage";
 import { EmployeeProfilePage } from "./pages/EmployeeProfilePage";
 import { AuditLogPage } from "./pages/AuditLogPage";
+import { CustomerStatementPrintPage } from "./pages/CustomerStatementPrintPage";
+import { SupplierStatementPrintPage } from "./pages/SupplierStatementPrintPage";
 import { ProtectedShell } from "./components/layout/ProtectedShell";
 
 export default function App() {
@@ -59,6 +68,9 @@ export default function App() {
       {/* Print routes (no layout) */}
       <Route path="/sales/:id/print" element={<SalesInvoicePrintPage />} />
       <Route path="/purchases/:id/print" element={<PurchaseInvoicePrintPage />} />
+      <Route path="/customers/:id/statement" element={<CustomerStatementPrintPage />} />
+      <Route path="/suppliers/:id/statement" element={<SupplierStatementPrintPage />} />
+      <Route path="/quotations/:id/print" element={<QuotationPrintPage />} />
 
       <Route
         path="/"
@@ -161,6 +173,54 @@ export default function App() {
         element={
           <ProtectedShell permission="salesInvoices" permissionAction="edit">
             <SalesInvoiceEditPage />
+          </ProtectedShell>
+        }
+      />
+      <Route
+        path="/import"
+        element={
+          <ProtectedShell>
+            <ImportPage />
+          </ProtectedShell>
+        }
+      />
+      <Route
+        path="/stocktakes"
+        element={
+          <ProtectedShell permission="inventory">
+            <StocktakesPage />
+          </ProtectedShell>
+        }
+      />
+      <Route
+        path="/stocktakes/:id"
+        element={
+          <ProtectedShell permission="inventory">
+            <StocktakeDetailPage />
+          </ProtectedShell>
+        }
+      />
+      <Route
+        path="/quotations"
+        element={
+          <ProtectedShell permission="salesInvoices">
+            <QuotationsPage />
+          </ProtectedShell>
+        }
+      />
+      <Route
+        path="/quotations/new"
+        element={
+          <ProtectedShell permission="salesInvoices" permissionAction="add">
+            <QuotationNewPage />
+          </ProtectedShell>
+        }
+      />
+      <Route
+        path="/quotations/:id"
+        element={
+          <ProtectedShell permission="salesInvoices">
+            <QuotationDetailPage />
           </ProtectedShell>
         }
       />

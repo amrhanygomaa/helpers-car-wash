@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useBlocker, useNavigate } from "react-router-dom";
 import { ArrowRight, Plus, Save, Trash2 } from "lucide-react";
 import { PageHeader } from "../components/layout/AppLayout";
 import { Card, CardBody, CardHeader } from "../components/ui/Card";
+import { ConfirmDialog } from "../components/ui/Dialog";
 import { Button } from "../components/ui/Button";
 import { Field, Input, Select, Textarea } from "../components/ui/Input";
 import { Table, TBody, TD, TH, THead, TR } from "../components/ui/Table";
@@ -33,7 +34,9 @@ function nextInvoiceNumber(existing: string[]): string {
 }
 
 export function PurchaseInvoiceNewPage() {
-  const { products, suppliers } = useCatalog();
+  const { products: allProducts, suppliers: allSuppliers } = useCatalog();
+  const products = useMemo(() => allProducts.filter((p) => !p.archived), [allProducts]);
+  const suppliers = useMemo(() => allSuppliers.filter((s) => !s.archived), [allSuppliers]);
   const { purchaseInvoices, addPurchaseInvoice } = useInvoicing();
   const { settings } = useSettings();
   const navigate = useNavigate();
@@ -57,6 +60,9 @@ export function PurchaseInvoiceNewPage() {
     );
   }
   const [lines, setLines] = useState<LineDraft[]>([]);
+  const isDirtyRef = useRef(false);
+  useEffect(() => { isDirtyRef.current = lines.length > 0; }, [lines]);
+  const blocker = useBlocker(useCallback(() => isDirtyRef.current, []));
 
   useEffect(() => {
     if (!supplierId && suppliers[0]) setSupplierId(suppliers[0].id);
@@ -174,6 +180,7 @@ export function PurchaseInvoiceNewPage() {
       amountPaid,
       notes: notes.trim() || undefined,
     });
+    isDirtyRef.current = false;
     toast.success("تم حفظ الفاتورة", `تم إضافة الكميات للمخزون`);
     navigate(`/purchases/${inv.id}`);
   }
@@ -375,6 +382,15 @@ export function PurchaseInvoiceNewPage() {
           </CardBody>
         </Card>
       </div>
+      <ConfirmDialog
+        open={blocker.state === "blocked"}
+        onClose={() => blocker.reset?.()}
+        onConfirm={() => blocker.proceed?.()}
+        title="الخروج بدون حفظ؟"
+        message="لديك بنود غير محفوظة. هل تريد الخروج وفقدان التغييرات؟"
+        confirmText="خروج"
+        variant="danger"
+      />
     </>
   );
 }

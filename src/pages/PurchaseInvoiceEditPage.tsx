@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useBlocker, useNavigate, useParams } from "react-router-dom";
 import { ArrowRight, Plus, Save, Trash2 } from "lucide-react";
 import { PageHeader } from "../components/layout/AppLayout";
 import { Card, CardBody, CardHeader } from "../components/ui/Card";
+import { ConfirmDialog } from "../components/ui/Dialog";
 import { Button } from "../components/ui/Button";
 import { Field, Input, Select, Textarea } from "../components/ui/Input";
 import { Table, TBody, TD, TH, THead, TR } from "../components/ui/Table";
@@ -60,6 +61,7 @@ export function PurchaseInvoiceEditPage() {
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
   }, []);
+  const blocker = useBlocker(useCallback(() => dirtyRef.current, []));
 
   const supplierProducts = useMemo(
     () => products.filter((x) => !x.supplierId || x.supplierId === inv?.supplierId),
@@ -318,6 +320,15 @@ export function PurchaseInvoiceEditPage() {
           </CardBody>
         </Card>
       </div>
+      <ConfirmDialog
+        open={blocker.state === "blocked"}
+        onClose={() => blocker.reset?.()}
+        onConfirm={() => blocker.proceed?.()}
+        title="الخروج بدون حفظ؟"
+        message="لديك تعديلات غير محفوظة. هل تريد الخروج وفقدان التغييرات؟"
+        confirmText="خروج"
+        variant="danger"
+      />
     </>
   );
 }

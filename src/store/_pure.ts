@@ -84,6 +84,21 @@ export function applyReturnToInvoiceLines(lines: InvoiceLine[], returns: ReturnL
   return { lines: nextLines, total, appliedTotal };
 }
 
+export function quotationConversionFields(
+  quot: { total: number },
+  amountReceived: number,
+) {
+  // quot.total is already net of the quotation discount (QuotationNewPage stores
+  // subtotal − discount), so the invoice total must NOT subtract it again.
+  const requested = Math.max(0, amountReceived);
+  const received = Math.min(requested, quot.total);
+  return {
+    total: quot.total,
+    amountReceived: received,
+    overpayment: Math.max(0, requested - quot.total),
+  };
+}
+
 export function settleSalesInvoiceReturn(
   invoice: SalesInvoice,
   ret: Pick<SalesReturn, "lines" | "total" | "refundCash">,

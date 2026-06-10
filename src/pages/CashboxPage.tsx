@@ -15,8 +15,8 @@ import { useAuth } from "../store/AuthContext";
 import { useSettings } from "../store/SettingsContext";
 import { useToast } from "../components/ui/Toast";
 import { uid } from "../lib/utils";
-import type { CashEntryType } from "../types";
-import { formatCurrency, formatDate } from "../lib/format";
+import type { CashEntryType, PaymentMethod } from "../types";
+import { formatCurrency, formatDate, PAYMENT_METHOD_LABELS } from "../lib/format";
 import { hasPermission } from "../lib/permissions";
 
 export function CashboxPage() {
@@ -34,6 +34,7 @@ export function CashboxPage() {
   const [entryType, setEntryType] = useState<CashEntryType>("manual-add");
   const [amount, setAmount] = useState(0);
   const [desc, setDesc] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
 
   const [openBalOpen, setOpenBalOpen] = useState(false);
   const [newOpening, setNewOpening] = useState(settings.openingBalance);
@@ -90,11 +91,13 @@ export function CashboxPage() {
       amount: signed,
       description: desc.trim(),
       date: new Date().toISOString().slice(0, 10),
+      paymentMethod,
     });
     toast.success(entryType === "manual-add" ? "تم إضافة نقدية" : "تم خصم نقدية");
     setOpen(false);
     setAmount(0);
     setDesc("");
+    setPaymentMethod("cash");
   }
 
   return (
@@ -169,6 +172,7 @@ export function CashboxPage() {
                   <TH>التاريخ</TH>
                   <TH>النوع</TH>
                   <TH>البيان</TH>
+                  <TH>وسيلة الدفع</TH>
                   <TH className="text-end">المبلغ</TH>
                 </TR>
               </THead>
@@ -180,6 +184,9 @@ export function CashboxPage() {
                       <TypeBadge type={c.type} />
                     </TD>
                     <TD className="text-slate-700">{c.description}</TD>
+                    <TD className="text-slate-500 text-sm">
+                      {c.paymentMethod ? PAYMENT_METHOD_LABELS[c.paymentMethod] : "—"}
+                    </TD>
                     <TD
                       className={`text-end font-medium ${
                         c.amount >= 0 ? "text-emerald-700" : "text-rose-700"
@@ -223,6 +230,13 @@ export function CashboxPage() {
               value={amount || ""}
               onChange={(e) => setAmount(Number(e.target.value))}
             />
+          </Field>
+          <Field label="طريقة الدفع">
+            <Select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}>
+              {Object.entries(PAYMENT_METHOD_LABELS).map(([k, v]) => (
+                <option key={k} value={k}>{v}</option>
+              ))}
+            </Select>
           </Field>
           <Field label="البيان" required>
             <Textarea

@@ -31,6 +31,12 @@ const ACTION_META: Record<
   supplier_deleted:        { label: "حذف مورد",                tone: "red" },
   cash_manual_add:         { label: "إضافة نقدية",             tone: "emerald" },
   cash_manual_remove:      { label: "خصم نقدي",                tone: "rose" },
+  product_archived:        { label: "أرشفة منتج",              tone: "slate" },
+  product_restored:        { label: "استعادة منتج",            tone: "blue" },
+  customer_archived:       { label: "أرشفة عميل",              tone: "slate" },
+  customer_restored:       { label: "استعادة عميل",            tone: "blue" },
+  supplier_archived:       { label: "أرشفة مورد",              tone: "slate" },
+  supplier_restored:       { label: "استعادة مورد",            tone: "blue" },
 };
 
 type Category = "all" | "sales" | "purchases" | "returns" | "stock" | "deletions" | "cash";

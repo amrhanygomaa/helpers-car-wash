@@ -5,6 +5,7 @@ export interface ReportingContextValue {
   customerBalance: (customerId: string) => number;
   customerCredit: (customerId: string) => number;
   supplierBalance: (supplierId: string) => number;
+  supplierCredit: (supplierId: string) => number;
   calculateSupplierCommission: (supplierId: string) => {
     tierId: string;
     threshold: number;

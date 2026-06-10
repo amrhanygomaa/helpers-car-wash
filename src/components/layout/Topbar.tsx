@@ -1,6 +1,7 @@
 import { useLocation, useNavigate } from "react-router-dom";
-import { Search, Bell, ChevronDown, User } from "lucide-react";
+import { Search, Bell, ChevronDown, User, Lock } from "lucide-react";
 import { useAuth } from "../../store/AuthContext";
+import { useSettings } from "../../store/SettingsContext";
 import { useCatalog } from "../../store/CatalogContext";
 import { useInvoicing } from "../../store/InvoicingContext";
 import { useMemo, useState } from "react";
@@ -26,11 +27,25 @@ const TITLES: Record<string, string> = {
 export function Topbar() {
   const loc = useLocation();
   const navigate = useNavigate();
-  const { auth, logout, currentUser } = useAuth();
+  const { auth, logout, lockSession, currentUser } = useAuth();
+  const { settings } = useSettings();
   const { products, customers, suppliers } = useCatalog();
   const { purchaseInvoices, salesInvoices } = useInvoicing();
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
+
+  const alertCount = useMemo(() => {
+    const outOfStock = products.filter((p) => p.quantity === 0).length;
+    const overdueAccounts = salesInvoices.filter((inv) => {
+      if (inv.paymentType !== "account" || inv.remaining <= 0 || inv.cancelled || !inv.paymentDueDate) return false;
+      return new Date(inv.paymentDueDate) < new Date();
+    }).length;
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 30);
+    const overdueSuppliers = purchaseInvoices.filter((p) => p.remaining > 0 && new Date(p.date) < cutoff).length;
+    return outOfStock + overdueAccounts + overdueSuppliers;
+  }, [products, salesInvoices, purchaseInvoices]);
+
   const canSearchProducts = hasPermission(currentUser, "products");
   const canSearchCustomers = hasPermission(currentUser, "customers");
   const canSearchSuppliers = hasPermission(currentUser, "suppliers");
@@ -148,7 +163,15 @@ export function Topbar() {
             className="relative w-9 h-9 rounded-lg hover:bg-slate-100 grid place-items-center text-slate-600"
           >
             <Bell className="w-4 h-4" />
-            <span className="absolute top-1 end-1 w-2 h-2 rounded-full bg-red-500" />
+            {alertCount > 0 && (
+              alertCount < 10 ? (
+                <span className="absolute -top-1 -end-1 min-w-[18px] h-[18px] rounded-full bg-red-500 text-white text-[10px] font-bold grid place-items-center px-1">
+                  {alertCount}
+                </span>
+              ) : (
+                <span className="absolute top-0.5 end-0.5 w-2.5 h-2.5 rounded-full bg-red-500" />
+              )
+            )}
           </button>
         ) : null}
         <div className="relative">
@@ -188,6 +211,18 @@ export function Topbar() {
                   }}
                 >
                   الإعدادات
+                </button>
+              )}
+              {(settings.idleLockMinutes ?? 0) > 0 && (
+                <button
+                  className="w-full text-right px-3 py-2 text-sm hover:bg-slate-50 flex items-center gap-2"
+                  onClick={() => {
+                    setOpen(false);
+                    lockSession();
+                  }}
+                >
+                  <Lock className="w-3.5 h-3.5 text-slate-500" />
+                  قفل الجلسة
                 </button>
               )}
               <button

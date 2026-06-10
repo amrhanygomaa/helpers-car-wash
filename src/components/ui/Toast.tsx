@@ -54,6 +54,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         {items.map((t) => (
           <div
             key={t.id}
+            role="status"
             className={cn(
               "animate-fadeIn flex items-start gap-3 w-full",
               "bg-white rounded-lg shadow-lg border border-slate-200 p-3 pe-8 relative"
