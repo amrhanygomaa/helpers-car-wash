@@ -19,9 +19,11 @@ import {
   UserRound,
   PanelRightClose,
   PanelRightOpen,
+  Shield,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
-import { useApp } from "../../store/AppContext";
+import { useAuth } from "../../store/AuthContext";
+import { useSettings } from "../../store/SettingsContext";
 import type { UserPermissions } from "../../types";
 import { hasPermission } from "../../lib/permissions";
 
@@ -50,6 +52,7 @@ const NAV: NavItem[] = [
   { to: "/reports", label: "التقارير", icon: BarChart3, permission: "reports" },
   { to: "/reports/employees", label: "تقرير الموظفين", icon: Users, ownerOnly: true },
   { to: "/users", label: "المستخدمين", icon: Users, ownerOnly: true },
+  { to: "/audit-log", label: "سجل التدقيق", icon: Shield, ownerOnly: true },
   { to: "/my-profile", label: "ملفي الشخصي", icon: UserRound, employeeOnly: true },
   { to: "/settings", label: "الإعدادات", icon: Settings, ownerOnly: true },
 ];
@@ -61,7 +64,8 @@ export function Sidebar({
   collapsed: boolean;
   onToggleCollapse: () => void;
 }) {
-  const { settings, logout, currentUser } = useApp();
+  const { logout, currentUser } = useAuth();
+  const { settings } = useSettings();
   
   const filteredNav = NAV.filter(item => {
     if (!currentUser) return false;

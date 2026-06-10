@@ -76,6 +76,16 @@ declare global {
           rows: { key: string; value: string; updated_at: string }[];
         }>;
         import: (payload: unknown) => Promise<{ ok: boolean }>;
+        getBatch: () => Promise<Record<string, string>>;
+        setBatch: (entries: Record<string, string>) => Promise<boolean>;
+      };
+      backup: {
+        writeFile: (
+          dir: string,
+          fileName: string,
+          content: string
+        ) => Promise<{ ok: boolean; path?: string; error?: string }>;
+        selectDirectory: () => Promise<string | null>;
       };
     };
   }

@@ -9,7 +9,7 @@ import { lsGet } from "../lib/storage";
 import { Save, Printer, Download, Upload, Database, FileSpreadsheet, ShieldCheck, Clock, Image as ImageIcon, Trash2, FolderOpen } from "lucide-react";
 
 export function SettingsPage() {
-  const { settings, updateSettings, exportBackup, importBackup, exportToCSV } = useApp();
+  const { settings, updateSettings, exportBackup, importBackup, backupToPath, exportToExcel } = useApp();
   const toast = useToast();
   const [form, setForm] = useState(settings);
 
@@ -18,6 +18,29 @@ export function SettingsPage() {
   function save() {
     updateSettings(form);
     toast.success("تم حفظ الإعدادات");
+  }
+
+  async function backupNow() {
+    const dir = form.backupPath?.trim();
+    if (!dir) {
+      toast.error("لم يتم تحديد مجلد", "اختر مجلد النسخ الاحتياطي أولاً");
+      return;
+    }
+    if (dir !== settings.backupPath) updateSettings({ ...settings, backupPath: dir });
+    const result = await backupToPath(dir);
+    if (result.ok) {
+      toast.success("تم النسخ الاحتياطي", result.path ?? dir);
+      return;
+    }
+    const messages: Record<string, string> = {
+      no_path: "لم يتم تحديد مجلد النسخ الاحتياطي",
+      not_desktop: "هذه الميزة متاحة في تطبيق سطح المكتب فقط",
+      path_not_found: "المجلد غير موجود أو غير متاح",
+      not_authorized: "غير مصرح — سجّل الدخول كمالك",
+      invalid_input: "بيانات غير صالحة",
+      write_failed: "فشل الكتابة إلى المجلد",
+    };
+    toast.error("فشل النسخ الاحتياطي", messages[result.error ?? ""] ?? "حدث خطأ غير متوقع");
   }
 
   function getRemainingDays(startDate: string, months: number) {
@@ -253,10 +276,47 @@ export function SettingsPage() {
               </Select>
             </Field>
             <div className="bg-blue-50 border border-blue-100 rounded-lg p-3">
-              <div className="text-xs text-blue-700 font-bold mb-1">آخر نسخة تلقائية:</div>
+              <div className="text-xs text-blue-700 font-bold mb-1">آخر نسخة احتياطية:</div>
               <div className="text-sm text-blue-900 font-mono">
                 {settings.lastBackupDate ? new Date(settings.lastBackupDate).toLocaleString("ar-EG") : "لم يتم الحفظ بعد"}
               </div>
+            </div>
+            <Field label="مجلد النسخ الاحتياطي (محلي / خارجي / شبكة)" className="md:col-span-2">
+              <div className="flex gap-2">
+                <Input
+                  value={form.backupPath}
+                  readOnly
+                  placeholder="اختر مجلداً..."
+                  className="bg-slate-50 font-mono text-xs"
+                />
+                <Button
+                  variant="outline"
+                  onClick={async () => {
+                    if (window.desktopAPI?.backup?.selectDirectory) {
+                      const path = await window.desktopAPI.backup.selectDirectory();
+                      if (path) setForm({ ...form, backupPath: path });
+                    } else {
+                      toast.error("متاح في تطبيق سطح المكتب فقط");
+                    }
+                  }}
+                >
+                  <FolderOpen className="w-4 h-4" />
+                </Button>
+              </div>
+            </Field>
+            <Field label="نسخ احتياطي فوري">
+              <Button
+                variant="outline"
+                onClick={backupNow}
+                disabled={!form.backupPath?.trim()}
+                className="w-full justify-center"
+              >
+                <Database className="w-4 h-4" /> نسخ احتياطي الآن
+              </Button>
+            </Field>
+            <div className="md:col-span-3 text-xs text-slate-500">
+              يتم حفظ نسخة كاملة من البيانات (بصيغة JSON) في المجلد المحدد. يمكن استعادتها لاحقاً عبر "استيراد نسخة احتياطية".
+              عند التفعيل، تُحفظ نسخة تلقائياً عند فتح البرنامج حسب التكرار المختار.
             </div>
           </CardBody>
         </Card>
@@ -415,21 +475,21 @@ export function SettingsPage() {
         </Card>
 
         <Card className="lg:col-span-1">
-          <CardHeader title="تصدير البيانات (Excel/CSV)" subtitle="تصدير جداول البيانات منفصلة" />
+          <CardHeader title="تصدير البيانات (Excel)" subtitle="تصدير جداول البيانات إلى ملفات Excel منفصلة" />
           <CardBody className="grid grid-cols-2 gap-2">
-            <Button onClick={() => exportToCSV("products")} variant="outline" size="sm" className="justify-start">
+            <Button onClick={() => exportToExcel("products")} variant="outline" size="sm" className="justify-start">
               <FileSpreadsheet className="w-4 h-4" /> المنتجات
             </Button>
-            <Button onClick={() => exportToCSV("customers")} variant="outline" size="sm" className="justify-start">
+            <Button onClick={() => exportToExcel("customers")} variant="outline" size="sm" className="justify-start">
               <FileSpreadsheet className="w-4 h-4" /> العملاء
             </Button>
-            <Button onClick={() => exportToCSV("suppliers")} variant="outline" size="sm" className="justify-start">
+            <Button onClick={() => exportToExcel("suppliers")} variant="outline" size="sm" className="justify-start">
               <FileSpreadsheet className="w-4 h-4" /> الموردين
             </Button>
-            <Button onClick={() => exportToCSV("sales")} variant="outline" size="sm" className="justify-start">
+            <Button onClick={() => exportToExcel("sales")} variant="outline" size="sm" className="justify-start">
               <FileSpreadsheet className="w-4 h-4" /> المبيعات
             </Button>
-            <Button onClick={() => exportToCSV("purchases")} variant="outline" size="sm" className="justify-start">
+            <Button onClick={() => exportToExcel("purchases")} variant="outline" size="sm" className="justify-start">
               <FileSpreadsheet className="w-4 h-4" /> المشتريات
             </Button>
           </CardBody>

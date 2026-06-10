@@ -33,7 +33,12 @@ import { Badge } from "../components/ui/Badge";
 import { Input, Field, Select } from "../components/ui/Input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/Tabs";
 import { Table, TBody, TD, TH, THead, TR } from "../components/ui/Table";
-import { useApp } from "../store/AppContext";
+import { useCatalog } from "../store/CatalogContext";
+import { useUsers } from "../store/UsersContext";
+import { useInvoicing } from "../store/InvoicingContext";
+import { useReporting } from "../store/ReportingContext";
+import { useAuth } from "../store/AuthContext";
+import { useSettings } from "../store/SettingsContext";
 import { useToast } from "../components/ui/Toast";
 import { formatCurrency, formatDate } from "../lib/format";
 import { daysUntil, inRange } from "../lib/utils";
@@ -51,20 +56,17 @@ type PrintMode =
   | "customerDues";
 
 export function ReportsPage() {
+  const { products, customers, suppliers } = useCatalog();
+  const { users } = useUsers();
+  const { salesInvoices, purchaseInvoices } = useInvoicing();
+  const { settings } = useSettings();
   const {
-    products,
-    customers,
-    suppliers,
-    users,
-    salesInvoices,
-    purchaseInvoices,
-    settings,
     customerBalance,
     supplierBalance,
     calculateSupplierCommission,
-    exportToCSV,
-    currentUser,
-  } = useApp();
+    exportToExcel,
+  } = useReporting();
+  const { currentUser } = useAuth();
   const toast = useToast();
   const navigate = useNavigate();
 
@@ -314,12 +316,12 @@ export function ReportsPage() {
               <Button 
                 variant="outline" 
                 onClick={() => {
-                  const csvModes = ["products", "customers", "suppliers", "sales", "purchases", "stock", "commissions"] as const;
-                  type CsvMode = typeof csvModes[number];
+                  const excelModes = ["products", "customers", "suppliers", "sales", "purchases", "stock", "commissions"] as const;
+                  type ExcelMode = typeof excelModes[number];
                   if (printMode === "full" || printMode === "supplierDues" || printMode === "monthlyProfit") {
                     toast.info("تصدير", "يرجى اختيار تقرير محدد (مبيعات، مشتريات، إلخ) للتصدير إلى Excel");
-                  } else if ((csvModes as readonly string[]).includes(printMode)) {
-                    exportToCSV(printMode as CsvMode);
+                  } else if ((excelModes as readonly string[]).includes(printMode)) {
+                    exportToExcel(printMode as ExcelMode);
                   }
                 }}
               >

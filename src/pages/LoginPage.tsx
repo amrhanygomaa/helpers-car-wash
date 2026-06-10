@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { Boxes, Eye, EyeOff, MessageCircle, ShieldCheck } from "lucide-react";
-import { useApp } from "../store/AppContext";
+import { useAuth } from "../store/AuthContext";
 import { Button } from "../components/ui/Button";
 import { Field, Input } from "../components/ui/Input";
 import { useToast } from "../components/ui/Toast";
 import type { LoginResult } from "../types";
 
 export function LoginPage() {
-  const { login } = useApp();
+  const { login } = useAuth();
   const navigate = useNavigate();
   const toast = useToast();
   const [username, setUsername] = useState("");

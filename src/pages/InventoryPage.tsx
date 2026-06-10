@@ -18,7 +18,10 @@ import { Input, Select, Field, Textarea } from "../components/ui/Input";
 import { Table, TBody, TD, TH, THead, TR } from "../components/ui/Table";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Dialog } from "../components/ui/Dialog";
-import { useApp } from "../store/AppContext";
+import { useCatalog } from "../store/CatalogContext";
+import { useInvoicing } from "../store/InvoicingContext";
+import { useAuth } from "../store/AuthContext";
+import { useSettings } from "../store/SettingsContext";
 import { useToast } from "../components/ui/Toast";
 import { daysUntil } from "../lib/utils";
 import { formatDate } from "../lib/format";
@@ -27,18 +30,10 @@ import type { Product } from "../types";
 import { hasPermission } from "../lib/permissions";
 
 export function InventoryPage() {
-  const {
-    products,
-    suppliers,
-    stockMovements,
-    adjustStock,
-    settings,
-    salesInvoices,
-    purchaseInvoices,
-    salesReturns,
-    purchaseReturns,
-    currentUser,
-  } = useApp();
+  const { products, suppliers, adjustStock } = useCatalog();
+  const { stockMovements, salesInvoices, purchaseInvoices, salesReturns, purchaseReturns } = useInvoicing();
+  const { currentUser } = useAuth();
+  const { settings } = useSettings();
   const toast = useToast();
   const canAdjustStock = hasPermission(currentUser, "inventory", "adjust");
   const [q, setQ] = useState("");

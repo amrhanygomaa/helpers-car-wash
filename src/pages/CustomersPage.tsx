@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Pencil, Plus, Trash2, Eye, Users, Search } from "lucide-react";
 import { PageHeader } from "../components/layout/AppLayout";
 import { Card, CardBody, CardHeader } from "../components/ui/Card";
@@ -9,7 +9,11 @@ import { Table, TBody, TD, TH, THead, TR } from "../components/ui/Table";
 import { ConfirmDialog, Dialog } from "../components/ui/Dialog";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Drawer } from "../components/ui/Drawer";
-import { useApp } from "../store/AppContext";
+import { useCatalog } from "../store/CatalogContext";
+import { useInvoicing } from "../store/InvoicingContext";
+import { useReporting } from "../store/ReportingContext";
+import { useAuth } from "../store/AuthContext";
+import { useSettings } from "../store/SettingsContext";
 import { useToast } from "../components/ui/Toast";
 import { formatCurrency, formatDate } from "../lib/format";
 import type { Customer } from "../types";
@@ -17,23 +21,28 @@ import { Link } from "react-router-dom";
 import { hasPermission } from "../lib/permissions";
 
 export function CustomersPage() {
-  const {
-    customers,
-    addCustomer,
-    updateCustomer,
-    deleteCustomer,
-    customerBalance,
-    salesInvoices,
-    settings,
-    currentUser,
-    nextCustomerCode,
-  } = useApp();
+  const { customers, addCustomer, updateCustomer, deleteCustomer, nextCustomerCode } = useCatalog();
+  const { salesInvoices } = useInvoicing();
+  const { customerBalance } = useReporting();
+  const { currentUser } = useAuth();
+  const { settings } = useSettings();
   const toast = useToast();
   const canAddCustomer = hasPermission(currentUser, "customers", "add");
   const canEditCustomer = hasPermission(currentUser, "customers", "edit");
   const canDeleteCustomer = hasPermission(currentUser, "customers", "delete");
 
   const [q, setQ] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.key === "/" || (e.ctrlKey && e.key === "f")) && searchRef.current && document.activeElement !== searchRef.current) {
+        e.preventDefault();
+        searchRef.current.focus();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Customer | null>(null);
   const [viewing, setViewing] = useState<Customer | null>(null);
@@ -134,9 +143,10 @@ export function CustomersPage() {
           <div className="relative w-72">
             <Search className="w-4 h-4 absolute top-1/2 -translate-y-1/2 end-3 text-slate-400" />
             <Input
+              ref={searchRef}
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="بحث بالاسم أو الهاتف"
+              placeholder="بحث بالاسم أو الهاتف (/ أو Ctrl+F)"
               className="pe-9"
             />
           </div>

@@ -6,6 +6,7 @@ import {
   ArrowUpRight,
   MessageCircle,
   Search,
+  Shuffle,
 } from "lucide-react";
 import { PageHeader } from "../components/layout/AppLayout";
 import { Badge } from "../components/ui/Badge";
@@ -14,7 +15,11 @@ import { Card, CardBody, CardHeader } from "../components/ui/Card";
 import { Input, Select } from "../components/ui/Input";
 import { Table, TBody, TD, TH, THead, TR } from "../components/ui/Table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/Tabs";
-import { useApp } from "../store/AppContext";
+import { useCatalog } from "../store/CatalogContext";
+import { useInvoicing } from "../store/InvoicingContext";
+import { useSettings } from "../store/SettingsContext";
+import { useReporting } from "../store/ReportingContext";
+import { useToast } from "../components/ui/Toast";
 import { formatCurrency, formatDate } from "../lib/format";
 import type { PurchaseInvoice, SalesInvoice } from "../types";
 
@@ -105,15 +110,11 @@ function includesTerm(...values: Array<string | number | undefined>) {
 
 export function DuesPage() {
   const navigate = useNavigate();
-  const {
-    customers,
-    suppliers,
-    salesInvoices,
-    purchaseInvoices,
-    customerBalance,
-    supplierBalance,
-    settings,
-  } = useApp();
+  const toast = useToast();
+  const { customers, suppliers } = useCatalog();
+  const { salesInvoices, purchaseInvoices, settleAllDues } = useInvoicing();
+  const { settings } = useSettings();
+  const { customerBalance, customerCredit, supplierBalance } = useReporting();
 
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<DueStatus | "all">("all");
@@ -528,7 +529,7 @@ export function DuesPage() {
                     <TH className="text-end">فواتير مفتوحة</TH>
                     <TH className="text-end">متأخر</TH>
                     <TH>آخر حركة</TH>
-                    <TH className="text-end">تواصل</TH>
+                    <TH className="text-end">إجراءات</TH>
                   </TR>
                 </THead>
                 <TBody>
@@ -564,7 +565,31 @@ export function DuesPage() {
                         </TD>
                         <TD>{row.lastActivity ? formatDate(row.lastActivity) : "—"}</TD>
                         <TD className="text-end">
-                          <ContactButton phone={row.phone} compact />
+                          <div className="inline-flex items-center gap-1.5 justify-end">
+                            {row.type === "customer" &&
+                              customerCredit(row.id) > 0 &&
+                              row.openInvoices > 0 && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="text-emerald-700 border-emerald-300 hover:bg-emerald-50 gap-1"
+                                  title={`تسوية الرصيد الدائن ${formatCurrency(customerCredit(row.id), settings.currency)} من مستحقات ${row.name}`}
+                                  onClick={() => {
+                                    const settled = settleAllDues(row.id);
+                                    if (settled > 0) {
+                                      toast.success(
+                                        "تسوية الرصيد",
+                                        `تم تسوية ${formatCurrency(settled, settings.currency)} من رصيد ${row.name}`
+                                      );
+                                    }
+                                  }}
+                                >
+                                  <Shuffle className="w-3.5 h-3.5" />
+                                  تسوية
+                                </Button>
+                              )}
+                            <ContactButton phone={row.phone} compact />
+                          </div>
                         </TD>
                       </TR>
                     ))

@@ -3,17 +3,40 @@ import { ArrowRight, Target, UserRound } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { PageHeader } from "../components/layout/AppLayout";
 import { Card, CardBody, CardHeader } from "../components/ui/Card";
-import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
-import { Field, Input } from "../components/ui/Input";
+import { Field } from "../components/ui/Input";
 import { EmptyState } from "../components/ui/EmptyState";
-import { useApp } from "../store/AppContext";
+import { useUsers } from "../store/UsersContext";
+import { useReporting } from "../store/ReportingContext";
+import { useSettings } from "../store/SettingsContext";
 import { formatCurrency } from "../lib/format";
 
+function currentQuarter() {
+  const now = new Date();
+  const q = Math.floor(now.getMonth() / 3) + 1;
+  return `${now.getFullYear()}-Q${q}`;
+}
+
+function buildQuarterOptions(): { value: string; label: string }[] {
+  const options: { value: string; label: string }[] = [];
+  const now = new Date();
+  let year = now.getFullYear();
+  let q = Math.floor(now.getMonth() / 3) + 1;
+  for (let i = 0; i < 8; i++) {
+    options.push({ value: `${year}-Q${q}`, label: `الربع ${q} — ${year}` });
+    q--;
+    if (q === 0) { q = 4; year--; }
+  }
+  return options;
+}
+
 export function EmployeeReportPage() {
-  const { users, employeeSalesStats, settings } = useApp();
+  const { users } = useUsers();
+  const { employeeSalesStats } = useReporting();
+  const { settings } = useSettings();
   const navigate = useNavigate();
-  const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [quarter, setQuarter] = useState(currentQuarter);
+  const quarterOptions = useMemo(() => buildQuarterOptions(), []);
 
   const employees = useMemo(
     () => users.filter((user) => user.role === "employee"),
@@ -24,7 +47,7 @@ export function EmployeeReportPage() {
     <>
       <PageHeader
         title="تقرير الموظفين"
-        description="متابعة المبيعات والتارجت والعمولات الشهرية لكل موظف"
+        description="متابعة المحصَّل والعمولات الربعية لكل موظف"
         actions={
           <Button variant="outline" onClick={() => navigate("/reports")}>
             <ArrowRight className="w-4 h-4" /> رجوع للتقارير
@@ -34,13 +57,18 @@ export function EmployeeReportPage() {
 
       <Card>
         <CardBody>
-          <Field label="الشهر">
-            <Input
-              type="month"
-              value={month}
-              onChange={(e) => setMonth(e.target.value)}
-              className="w-52"
-            />
+          <Field label="الربع">
+            <select
+              value={quarter}
+              onChange={(e) => setQuarter(e.target.value)}
+              className="w-52 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-500"
+            >
+              {quarterOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
           </Field>
         </CardBody>
       </Card>
@@ -58,13 +86,7 @@ export function EmployeeReportPage() {
       ) : (
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
           {employees.map((employee) => {
-            const stats = employeeSalesStats(employee.id, month);
-            const hasTarget = stats.target > 0;
-            const targetDelta = Math.abs(stats.totalSales - stats.target);
-            const progress = hasTarget
-              ? Math.min(100, (stats.totalSales / stats.target) * 100)
-              : 0;
-
+            const stats = employeeSalesStats(employee.id, quarter);
             return (
               <Card key={employee.id}>
                 <CardHeader
@@ -74,55 +96,13 @@ export function EmployeeReportPage() {
                       <span>{employee.name || employee.username}</span>
                     </div>
                   }
-                  actions={
-                    hasTarget ? (
-                      <Badge tone={stats.achieved ? "green" : "amber"}>
-                        {stats.achieved ? "محقق" : "لم يحقق بعد"}
-                      </Badge>
-                    ) : null
-                  }
                 />
-                <CardBody className="space-y-4">
-                  {hasTarget ? (
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between text-xs text-slate-500">
-                        <span>نسبة تحقيق التارجت</span>
-                        <span>{Math.round(progress)}%</span>
-                      </div>
-                      <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
-                        <div
-                          className={`h-full rounded-full ${
-                            stats.achieved ? "bg-emerald-500" : "bg-amber-500"
-                          }`}
-                          style={{ width: `${progress}%` }}
-                        />
-                      </div>
-                    </div>
-                  ) : null}
-
+                <CardBody>
                   <div className="divide-y divide-slate-100 border-y border-slate-100">
                     <ReportRow
-                      label="المبيعات"
-                      value={formatCurrency(stats.totalSales, settings.currency)}
+                      label="المحصَّل في الربع"
+                      value={formatCurrency(stats.totalCollected, settings.currency)}
                     />
-                    {hasTarget ? (
-                      <>
-                        <ReportRow
-                          label="التارجت"
-                          value={formatCurrency(stats.target, settings.currency)}
-                          suffix={
-                            <Badge tone={stats.achieved ? "green" : "amber"}>
-                              {stats.achieved ? "محقق" : "غير محقق"}
-                            </Badge>
-                          }
-                        />
-                        <ReportRow
-                          label={stats.achieved ? "زيادة عن التارجت" : "ناقص على التارجت"}
-                          value={formatCurrency(targetDelta, settings.currency)}
-                          tone={stats.achieved ? "green" : "amber"}
-                        />
-                      </>
-                    ) : null}
                     <ReportRow
                       label="الراتب"
                       value={formatCurrency(stats.salary, settings.currency)}

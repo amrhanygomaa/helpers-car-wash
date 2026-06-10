@@ -2,7 +2,9 @@ import { Drawer } from "../../components/ui/Drawer";
 import { Badge } from "../../components/ui/Badge";
 import { Table, TBody, TD, TH, THead, TR } from "../../components/ui/Table";
 import type { Product } from "../../types";
-import { useApp } from "../../store/AppContext";
+import { useCatalog } from "../../store/CatalogContext";
+import { useInvoicing } from "../../store/InvoicingContext";
+import { useSettings } from "../../store/SettingsContext";
 import { formatCurrency, formatDate } from "../../lib/format";
 import { formatStockMovementReference } from "../../lib/stockMovement";
 import { daysUntil } from "../../lib/utils";
@@ -16,15 +18,9 @@ export function ProductDetailsDrawer({
   product: Product | null;
   onClose: () => void;
 }) {
-  const {
-    stockMovements,
-    suppliers,
-    settings,
-    salesInvoices,
-    purchaseInvoices,
-    salesReturns,
-    purchaseReturns,
-  } = useApp();
+  const { suppliers } = useCatalog();
+  const { stockMovements, salesInvoices, purchaseInvoices, salesReturns, purchaseReturns } = useInvoicing();
+  const { settings } = useSettings();
   if (!product) return null;
 
   const supplier = suppliers.find((s) => s.id === product.supplierId);
@@ -69,6 +65,11 @@ export function ProductDetailsDrawer({
             {formatCurrency(product.retailPrice, settings.currency)}
           </Info>
           <Info label="المورد">{supplier?.name ?? "—"}</Info>
+          {product.barcode ? (
+            <Info label="الباركود">
+              <span className="font-mono">{product.barcode}</span>
+            </Info>
+          ) : null}
           <Info label="الصلاحية">
             {product.hasExpiry && product.expiryDate ? (
               <div className="flex items-center gap-2">

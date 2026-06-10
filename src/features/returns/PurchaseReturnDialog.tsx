@@ -2,7 +2,8 @@ import { useState } from "react";
 import { Dialog } from "../../components/ui/Dialog";
 import { Button } from "../../components/ui/Button";
 import { Table, TBody, TD, TH, THead, TR } from "../../components/ui/Table";
-import { useApp } from "../../store/AppContext";
+import { useInvoicing } from "../../store/InvoicingContext";
+import { useSettings } from "../../store/SettingsContext";
 import { useToast } from "../../components/ui/Toast";
 import type { PurchaseInvoice, ReturnLine } from "../../types";
 import { formatCurrency } from "../../lib/format";
@@ -17,7 +18,8 @@ export function PurchaseReturnDialog({
   onClose: () => void;
   invoice: PurchaseInvoice;
 }) {
-  const { addPurchaseReturn, settings } = useApp();
+  const { addPurchaseReturn } = useInvoicing();
+  const { settings } = useSettings();
   const toast = useToast();
 
   const [quantities, setQuantities] = useState<Record<string, number>>({});

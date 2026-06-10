@@ -9,6 +9,8 @@ import {
   type ReactNode,
 } from "react";
 import type {
+  AuditAction,
+  AuditLog,
   CashEntry,
   Customer,
   Product,
@@ -27,9 +29,8 @@ import type {
   ID,
   InvoiceLine,
   LoginResult,
-  ReturnLine,
 } from "../types";
-import { lsClearAll, lsGet, lsRemove, lsSet } from "../lib/storage";
+import { lsClearAll, lsGet, lsRemove, lsSet, lsSetBatch } from "../lib/storage";
 import { hashPassword, verifyFallbackPassword } from "../lib/auth";
 import { normalizeUser } from "../lib/permissions";
 import { formatSupplierCode, nextSupplierCodeFromExisting } from "../lib/codes";
@@ -45,12 +46,22 @@ import {
   seedUsers,
 } from "../data/seed";
 import { uid } from "../lib/utils";
-
-interface AuthState {
-  isAuthenticated: boolean;
-  userId?: string;
-  username?: string;
-}
+import { buildXlsx } from "../lib/xlsx";
+import { isAutoBackupDue, backupFileName } from "../lib/backupSchedule";
+import {
+  computeStatus,
+  applyPieceDeduction,
+  applyPieceAddition,
+  settleSalesInvoiceReturn,
+  settlePurchaseInvoiceReturn,
+} from "./_pure";
+import { SettingsContext } from "./SettingsContext";
+import { AuditLogContext } from "./AuditLogContext";
+import { AuthContext, type AuthState, type UpdateCurrentUserProfileResult } from "./AuthContext";
+import { CatalogContext } from "./CatalogContext";
+import { InvoicingContext } from "./InvoicingContext";
+import { ReportingContext } from "./ReportingContext";
+import { UsersContext } from "./UsersContext";
 
 interface AppState {
   auth: AuthState;
@@ -74,17 +85,8 @@ interface AppState {
   salesReturns: SalesReturn[];
   purchaseReturns: PurchaseReturn[];
   drivers: Driver[];
+  auditLogs: AuditLog[];
 }
-
-type UpdateCurrentUserProfileResult = {
-  ok: boolean;
-  error?:
-  | "not_authenticated"
-  | "invalid_name"
-  | "invalid_current_password"
-  | "password_too_short"
-  | "user_missing";
-};
 
 interface AppActions {
   login: (username: string, password: string) => Promise<LoginResult>;
@@ -154,8 +156,9 @@ interface AppActions {
     patch: Omit<SalesInvoice, "id" | "createdAt" | "customerId" | "customerName" | "status" | "remaining">
   ) => void;
   recordSalesReceipt: (id: string, amount: number) => void;
-  cancelSalesInvoice: (id: string) => void;
+  cancelSalesInvoice: (id: string, refundMode?: "cash" | "credit") => void;
   deleteSalesInvoice: (id: string) => boolean;
+  settleAllDues: (customerId: ID) => number;
 
   // Returns
   addSalesReturn: (
@@ -173,6 +176,7 @@ interface AppActions {
   // Derived
   currentCashBalance: () => number;
   customerBalance: (customerId: string) => number;
+  customerCredit: (customerId: string) => number;
   supplierBalance: (supplierId: string) => number;
   calculateSupplierCommission: (supplierId: string) => {
     tierId: string;
@@ -183,156 +187,24 @@ interface AppActions {
     commissionType: CommissionType;
     commissionValue: number;
   }[];
-  employeeSalesStats: (userId: ID, month: string) => {
-    totalSales: number;
-    target: number;
-    remaining: number;
-    achieved: boolean;
+  employeeSalesStats: (userId: ID, quarter: string) => {
+    totalCollected: number;
     commissionEarned: number;
     salary: number;
     totalEarnings: number;
+    quarterLabel: string;
   };
 
   // Backup & Import
   exportBackup: () => void;
   importBackup: (file: File) => Promise<boolean>;
-  exportToCSV: (dataType: "products" | "customers" | "suppliers" | "sales" | "purchases" | "stock" | "supplierDues" | "commissions") => void;
+  backupToPath: (dirOverride?: string) => Promise<{ ok: boolean; path?: string; error?: string }>;
+  exportToExcel: (dataType: "products" | "customers" | "suppliers" | "sales" | "purchases" | "stock" | "supplierDues" | "commissions") => void;
 }
 
 type AppContextValue = AppState & AppActions;
 
 const AppContext = createContext<AppContextValue | null>(null);
-
-function computeStatus(
-  total: number,
-  paid: number
-): "paid" | "partial" | "unpaid" {
-  if (total <= 0) return "paid";
-  if (paid <= 0) return "unpaid";
-  if (paid >= total) return "paid";
-  return "partial";
-}
-
-function applyPieceDeduction(p: Product, pieces: number): Partial<Product> {
-  const ppu = p.piecesPerUnit!;
-  const loose = p.looseQuantity ?? 0;
-  if (loose >= pieces) {
-    return { quantity: p.quantity, looseQuantity: loose - pieces };
-  }
-  const needed = pieces - loose;
-  const cartonsToOpen = Math.ceil(needed / ppu);
-  return {
-    quantity: Math.max(0, p.quantity - cartonsToOpen),
-    looseQuantity: cartonsToOpen * ppu - needed,
-  };
-}
-
-function applyPieceAddition(p: Product, pieces: number): Partial<Product> {
-  const ppu = p.piecesPerUnit!;
-  const newLoose = (p.looseQuantity ?? 0) + pieces;
-  const fullCartons = Math.floor(newLoose / ppu);
-  return {
-    quantity: p.quantity + fullCartons,
-    looseQuantity: newLoose - fullCartons * ppu,
-  };
-}
-
-function applyReturnToInvoiceLines(lines: InvoiceLine[], returns: ReturnLine[]) {
-  const remainingByLine = new Map<string, number>();
-  const remainingByProduct = new Map<string, number>();
-
-  returns.forEach((line) => {
-    if (line.sourceLineId) {
-      remainingByLine.set(
-        line.sourceLineId,
-        (remainingByLine.get(line.sourceLineId) ?? 0) + line.quantity
-      );
-      return;
-    }
-
-    remainingByProduct.set(
-      line.productId,
-      (remainingByProduct.get(line.productId) ?? 0) + line.quantity
-    );
-  });
-
-  let appliedTotal = 0;
-  const nextLines = lines
-    .map((line) => {
-      const lineReturnQty = remainingByLine.get(line.id);
-      const productReturnQty = lineReturnQty === undefined
-        ? remainingByProduct.get(line.productId)
-        : undefined;
-      const requestedReturnQty = lineReturnQty ?? productReturnQty ?? 0;
-      const appliedQty = Math.min(line.quantity, Math.max(0, requestedReturnQty));
-
-      if (lineReturnQty !== undefined) {
-        remainingByLine.set(line.id, Math.max(0, lineReturnQty - appliedQty));
-      } else if (productReturnQty !== undefined) {
-        remainingByProduct.set(line.productId, Math.max(0, productReturnQty - appliedQty));
-      }
-
-      appliedTotal += appliedQty * line.price;
-      const quantity = Math.max(0, line.quantity - appliedQty);
-      return {
-        ...line,
-        quantity,
-        subtotal: quantity * line.price,
-      };
-    })
-    .filter((line) => line.quantity > 0);
-
-  const total = nextLines.reduce((sum, line) => sum + line.subtotal, 0);
-  return { lines: nextLines, total, appliedTotal };
-}
-
-function settleSalesInvoiceReturn(
-  invoice: SalesInvoice,
-  ret: Pick<SalesReturn, "lines" | "total" | "refundCash">
-) {
-  // Keep original lines and total unchanged — returns are shown as separate records.
-  const returnTotal = Math.min(invoice.total, ret.total);
-  const paidAndCredit = invoice.amountReceived + (invoice.overpayment ?? 0);
-  const cashRefund = ret.refundCash ? Math.min(returnTotal, paidAndCredit) : 0;
-  const paidAndCreditAfterReturn = Math.max(0, paidAndCredit - cashRefund);
-  const effectiveTotal = Math.max(0, invoice.total - returnTotal);
-  const amountReceived = Math.min(effectiveTotal, paidAndCreditAfterReturn);
-  const overpayment = Math.max(0, paidAndCreditAfterReturn - amountReceived);
-  const remaining = Math.max(0, effectiveTotal - amountReceived);
-
-  return {
-    invoice: {
-      ...invoice,
-      amountReceived,
-      remaining,
-      status: computeStatus(effectiveTotal, amountReceived),
-      overpayment: overpayment > 0 ? overpayment : undefined,
-      paymentDueDate: remaining > 0 ? invoice.paymentDueDate : undefined,
-    },
-    cashRefund,
-  };
-}
-
-function settlePurchaseInvoiceReturn(
-  invoice: PurchaseInvoice,
-  ret: Pick<PurchaseReturn, "lines" | "total">
-) {
-  const adjusted = applyReturnToInvoiceLines(invoice.lines, ret.lines);
-  const paidAndCredit = invoice.amountPaid + (invoice.overpayment ?? 0);
-  const amountPaid = Math.min(adjusted.total, paidAndCredit);
-  const overpayment = Math.max(0, paidAndCredit - amountPaid);
-  const remaining = Math.max(0, adjusted.total - amountPaid);
-
-  return {
-    ...invoice,
-    lines: adjusted.lines,
-    total: adjusted.total,
-    amountPaid,
-    remaining,
-    status: computeStatus(adjusted.total, amountPaid),
-    overpayment: overpayment > 0 ? overpayment : undefined,
-  };
-}
 
 function monthsBetween(start?: string | null, end?: string | null): number {
   if (!start || !end) return 0;
@@ -521,6 +393,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
     lsGet<PurchaseReturn[]>("purchaseReturns", [])
   );
   const [drivers, setDrivers] = useState<Driver[]>(() => lsGet("drivers", []));
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => lsGet<AuditLog[]>("auditLogs", []));
+  const currentUserRef = useRef<AppUser | null>(null);
+
+  const logAudit = useCallback((action: AuditAction, entityLabel: string, details?: string) => {
+    const user = currentUserRef.current;
+    if (!user) return;
+    const entry: AuditLog = {
+      id: uid("audit"),
+      action,
+      entityLabel,
+      userId: user.id,
+      userName: user.name,
+      timestamp: new Date().toISOString(),
+      details,
+    };
+    setAuditLogs((list) => [entry, ...list].slice(0, 1000));
+  }, []);
 
   const loadStoredStateFromDesktop = useCallback(() => {
     const storedSettings = lsGet<Settings>("settings", seedSettings);
@@ -549,6 +438,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSalesReturns(lsGet<SalesReturn[]>("salesReturns", []));
     setPurchaseReturns(lsGet<PurchaseReturn[]>("purchaseReturns", []));
     setDrivers(lsGet<Driver[]>("drivers", []));
+    setAuditLogs(lsGet<AuditLog[]>("auditLogs", []));
   }, [licenseStatus]);
 
   const clearDesktopRendererState = useCallback(() => {
@@ -567,6 +457,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSalesReturns([]);
     setPurchaseReturns([]);
     setDrivers([]);
+    setAuditLogs([]);
   }, [licenseStatus]);
 
   const refreshLicenseStatus = useCallback(async () => {
@@ -606,16 +497,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // being listed as a dependency (avoids re-scheduling the interval on every change).
   const liveStateRef = useRef({
     settings, products, suppliers, customers, purchaseInvoices, salesInvoices,
-    stockMovements, cashEntries, nextProductCode, nextSupplierCode, users,
-    salesReturns, purchaseReturns, drivers,
+    stockMovements, cashEntries, nextProductCode, nextSupplierCode, nextCustomerCode, users,
+    salesReturns, purchaseReturns, drivers, auditLogs,
   });
   useEffect(() => {
     liveStateRef.current = {
       settings, products, suppliers, customers, purchaseInvoices, salesInvoices,
-      stockMovements, cashEntries, nextProductCode, nextSupplierCode, users,
-      salesReturns, purchaseReturns, drivers,
+      stockMovements, cashEntries, nextProductCode, nextSupplierCode, nextCustomerCode, users,
+      salesReturns, purchaseReturns, drivers, auditLogs,
     };
-  }, [settings, products, suppliers, customers, purchaseInvoices, salesInvoices, stockMovements, cashEntries, nextProductCode, nextSupplierCode, users, salesReturns, purchaseReturns, drivers]);
+  }, [settings, products, suppliers, customers, purchaseInvoices, salesInvoices, stockMovements, cashEntries, nextProductCode, nextSupplierCode, nextCustomerCode, users, salesReturns, purchaseReturns, drivers, auditLogs]);
 
   // --- Auto Backup Logic (timer-based — never blocks on state changes) ---
   useEffect(() => {
@@ -663,14 +554,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         timestamp: new Date().toISOString(),
         state: {
           settings, products, suppliers, customers, purchaseInvoices, salesInvoices,
-          stockMovements, cashEntries, nextProductCode, nextSupplierCode, users: safeUsers, salesReturns, purchaseReturns, drivers
+          stockMovements, cashEntries, nextProductCode, nextSupplierCode, nextCustomerCode, users: safeUsers, salesReturns, purchaseReturns, drivers, auditLogs,
         }
       };
       lsSet("inventory_last_session_backup", data);
     };
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [settings, products, suppliers, customers, purchaseInvoices, salesInvoices, stockMovements, cashEntries, nextProductCode, nextSupplierCode, users, salesReturns, purchaseReturns, drivers]);
+  }, [settings, products, suppliers, customers, purchaseInvoices, salesInvoices, stockMovements, cashEntries, nextProductCode, nextSupplierCode, nextCustomerCode, users, salesReturns, purchaseReturns, drivers, auditLogs]);
 
   const currentUser = useMemo(() => {
     if (!auth.isAuthenticated) return null;
@@ -681,6 +572,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!auth.username) return null;
     return users.find((u) => u.username === auth.username) || null;
   }, [users, auth]);
+  // Keep the audit-log ref in sync with the current user so logAudit (which runs
+  // from action callbacks, after commit) always reads the latest identity.
+  useEffect(() => {
+    currentUserRef.current = currentUser;
+  }, [currentUser]);
   const localOwnerExists = useMemo(() => users.some((u) => u.role === "owner"), [users]);
   const ownerExists = isDesktop ? desktopOwnerExists === true : localOwnerExists;
   const ownerCheckPending = isDesktop && desktopOwnerExists === null;
@@ -689,29 +585,33 @@ export function AppProvider({ children }: { children: ReactNode }) {
     lsRemove("auth");
   }, []);
 
-  // Batch all storage writes into a single debounced flush (400 ms).
-  // Previously 14 separate effects fired independently on every state change,
-  // causing up to 14 synchronous IPC + SQLite writes per interaction.
+  // Batch all storage writes into a single debounced flush.
+  // Uses lsSetBatch to write all keys in ONE SQLite transaction via a
+  // single async IPC call — previously this was 16 separate IPC calls
+  // that kept the main process busy and caused sync reads to block.
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      lsSet("settings", settings);
-      lsSet("products", products);
-      lsSet("suppliers", suppliers);
-      lsSet("customers", customers);
-      lsSet("purchaseInvoices", purchaseInvoices);
-      lsSet("salesInvoices", salesInvoices);
-      lsSet("stockMovements", stockMovements);
-      lsSet("cashEntries", cashEntries);
-      lsSet("nextProductCode", nextProductCode);
-      lsSet("nextSupplierCode", nextSupplierCode);
-      lsSet("nextCustomerCode", nextCustomerCode);
-      lsSet("users", users);
-      lsSet("salesReturns", salesReturns);
-      lsSet("purchaseReturns", purchaseReturns);
-      lsSet("drivers", drivers);
-    }, 400);
+      lsSetBatch({
+        settings,
+        products,
+        suppliers,
+        customers,
+        purchaseInvoices,
+        salesInvoices,
+        stockMovements,
+        cashEntries,
+        nextProductCode,
+        nextSupplierCode,
+        nextCustomerCode,
+        users,
+        salesReturns,
+        purchaseReturns,
+        drivers,
+        auditLogs,
+      });
+    }, 2000);
     return () => window.clearTimeout(timer);
-  }, [settings, products, suppliers, customers, purchaseInvoices, salesInvoices, stockMovements, cashEntries, nextProductCode, nextSupplierCode, nextCustomerCode, users, salesReturns, purchaseReturns, drivers]);
+  }, [settings, products, suppliers, customers, purchaseInvoices, salesInvoices, stockMovements, cashEntries, nextProductCode, nextSupplierCode, nextCustomerCode, users, salesReturns, purchaseReturns, drivers, auditLogs]);
 
   const login = useCallback(async (username: string, passwordRaw: string) => {
     const attemptKey = loginAttemptKey(username);
@@ -802,6 +702,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSalesReturns([]);
     setPurchaseReturns([]);
     setDrivers([]);
+    setAuditLogs([]);
   }, []);
 
   const updateSettings = useCallback((patch: Partial<Settings>) => {
@@ -847,7 +748,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       )
     );
   };
-  const updateCurrentUserProfile: AppActions["updateCurrentUserProfile"] = async ({
+  const updateCurrentUserProfile: AppActions["updateCurrentUserProfile"] = useCallback(async ({
     name,
     currentPassword,
     newPassword,
@@ -935,7 +836,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     );
 
     return { ok: true };
-  };
+  }, [currentUser]);
   const deleteUser: AppActions["deleteUser"] = (id) => {
     const u = users.find((x) => x.id === id);
     if (u?.role === "owner") return false;
@@ -1002,12 +903,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
         productId,
         productName: prod.name,
         type: totalDelta >= 0 ? "adjustment-in" : "adjustment-out",
-        quantity: delta,
+        quantity: totalDelta,
         reason,
         referenceType: "manual",
-        date: new Date().toISOString(),
+        date: new Date().toISOString().slice(0, 10),
       };
       setStockMovements((l) => [mv, ...l]);
+      logAudit("stock_adjusted", prod.name, `${delta > 0 ? "+" : ""}${delta} ${prod.unit} — ${reason}`);
     }
   };
 
@@ -1132,14 +1034,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // stock increments
     setProducts((list) =>
       list.map((p) => {
-        const line = inv.lines.find((l) => l.productId === p.id);
-        if (!line) return p;
-        const patch: Partial<Product> = {
-          quantity: p.quantity + line.quantity,
-        };
-        if (line.expiryDate && p.hasExpiry) {
-          patch.expiryDate = line.expiryDate;
-        }
+        const matchingLines = inv.lines.filter((l) => l.productId === p.id);
+        if (matchingLines.length === 0) return p;
+        const totalQty = matchingLines.reduce((sum, l) => sum + l.quantity, 0);
+        const lastExpiry = matchingLines.filter((l) => l.expiryDate).pop()?.expiryDate;
+        const patch: Partial<Product> = { quantity: p.quantity + totalQty };
+        if (lastExpiry && p.hasExpiry) patch.expiryDate = lastExpiry;
         return { ...p, ...patch };
       })
     );
@@ -1180,12 +1080,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // Reverse old stock, apply new stock in one pass
     setProducts((list) =>
       list.map((p) => {
-        const oldLine = inv.lines.find((l) => l.productId === p.id);
-        const newLine = patch.lines.find((l) => l.productId === p.id);
+        const oldQty = inv.lines.filter((l) => l.productId === p.id).reduce((sum, l) => sum + l.quantity, 0);
+        const newQty = patch.lines.filter((l) => l.productId === p.id).reduce((sum, l) => sum + l.quantity, 0);
         let qty = p.quantity;
-        if (oldLine) qty = Math.max(0, qty - oldLine.quantity);
-        if (newLine) qty = qty + newLine.quantity;
-        const expiryDate = newLine?.expiryDate && p.hasExpiry ? newLine.expiryDate : p.expiryDate;
+        if (oldQty > 0) qty = Math.max(0, qty - oldQty);
+        if (newQty > 0) qty = qty + newQty;
+        const lastNewExpiry = patch.lines.filter((l) => l.productId === p.id && l.expiryDate).pop()?.expiryDate;
+        const expiryDate = lastNewExpiry && p.hasExpiry ? lastNewExpiry : p.expiryDate;
         return qty !== p.quantity || expiryDate !== p.expiryDate
           ? { ...p, quantity: qty, expiryDate }
           : p;
@@ -1241,12 +1142,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setPurchaseInvoices((list) =>
       list.map((inv) => {
         if (inv.id !== id) return inv;
-        const paid = Math.min(inv.total, inv.amountPaid + amount);
+        const cappedAmount = Math.min(amount, inv.remaining);
+        const excess = amount - cappedAmount;
+        const paid = inv.amountPaid + cappedAmount;
         return {
           ...inv,
           amountPaid: paid,
           remaining: Math.max(0, inv.total - paid),
           status: computeStatus(inv.total, paid),
+          overpayment: excess > 0 ? (inv.overpayment ?? 0) + excess : inv.overpayment,
         };
       })
     );
@@ -1269,14 +1173,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // revert stock
     setProducts((list) =>
       list.map((p) => {
-        const l = inv.lines.find((x) => x.productId === p.id);
-        if (!l) return p;
-        return { ...p, quantity: Math.max(0, p.quantity - l.quantity) };
+        const totalQty = inv.lines.filter((x) => x.productId === p.id).reduce((sum, l) => sum + l.quantity, 0);
+        if (totalQty === 0) return p;
+        return { ...p, quantity: Math.max(0, p.quantity - totalQty) };
       })
     );
     setPurchaseInvoices((list) => list.filter((i) => i.id !== id));
     setStockMovements((list) => list.filter((m) => m.referenceId !== id));
     setCashEntries((list) => list.filter((c) => c.referenceId !== id));
+    logAudit("invoice_purchase_deleted", `${inv.invoiceNumber} — ${inv.supplierName}`, `المدفوع: ${inv.amountPaid}`);
     return true;
   };
 
@@ -1299,12 +1204,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // stock decrements
     setProducts((list) =>
       list.map((p) => {
-        const l = inv.lines.find((x) => x.productId === p.id);
-        if (!l) return p;
-        if (l.isRetailUnit && p.piecesPerUnit) {
-          return { ...p, ...applyPieceDeduction(p, l.quantity) };
+        const matchingLines = inv.lines.filter((x) => x.productId === p.id);
+        if (matchingLines.length === 0) return p;
+        const totalQty = matchingLines.reduce((sum, l) => sum + l.quantity, 0);
+        if (matchingLines.some((l) => l.isRetailUnit) && p.piecesPerUnit) {
+          return { ...p, ...applyPieceDeduction(p, totalQty) };
         }
-        return { ...p, quantity: Math.max(0, p.quantity - l.quantity) };
+        return { ...p, quantity: Math.max(0, p.quantity - totalQty) };
       })
     );
     const movements: StockMovement[] = inv.lines.map((l, idx) => ({
@@ -1371,24 +1277,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // Restore old stock quantities
     setProducts((list) =>
       list.map((p) => {
-        const old = inv.lines.find((l) => l.productId === p.id);
-        if (!old) return p;
-        if (old.isRetailUnit && p.piecesPerUnit) {
-          return { ...p, ...applyPieceAddition(p, old.quantity) };
+        const oldLines = inv.lines.filter((l) => l.productId === p.id);
+        if (oldLines.length === 0) return p;
+        const oldQty = oldLines.reduce((sum, l) => sum + l.quantity, 0);
+        if (oldLines.some((l) => l.isRetailUnit) && p.piecesPerUnit) {
+          return { ...p, ...applyPieceAddition(p, oldQty) };
         }
-        return { ...p, quantity: p.quantity + old.quantity };
+        return { ...p, quantity: p.quantity + oldQty };
       })
     );
 
     // Deduct new stock quantities
     setProducts((list) =>
       list.map((p) => {
-        const nl = patch.lines.find((l) => l.productId === p.id);
-        if (!nl) return p;
-        if (nl.isRetailUnit && p.piecesPerUnit) {
-          return { ...p, ...applyPieceDeduction(p, nl.quantity) };
+        const newLines = patch.lines.filter((l) => l.productId === p.id);
+        if (newLines.length === 0) return p;
+        const newQty = newLines.reduce((sum, l) => sum + l.quantity, 0);
+        if (newLines.some((l) => l.isRetailUnit) && p.piecesPerUnit) {
+          return { ...p, ...applyPieceDeduction(p, newQty) };
         }
-        return { ...p, quantity: p.quantity - nl.quantity };
+        return { ...p, quantity: p.quantity - newQty };
       })
     );
 
@@ -1416,6 +1324,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const newRemaining = Math.max(0, newTotal - cappedReceived);
     const newStatus = computeStatus(newTotal, cappedReceived);
 
+    const prevCash = inv.amountReceived + (inv.overpayment ?? 0);
+    const nextCash = cappedReceived + newOverpayment;
+    const cashDelta = nextCash - prevCash;
+    if (cashDelta !== 0) {
+      const ce: CashEntry = {
+        id: uid("cash_edit_s"),
+        type: cashDelta > 0 ? "sales-receipt" : "adjustment",
+        amount: cashDelta,
+        description: `تعديل تحصيل فاتورة مبيعات ${inv.invoiceNumber} — ${inv.customerName}`,
+        referenceId: id,
+        date: new Date().toISOString().slice(0, 10),
+      };
+      setCashEntries((list) => [ce, ...list]);
+    }
+
     setSalesInvoices((list) =>
       list.map((s) =>
         s.id === id
@@ -1432,35 +1355,67 @@ export function AppProvider({ children }: { children: ReactNode }) {
     );
   };
 
-  const cancelSalesInvoice: AppActions["cancelSalesInvoice"] = (id) => {
+  const cancelSalesInvoice: AppActions["cancelSalesInvoice"] = (id, refundMode) => {
     const inv = salesInvoices.find((i) => i.id === id);
     if (!inv || inv.cancelled) return;
     // return stock
     setProducts((list) =>
       list.map((p) => {
-        const l = inv.lines.find((x) => x.productId === p.id);
-        if (!l) return p;
-        if (l.isRetailUnit && p.piecesPerUnit) {
-          return { ...p, ...applyPieceAddition(p, l.quantity) };
+        const matchingLines = inv.lines.filter((x) => x.productId === p.id);
+        if (matchingLines.length === 0) return p;
+        const totalQty = matchingLines.reduce((sum, l) => sum + l.quantity, 0);
+        if (matchingLines.some((l) => l.isRetailUnit) && p.piecesPerUnit) {
+          return { ...p, ...applyPieceAddition(p, totalQty) };
         }
-        return { ...p, quantity: p.quantity + l.quantity };
+        return { ...p, quantity: p.quantity + totalQty };
       })
     );
-    setSalesInvoices((list) =>
-      list.map((i) => (i.id === id ? { ...i, cancelled: true } : i))
-    );
-    const mv: StockMovement = {
-      id: uid("mov_ret"),
-      productId: inv.lines[0]?.productId ?? "",
-      productName: "إلغاء فاتورة " + inv.invoiceNumber,
-      type: "return",
-      quantity: inv.lines.reduce((a, b) => a + b.quantity, 0),
+    const totalCollected = inv.amountReceived + (inv.overpayment ?? 0);
+    if (totalCollected > 0 && refundMode === "cash") {
+      const ce: CashEntry = {
+        id: uid("cash_cancel_s"),
+        type: "adjustment",
+        amount: -totalCollected,
+        description: `ردّ نقدية لإلغاء فاتورة مبيعات ${inv.invoiceNumber} — ${inv.customerName}`,
+        referenceId: id,
+        date: new Date().toISOString().slice(0, 10),
+      };
+      setCashEntries((list) => [ce, ...list]);
+      setSalesInvoices((list) =>
+        list.map((i) => (i.id === id ? { ...i, cancelled: true } : i))
+      );
+    } else if (totalCollected > 0 && refundMode === "credit") {
+      setSalesInvoices((list) =>
+        list.map((i) =>
+          i.id === id
+            ? { ...i, cancelled: true, amountReceived: 0, overpayment: totalCollected }
+            : i
+        )
+      );
+    } else {
+      setSalesInvoices((list) =>
+        list.map((i) => (i.id === id ? { ...i, cancelled: true } : i))
+      );
+    }
+    const auditDetails = totalCollected > 0 && refundMode
+      ? refundMode === "cash"
+        ? `ردّ نقدي ${totalCollected}`
+        : `تحويل رصيد دائن ${totalCollected}`
+      : undefined;
+    logAudit("invoice_sale_cancelled", `${inv.invoiceNumber} — ${inv.customerName}`, auditDetails);
+    const cancelDate = new Date().toISOString().slice(0, 10);
+    const cancelMovements: StockMovement[] = inv.lines.map((l, idx) => ({
+      id: uid(`mov_cancel_${idx}`),
+      productId: l.productId,
+      productName: l.productName,
+      type: "return" as const,
+      quantity: l.quantity,
       reason: `إلغاء فاتورة مبيعات ${inv.invoiceNumber}`,
       referenceId: id,
-      referenceType: "sale",
-      date: new Date().toISOString().slice(0, 10),
-    };
-    setStockMovements((list) => [mv, ...list]);
+      referenceType: "sale" as const,
+      date: cancelDate,
+    }));
+    setStockMovements((list) => [...cancelMovements, ...list]);
   };
   const deleteSalesInvoice: AppActions["deleteSalesInvoice"] = (id) => {
     const inv = salesInvoices.find((i) => i.id === id);
@@ -1468,25 +1423,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!inv.cancelled) {
       setProducts((list) =>
         list.map((p) => {
-          const l = inv.lines.find((x) => x.productId === p.id);
-          if (!l) return p;
-          if (l.isRetailUnit && p.piecesPerUnit) {
-            return { ...p, ...applyPieceAddition(p, l.quantity) };
+          const matchingLines = inv.lines.filter((x) => x.productId === p.id);
+          if (matchingLines.length === 0) return p;
+          const totalQty = matchingLines.reduce((sum, l) => sum + l.quantity, 0);
+          if (matchingLines.some((l) => l.isRetailUnit) && p.piecesPerUnit) {
+            return { ...p, ...applyPieceAddition(p, totalQty) };
           }
-          return { ...p, quantity: p.quantity + l.quantity };
+          return { ...p, quantity: p.quantity + totalQty };
         })
       );
     }
     setSalesInvoices((list) => list.filter((i) => i.id !== id));
     setStockMovements((list) => list.filter((m) => m.referenceId !== id));
     setCashEntries((list) => list.filter((c) => c.referenceId !== id));
+    logAudit("invoice_sale_deleted", `${inv.invoiceNumber} — ${inv.customerName}`, `المستلم: ${inv.amountReceived}`);
     return true;
   };
 
   // Returns
   const addSalesReturn: AppActions["addSalesReturn"] = (r) => {
     const id = uid("sr");
-    const num = `SR-${(salesReturns.length + 1).toString().padStart(4, "0")}`;
+    const salesReturnNums = salesReturns.map((x) => parseInt(x.returnNumber.replace(/\D/g, ""), 10)).filter((n) => !isNaN(n));
+    const nextSRNum = salesReturnNums.length ? Math.max(...salesReturnNums) + 1 : 1;
+    const num = `SR-${nextSRNum.toString().padStart(4, "0")}`;
     const full: SalesReturn = {
       ...r,
       id,
@@ -1498,12 +1457,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // Update stock (increase)
     setProducts((list) =>
       list.map((p) => {
-        const l = r.lines.find((x) => x.productId === p.id);
-        if (!l) return p;
-        if (l.isRetailUnit && p.piecesPerUnit) {
-          return { ...p, ...applyPieceAddition(p, l.quantity) };
+        const matchingLines = r.lines.filter((x) => x.productId === p.id);
+        if (matchingLines.length === 0) return p;
+        const totalQty = matchingLines.reduce((sum, l) => sum + l.quantity, 0);
+        if (matchingLines.some((l) => l.isRetailUnit) && p.piecesPerUnit) {
+          return { ...p, ...applyPieceAddition(p, totalQty) };
         }
-        return { ...p, quantity: p.quantity + l.quantity };
+        return { ...p, quantity: p.quantity + totalQty };
       })
     );
 
@@ -1554,7 +1514,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const addPurchaseReturn: AppActions["addPurchaseReturn"] = (r) => {
     const id = uid("pr");
-    const num = `PR-${(purchaseReturns.length + 1).toString().padStart(4, "0")}`;
+    const purchaseReturnNums = purchaseReturns.map((x) => parseInt(x.returnNumber.replace(/\D/g, ""), 10)).filter((n) => !isNaN(n));
+    const nextPRNum = purchaseReturnNums.length ? Math.max(...purchaseReturnNums) + 1 : 1;
+    const num = `PR-${nextPRNum.toString().padStart(4, "0")}`;
     const full: PurchaseReturn = {
       ...r,
       id,
@@ -1566,9 +1528,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // Update stock (decrease)
     setProducts((list) =>
       list.map((p) => {
-        const l = r.lines.find((x) => x.productId === p.id);
-        if (!l) return p;
-        return { ...p, quantity: Math.max(0, p.quantity - l.quantity) };
+        const totalQty = r.lines.filter((x) => x.productId === p.id).reduce((sum, l) => sum + l.quantity, 0);
+        if (totalQty === 0) return p;
+        return { ...p, quantity: Math.max(0, p.quantity - totalQty) };
       })
     );
 
@@ -1628,6 +1590,72 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [salesInvoices]
   );
 
+  const customerCredit = useCallback(
+    (customerId: string) => {
+      return salesInvoices
+        .filter((s) => s.customerId === customerId)
+        .reduce((a, s) => a + (s.overpayment ?? 0), 0);
+    },
+    [salesInvoices]
+  );
+
+  const settleAllDues = useCallback(
+    (customerId: string): number => {
+      const customerInvoices = salesInvoices.filter(
+        (inv) => inv.customerId === customerId
+      );
+      const targets = customerInvoices
+        .filter((inv) => !inv.cancelled && inv.remaining > 0)
+        .sort((a, b) => a.date.localeCompare(b.date));
+      const sources = customerInvoices
+        .filter((inv) => (inv.overpayment ?? 0) > 0)
+        .sort((a, b) => b.date.localeCompare(a.date));
+      if (targets.length === 0 || sources.length === 0) return 0;
+
+      const updates = new Map<string, Partial<SalesInvoice>>();
+      let creditPool = sources.reduce((sum, inv) => sum + (inv.overpayment ?? 0), 0);
+      let totalSettled = 0;
+
+      for (const target of targets) {
+        if (creditPool <= 0) break;
+        const apply = Math.min(creditPool, target.remaining);
+        const newReceived = target.amountReceived + apply;
+        updates.set(target.id, {
+          amountReceived: newReceived,
+          remaining: Math.max(0, target.total - newReceived),
+          status: computeStatus(target.total, newReceived),
+        });
+        creditPool -= apply;
+        totalSettled += apply;
+      }
+
+      let toReduce = totalSettled;
+      for (const source of sources) {
+        if (toReduce <= 0) break;
+        const credit = source.overpayment ?? 0;
+        const reduced = Math.min(toReduce, credit);
+        const existing = updates.get(source.id) ?? {};
+        updates.set(source.id, { ...existing, overpayment: Math.max(0, credit - reduced) });
+        toReduce -= reduced;
+      }
+
+      if (totalSettled === 0) return 0;
+
+      setSalesInvoices((list) =>
+        list.map((inv) => {
+          const patch = updates.get(inv.id);
+          return patch ? { ...inv, ...patch } : inv;
+        })
+      );
+
+      const customerName =
+        salesInvoices.find((inv) => inv.customerId === customerId)?.customerName ?? customerId;
+      logAudit("invoice_sale_updated", customerName, `تسوية رصيد دائن: ${totalSettled}`);
+      return totalSettled;
+    },
+    [salesInvoices, logAudit]
+  );
+
   const supplierBalance = useCallback(
     (supplierId: string) => {
       return purchaseInvoices
@@ -1681,58 +1709,120 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [suppliers, purchaseInvoices, purchaseReturns]);
 
   const employeeSalesStats: AppActions["employeeSalesStats"] = useCallback(
-    (userId, month) => {
+    (userId, quarter) => {
       const employee = users.find((u) => u.id === userId);
-      const monthKey = month || new Date().toISOString().slice(0, 7);
-      const totalSales = salesInvoices
+      const [yearStr, qStr] = quarter.split("-Q");
+      const year = parseInt(yearStr, 10);
+      const q = parseInt(qStr, 10);
+      const quarterStart = new Date(year, (q - 1) * 3, 1).toISOString().slice(0, 10);
+      const quarterEnd = new Date(year, q * 3, 0).toISOString().slice(0, 10);
+
+      const empInvoiceIds = new Set(
+        salesInvoices
+          .filter((inv) => inv.createdByUserId === userId && !inv.cancelled)
+          .map((inv) => inv.id)
+      );
+
+      // IDs of returns linked to this employee's invoices (for cash refund deductions)
+      const empReturnIds = new Set(
+        salesReturns
+          .filter((r) => r.originalInvoiceId != null && empInvoiceIds.has(r.originalInvoiceId))
+          .map((r) => r.id)
+      );
+
+      // Net cash = receipts on invoices + edits/cancellation adjustments + return refunds
+      const totalCollected = cashEntries
         .filter(
-          (inv) =>
-            inv.createdByUserId === userId &&
-            !inv.cancelled &&
-            inv.date.slice(0, 7) === monthKey
+          (ce) =>
+            ce.referenceId != null &&
+            ce.date >= quarterStart &&
+            ce.date <= quarterEnd &&
+            (
+              (empInvoiceIds.has(ce.referenceId) &&
+                (ce.type === "sales-receipt" || ce.type === "adjustment")) ||
+              (empReturnIds.has(ce.referenceId) && ce.type === "adjustment")
+            )
         )
-        .reduce((sum, inv) => sum + inv.total, 0);
-      const target = employee?.monthlySalesTarget ?? 0;
-      const remaining = target > 0 ? Math.max(0, target - totalSales) : 0;
-      const achieved = target > 0 && totalSales >= target;
+        .reduce((sum, ce) => sum + ce.amount, 0);
+
       const commissionPct = employee?.salesCommissionPct ?? 0;
-      const commissionEarned = (totalSales * commissionPct) / 100;
+      const commissionEarned = (totalCollected * commissionPct) / 100;
       const salary = employee?.monthlySalary ?? 0;
 
       return {
-        totalSales,
-        target,
-        remaining,
-        achieved,
+        totalCollected,
         commissionEarned,
         salary,
         totalEarnings: salary + commissionEarned,
+        quarterLabel: `الربع ${q} — ${year}`,
       };
     },
-    [users, salesInvoices]
+    [users, salesInvoices, salesReturns, cashEntries]
   );
 
   // --- Backup & Export ---
 
-  const exportBackup: AppActions["exportBackup"] = useCallback(() => {
+  const buildBackupData = useCallback(() => {
     // SECURITY: Strip passwordHash from exported user data
     const safeUsers = redactUserPasswordHashes(users);
-    const data = {
+    return {
       version: "1.0",
       timestamp: new Date().toISOString(),
       state: {
         settings, products, suppliers, customers, purchaseInvoices, salesInvoices,
-        stockMovements, cashEntries, nextProductCode, nextSupplierCode, users: safeUsers, salesReturns, purchaseReturns, drivers
+        stockMovements, cashEntries, nextProductCode, nextSupplierCode, nextCustomerCode, users: safeUsers, salesReturns, purchaseReturns, drivers, auditLogs,
       }
     };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  }, [settings, products, suppliers, customers, purchaseInvoices, salesInvoices, stockMovements, cashEntries, nextProductCode, nextSupplierCode, nextCustomerCode, users, salesReturns, purchaseReturns, drivers, auditLogs]);
+
+  const exportBackup: AppActions["exportBackup"] = useCallback(() => {
+    const blob = new Blob([JSON.stringify(buildBackupData(), null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
     link.download = `backup_${new Date().toISOString().slice(0, 10)}.json`;
     link.click();
     URL.revokeObjectURL(url);
-  }, [settings, products, suppliers, customers, purchaseInvoices, salesInvoices, stockMovements, cashEntries, nextProductCode, nextSupplierCode, users, salesReturns, purchaseReturns, drivers]);
+  }, [buildBackupData]);
+
+  // Write a full backup to the configured folder (local / external / network).
+  // `dirOverride` lets the Settings page back up to a freshly-picked path before it is saved.
+  const backupToPath: AppActions["backupToPath"] = useCallback(async (dirOverride?: string) => {
+    const dir = (dirOverride ?? settings.backupPath)?.trim();
+    if (!dir) return { ok: false, error: "no_path" };
+    if (!window.desktopAPI?.backup) return { ok: false, error: "not_desktop" };
+    const content = JSON.stringify(buildBackupData(), null, 2);
+    const result = await window.desktopAPI.backup.writeFile(dir, backupFileName(new Date()), content);
+    if (result.ok) {
+      setSettings((s) => ({ ...s, lastBackupDate: new Date().toISOString() }));
+    }
+    return result;
+  }, [settings.backupPath, buildBackupData]);
+
+  // Run an automatic backup once per session, on startup, when one is due.
+  const autoBackupRanRef = useRef(false);
+  useEffect(() => {
+    if (autoBackupRanRef.current) return;
+    if (!isDesktop || currentUser?.role !== "owner") return;
+    const due = isAutoBackupDue({
+      enabled: settings.autoBackupEnabled,
+      backupPath: settings.backupPath ?? "",
+      frequency: settings.autoBackupFrequency,
+      lastBackupDate: settings.lastBackupDate,
+      now: Date.now(),
+    });
+    if (!due) return;
+    autoBackupRanRef.current = true;
+    void backupToPath();
+  }, [
+    isDesktop,
+    currentUser,
+    settings.autoBackupEnabled,
+    settings.backupPath,
+    settings.autoBackupFrequency,
+    settings.lastBackupDate,
+    backupToPath,
+  ]);
 
   const importBackup: AppActions["importBackup"] = useCallback(async (file) => {
     try {
@@ -1745,7 +1835,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const requiredKeys = ["products", "customers", "suppliers"];
       if (!requiredKeys.some(k => Array.isArray(s[k]))) return false;
 
-      if (s.settings) setSettings(s.settings);
+      if (s.settings) setSettings(applyLicenseSettings(s.settings, licenseStatus));
       if (Array.isArray(s.products)) setProducts(s.products.map(normalizeProduct));
       if (Array.isArray(s.suppliers)) setSuppliers(s.suppliers);
       if (Array.isArray(s.customers)) setCustomers(s.customers);
@@ -1762,6 +1852,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
       } else if (importedSuppliers.length > 0) {
         setNextSupplierCode(nextSupplierCodeFromExisting(importedSuppliers));
       }
+      const importedCustomers = Array.isArray(s.customers) ? s.customers : [];
+      if (typeof s.nextCustomerCode === "number") {
+        setNextCustomerCode(s.nextCustomerCode);
+      } else if (importedCustomers.length > 0) {
+        const maxCode = importedCustomers.reduce((max: number, c: Record<string, unknown>) => {
+          const match = /^CUS-(\d+)$/i.exec(String(c.code ?? "").trim());
+          return match ? Math.max(max, Number(match[1])) : max;
+        }, 0);
+        setNextCustomerCode(maxCode + 1);
+      }
       // SECURITY: Users with [REDACTED] passwords are NOT imported — keep current users
       if (Array.isArray(s.users)) {
         const hasValidPasswords = s.users.every((u: Record<string, unknown>) => typeof u.passwordHash === "string" && u.passwordHash !== "[REDACTED]");
@@ -1770,20 +1870,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (Array.isArray(s.salesReturns)) setSalesReturns(s.salesReturns);
       if (Array.isArray(s.purchaseReturns)) setPurchaseReturns(s.purchaseReturns);
       if (Array.isArray(s.drivers)) setDrivers(s.drivers);
+      if (Array.isArray(s.auditLogs)) setAuditLogs(s.auditLogs);
 
       return true;
     } catch {
       return false;
     }
-  }, []);
+  }, [licenseStatus]);
 
-  const exportToCSV: AppActions["exportToCSV"] = useCallback((type) => {
+  const exportToExcel: AppActions["exportToExcel"] = useCallback((type) => {
     let rows: (string | number | undefined)[][] = [];
     let headers: string[] = [];
 
     if (type === "products") {
-      headers = ["الكود", "الاسم", "الفئة", "الكمية", "سعر الشراء", "سعر الجملة", "سعر التجزئة"];
-      rows = products.map(p => [p.code, p.name, p.category, p.quantity, p.purchasePrice, p.wholesalePrice, p.retailPrice]);
+      headers = ["الكود", "الباركود", "الاسم", "الفئة", "الكمية", "سعر الشراء", "سعر الجملة", "سعر التجزئة"];
+      rows = products.map(p => [p.code, p.barcode, p.name, p.category, p.quantity, p.purchasePrice, p.wholesalePrice, p.retailPrice]);
     } else if (type === "customers") {
       headers = ["الاسم", "الهاتف", "العنوان", "الرصيد"];
       rows = customers.map(c => [c.name, c.phone, c.address, customerBalance(c.id)]);
@@ -1791,8 +1892,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       headers = ["الاسم", "الهاتف", "الرصيد"];
       rows = suppliers.map(s => [s.name, s.phone, supplierBalance(s.id)]);
     } else if (type === "sales") {
-      headers = ["رقم الفاتورة", "التاريخ", "العميل", "الإجمالي", "الحالة"];
-      rows = salesInvoices.map(s => [s.invoiceNumber, s.date, s.customerName, s.total, s.status]);
+      headers = ["رقم الفاتورة", "التاريخ", "العميل", "الإجمالي", "المُحصَّل", "المتبقي", "الحالة", "ملغاة"];
+      rows = salesInvoices.map(s => [
+        s.invoiceNumber, s.date, s.customerName, s.total,
+        s.amountReceived + (s.overpayment ?? 0), s.remaining,
+        s.status, s.cancelled ? "نعم" : "لا",
+      ]);
     } else if (type === "purchases") {
       headers = ["رقم الفاتورة", "التاريخ", "المورد", "الإجمالي", "الحالة"];
       rows = purchaseInvoices.map(p => [p.invoiceNumber, p.date, p.supplierName, p.total, p.status]);
@@ -1838,12 +1943,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
       });
     }
 
-    const csvContent = "\uFEFF" + [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const sheetNames: Record<typeof type, string> = {
+      products: "\u0627\u0644\u0645\u0646\u062A\u062C\u0627\u062A",
+      customers: "\u0627\u0644\u0639\u0645\u0644\u0627\u0621",
+      suppliers: "\u0627\u0644\u0645\u0648\u0631\u062F\u064A\u0646",
+      sales: "\u0627\u0644\u0645\u0628\u064A\u0639\u0627\u062A",
+      purchases: "\u0627\u0644\u0645\u0634\u062A\u0631\u064A\u0627\u062A",
+      stock: "\u0627\u0644\u0645\u062E\u0632\u0648\u0646",
+      supplierDues: "\u0645\u0633\u062A\u062D\u0642\u0627\u062A \u0627\u0644\u0645\u0648\u0631\u062F\u064A\u0646",
+      commissions: "\u0639\u0645\u0648\u0644\u0627\u062A \u0627\u0644\u0645\u0648\u0631\u062F\u064A\u0646",
+    };
+    const bytes = buildXlsx([{ name: sheetNames[type], headers, rows }]);
+    const blob = new Blob([bytes], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `${type}_export_${new Date().toISOString().slice(0, 10)}.csv`;
+    link.download = `${type}_export_${new Date().toISOString().slice(0, 10)}.xlsx`;
     link.click();
     URL.revokeObjectURL(url);
   }, [products, customers, suppliers, salesInvoices, purchaseInvoices, customerBalance, supplierBalance, calculateSupplierCommission]);
@@ -1866,7 +1983,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       nextProductCode,
       nextSupplierCode,
       nextCustomerCode,
-      nextSupplierCode,
       salesReturns,
       purchaseReturns,
       drivers,
@@ -1913,12 +2029,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
       addCashEntry,
       currentCashBalance,
       customerBalance,
+      customerCredit,
+      settleAllDues,
       supplierBalance,
+      auditLogs,
       calculateSupplierCommission,
       employeeSalesStats,
       exportBackup,
       importBackup,
-      exportToCSV,
+      backupToPath,
+      exportToExcel,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
@@ -1938,10 +2058,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       nextProductCode,
       nextSupplierCode,
       nextCustomerCode,
-      nextSupplierCode,
       salesReturns,
       purchaseReturns,
       drivers,
+      auditLogs,
       users,
       currentUser,
       login,
@@ -1950,14 +2070,112 @@ export function AppProvider({ children }: { children: ReactNode }) {
       createOwner,
       updateCurrentUserProfile,
       calculateSupplierCommission,
+      settleAllDues,
       employeeSalesStats,
       exportBackup,
       importBackup,
-      exportToCSV,
+      backupToPath,
+      exportToExcel,
     ]
   );
 
-  return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
+  // F3-6: settings, the audit log, and session/auth are also exposed through
+  // dedicated contexts so their consumers re-render independently of the main store.
+  const settingsValue = useMemo(() => ({ settings, updateSettings }), [settings, updateSettings]);
+  const auditLogValue = useMemo(() => ({ auditLogs }), [auditLogs]);
+  const authValue = useMemo(
+    () => ({
+      auth,
+      currentUser,
+      isDesktop,
+      licenseStatus,
+      ownerExists,
+      ownerCheckPending,
+      login,
+      logout,
+      createOwner,
+      activateLicense,
+      refreshLicenseStatus,
+      updateCurrentUserProfile,
+    }),
+    [
+      auth,
+      currentUser,
+      isDesktop,
+      licenseStatus,
+      ownerExists,
+      ownerCheckPending,
+      login,
+      logout,
+      createOwner,
+      activateLicense,
+      refreshLicenseStatus,
+      updateCurrentUserProfile,
+    ]
+  );
+
+  // F3-6: Users slice — users array + CRUD (plain functions, data-only deps).
+  const usersValue = useMemo(
+    () => ({ users, addUser, updateUser, deleteUser }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [users]
+  );
+
+  // F3-6: Reporting slice — derived selectors only (all are stable useCallbacks).
+  const reportingValue = useMemo(
+    () => ({ customerBalance, customerCredit, supplierBalance, calculateSupplierCommission, employeeSalesStats, exportToExcel }),
+    [customerBalance, customerCredit, supplierBalance, calculateSupplierCommission, employeeSalesStats, exportToExcel]
+  );
+
+  // F3-6: Invoicing slice — sales/purchase invoices, returns, cashbox, stock movements + actions.
+  // Same intentional pattern as catalogValue: memoize on data arrays only.
+  const invoicingValue = useMemo(
+    () => ({
+      salesInvoices, purchaseInvoices, salesReturns, purchaseReturns, cashEntries, stockMovements,
+      addSalesInvoice, updateSalesInvoice, recordSalesReceipt, cancelSalesInvoice,
+      deleteSalesInvoice, settleAllDues,
+      addPurchaseInvoice, updatePurchaseInvoice, recordPurchasePayment, deletePurchaseInvoice,
+      addSalesReturn, addPurchaseReturn,
+      addCashEntry, currentCashBalance,
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [salesInvoices, purchaseInvoices, salesReturns, purchaseReturns, cashEntries, stockMovements]
+  );
+
+  // F3-6: Catalog slice — products / suppliers / customers / drivers + their CRUD actions.
+  // Actions are plain functions (not useCallback), so we omit them from deps intentionally
+  // (same pattern as the main value useMemo above) and only invalidate on data changes.
+  const catalogValue = useMemo(
+    () => ({
+      products, suppliers, customers, drivers,
+      nextProductCode, nextSupplierCode, nextCustomerCode,
+      addProduct, updateProduct, deleteProduct, adjustStock,
+      addSupplier, updateSupplier, deleteSupplier,
+      addCommissionTier, updateCommissionTier, deleteCommissionTier,
+      addCustomer, updateCustomer, deleteCustomer,
+      addDriver, updateDriver, deleteDriver,
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [products, suppliers, customers, drivers, nextProductCode, nextSupplierCode, nextCustomerCode]
+  );
+
+  return (
+    <SettingsContext.Provider value={settingsValue}>
+      <AuditLogContext.Provider value={auditLogValue}>
+        <AuthContext.Provider value={authValue}>
+          <CatalogContext.Provider value={catalogValue}>
+            <UsersContext.Provider value={usersValue}>
+              <InvoicingContext.Provider value={invoicingValue}>
+                <ReportingContext.Provider value={reportingValue}>
+                  <AppContext.Provider value={value}>{children}</AppContext.Provider>
+                </ReportingContext.Provider>
+              </InvoicingContext.Provider>
+            </UsersContext.Provider>
+          </CatalogContext.Provider>
+        </AuthContext.Provider>
+      </AuditLogContext.Provider>
+    </SettingsContext.Provider>
+  );
 }
 
 export function useApp() {

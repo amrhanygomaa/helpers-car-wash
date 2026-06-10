@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Copy, KeyRound, ShieldAlert, ShieldCheck } from "lucide-react";
-import { useApp } from "../store/AppContext";
+import { useAuth } from "../store/AuthContext";
 import { Button } from "../components/ui/Button";
 import { Field, Input, Textarea } from "../components/ui/Input";
 import { useToast } from "../components/ui/Toast";
@@ -17,7 +17,7 @@ const activationMessage = encodeURIComponent("أريد تفعيل نسخة Helpe
 const activationWhatsappUrl = `https://wa.me/201118445625?text=${activationMessage}`;
 
 export function ActivationPage() {
-  const { licenseStatus, activateLicense } = useApp();
+  const { licenseStatus, activateLicense } = useAuth();
   const toast = useToast();
   const [serial, setSerial] = useState("");
   const [submitting, setSubmitting] = useState(false);

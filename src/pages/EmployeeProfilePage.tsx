@@ -17,20 +17,19 @@ import { Button } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Table, TBody, TD, TH, THead, TR } from "../components/ui/Table";
 import { PageHeader } from "../components/layout/AppLayout";
-import { useApp } from "../store/AppContext";
+import { useAuth } from "../store/AuthContext";
+import { useUsers } from "../store/UsersContext";
+import { useInvoicing } from "../store/InvoicingContext";
+import { useSettings } from "../store/SettingsContext";
 import { formatCurrency, formatDate } from "../lib/format";
 import { useToast } from "../components/ui/Toast";
 import type { AppUser, CashEntry, SalesInvoice } from "../types";
 
 export function EmployeeProfilePage() {
-  const {
-    currentUser,
-    users,
-    settings,
-    salesInvoices,
-    cashEntries,
-    updateCurrentUserProfile,
-  } = useApp();
+  const { currentUser, updateCurrentUserProfile } = useAuth();
+  const { users } = useUsers();
+  const { salesInvoices, cashEntries } = useInvoicing();
+  const { settings } = useSettings();
   const toast = useToast();
   const [selectedMonth, setSelectedMonth] = useState(() => monthValue(new Date()));
   const [profileName, setProfileName] = useState("");

@@ -5,7 +5,10 @@ import { PageHeader } from "../components/layout/AppLayout";
 import { Card, CardBody } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Table, TBody, TD, TH, THead, TR } from "../components/ui/Table";
-import { useApp } from "../store/AppContext";
+import { useCatalog } from "../store/CatalogContext";
+import { useInvoicing } from "../store/InvoicingContext";
+import { useAuth } from "../store/AuthContext";
+import { useSettings } from "../store/SettingsContext";
 import { ConfirmDialog, Dialog } from "../components/ui/Dialog";
 import { Field, Input } from "../components/ui/Input";
 import { useToast } from "../components/ui/Toast";
@@ -17,7 +20,10 @@ import { formatCurrency, formatDate } from "../lib/format";
 import { hasPermission } from "../lib/permissions";
 
 export function DriversPage() {
-  const { drivers, addDriver, updateDriver, deleteDriver, salesInvoices, settings, currentUser } = useApp();
+  const { drivers, addDriver, updateDriver, deleteDriver } = useCatalog();
+  const { salesInvoices } = useInvoicing();
+  const { currentUser } = useAuth();
+  const { settings } = useSettings();
   const toast = useToast();
   const canAddDriver = hasPermission(currentUser, "drivers", "add");
   const canEditDriver = hasPermission(currentUser, "drivers", "edit");

@@ -8,7 +8,11 @@ import { Input, Field, Select, Textarea } from "../components/ui/Input";
 import { Table, TBody, TD, TH, THead, TR } from "../components/ui/Table";
 import { Dialog } from "../components/ui/Dialog";
 import { EmptyState } from "../components/ui/EmptyState";
-import { useApp } from "../store/AppContext";
+import { useCatalog } from "../store/CatalogContext";
+import { useInvoicing } from "../store/InvoicingContext";
+import { useReporting } from "../store/ReportingContext";
+import { useAuth } from "../store/AuthContext";
+import { useSettings } from "../store/SettingsContext";
 import { useToast } from "../components/ui/Toast";
 import { uid } from "../lib/utils";
 import type { CashEntryType } from "../types";
@@ -16,20 +20,11 @@ import { formatCurrency, formatDate } from "../lib/format";
 import { hasPermission } from "../lib/permissions";
 
 export function CashboxPage() {
-  const {
-    settings,
-    cashEntries,
-    salesInvoices,
-    purchaseInvoices,
-    customers,
-    suppliers,
-    addCashEntry,
-    currentCashBalance,
-    customerBalance,
-    supplierBalance,
-    updateSettings,
-    currentUser,
-  } = useApp();
+  const { customers, suppliers } = useCatalog();
+  const { cashEntries, salesInvoices, purchaseInvoices, addCashEntry, currentCashBalance } = useInvoicing();
+  const { customerBalance, supplierBalance } = useReporting();
+  const { currentUser } = useAuth();
+  const { settings, updateSettings } = useSettings();
   const toast = useToast();
   const canAddCash = hasPermission(currentUser, "cashbox", "add");
   const canSpendCash = hasPermission(currentUser, "cashbox", "spend");

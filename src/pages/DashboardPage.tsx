@@ -15,7 +15,11 @@ import { Card, CardBody, CardHeader } from "../components/ui/Card";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { Dialog } from "../components/ui/Dialog";
-import { useApp } from "../store/AppContext";
+import { useCatalog } from "../store/CatalogContext";
+import { useInvoicing } from "../store/InvoicingContext";
+import { useReporting } from "../store/ReportingContext";
+import { useAuth } from "../store/AuthContext";
+import { useSettings } from "../store/SettingsContext";
 import { formatCurrency, formatDate, formatNumber } from "../lib/format";
 import { hasPermission } from "../lib/permissions";
 import { daysUntil, isToday } from "../lib/utils";
@@ -292,11 +296,11 @@ function CustomizeDialog({
 
 /* ─── Main Page ─── */
 export function DashboardPage() {
-  const {
-    products, purchaseInvoices, salesInvoices,
-    customers, suppliers, settings,
-    currentCashBalance, customerBalance, supplierBalance, currentUser,
-  } = useApp();
+  const { products, customers, suppliers } = useCatalog();
+  const { purchaseInvoices, salesInvoices, currentCashBalance } = useInvoicing();
+  const { customerBalance, supplierBalance } = useReporting();
+  const { currentUser } = useAuth();
+  const { settings } = useSettings();
 
   const [customizeOpen, setCustomizeOpen] = useState(false);
   const { cards, sections, toggleCard, toggleSection, moveCard, reset } = useDashboardConfig();

@@ -6,11 +6,15 @@ import { Card, CardBody, CardHeader } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Field, Input, Select, Textarea } from "../components/ui/Input";
 import { Table, TBody, TD, TH, THead, TR } from "../components/ui/Table";
-import { useApp } from "../store/AppContext";
+import { useInvoicing } from "../store/InvoicingContext";
+import { useCatalog } from "../store/CatalogContext";
+import { useSettings } from "../store/SettingsContext";
 import { useToast } from "../components/ui/Toast";
 import { uid } from "../lib/utils";
 import type { InvoiceLine, Product } from "../types";
 import { formatCurrency } from "../lib/format";
+import { BarcodeScanInput } from "../features/products/BarcodeScanInput";
+import { findProductByBarcode } from "../lib/barcode";
 
 interface LineDraft {
   id: string;
@@ -29,8 +33,9 @@ function nextInvoiceNumber(existing: string[]): string {
 }
 
 export function PurchaseInvoiceNewPage() {
-  const { products, suppliers, purchaseInvoices, addPurchaseInvoice, settings } =
-    useApp();
+  const { products, suppliers } = useCatalog();
+  const { purchaseInvoices, addPurchaseInvoice } = useInvoicing();
+  const { settings } = useSettings();
   const navigate = useNavigate();
   const toast = useToast();
 
@@ -75,6 +80,36 @@ export function PurchaseInvoiceNewPage() {
       },
     ]);
   }
+
+  function handleScan(code: string) {
+    const product = findProductByBarcode(products, code);
+    if (!product) {
+      toast.error("باركود غير معروف", `لا يوجد منتج بالباركود: ${code}`);
+      return;
+    }
+    const wasExisting = lines.some((l) => l.productId === product.id);
+    // Functional update keeps rapid consecutive scans of the same item accurate.
+    setLines((arr) => {
+      const existing = arr.find((l) => l.productId === product.id);
+      if (existing) {
+        return arr.map((l) =>
+          l.id === existing.id ? { ...l, quantity: l.quantity + 1 } : l
+        );
+      }
+      return [
+        ...arr,
+        {
+          id: uid("line"),
+          productId: product.id,
+          quantity: 1,
+          price: product.purchasePrice,
+          expiryDate: product.expiryDate,
+        },
+      ];
+    });
+    toast.success(wasExisting ? "تم تحديث الكمية" : "تمت إضافة المنتج", product.name);
+  }
+
   function updateLine(id: string, patch: Partial<LineDraft>) {
     setLines((arr) =>
       arr.map((l) => {
@@ -104,9 +139,9 @@ export function PurchaseInvoiceNewPage() {
       toast.error("أضف بنود الفاتورة");
       return;
     }
-    const invalid = lines.find((l) => !l.productId || l.quantity <= 0);
-    if (invalid) {
-      toast.error("تأكد من اختيار المنتج وإدخال كمية صحيحة");
+    const invalidIdx = lines.findIndex((l) => !l.productId || l.quantity <= 0);
+    if (invalidIdx >= 0) {
+      toast.error(`السطر ${invalidIdx + 1}: تأكد من اختيار المنتج وإدخال كمية صحيحة`);
       return;
     }
     if (amountPaid < 0 || amountPaid > total) {
@@ -198,6 +233,9 @@ export function PurchaseInvoiceNewPage() {
           }
         />
         <CardBody>
+          <div className="mb-4">
+            <BarcodeScanInput onScan={handleScan} disabled={products.length === 0} />
+          </div>
           {lines.length === 0 ? (
             <div className="text-center py-8 text-sm text-slate-500">
               لا توجد بنود — ابدأ بإضافة منتج.
@@ -355,7 +393,7 @@ function ProductCombo({
       <option value="">— اختر منتجاً —</option>
       {products.map((p) => (
         <option key={p.id} value={p.id}>
-          {p.name} — {p.code}
+          {p.name}{p.category ? ` (${p.category})` : ""} — {p.code}
         </option>
       ))}
     </Select>

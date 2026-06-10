@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ArrowRight, Plus, Save, Trash2 } from "lucide-react";
 import { PageHeader } from "../components/layout/AppLayout";
@@ -7,7 +7,10 @@ import { Button } from "../components/ui/Button";
 import { Badge } from "../components/ui/Badge";
 import { Field, Input, Select, Textarea } from "../components/ui/Input";
 import { Table, TBody, TD, TH, THead, TR } from "../components/ui/Table";
-import { useApp } from "../store/AppContext";
+import { useInvoicing } from "../store/InvoicingContext";
+import { useCatalog } from "../store/CatalogContext";
+import { useSettings } from "../store/SettingsContext";
+import { useReporting } from "../store/ReportingContext";
 import { useToast } from "../components/ui/Toast";
 import { uid } from "../lib/utils";
 import type { InvoiceLine, SalesPaymentType } from "../types";
@@ -26,7 +29,10 @@ export function SalesInvoiceEditPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const toast = useToast();
-  const { salesInvoices, products, drivers, updateSalesInvoice, settings, customerBalance } = useApp();
+  const { salesInvoices, updateSalesInvoice } = useInvoicing();
+  const { products, drivers } = useCatalog();
+  const { settings } = useSettings();
+  const { customerBalance } = useReporting();
 
   const inv = salesInvoices.find((s) => s.id === id);
 
@@ -52,6 +58,22 @@ export function SalesInvoiceEditPage() {
   useEffect(() => {
     if (paymentType === "cash") setPaymentDueDate("");
   }, [paymentType]);
+
+  const initializedRef = useRef(false);
+  const dirtyRef = useRef(false);
+  useEffect(() => {
+    if (!initializedRef.current) { initializedRef.current = true; return; }
+    dirtyRef.current = true;
+  }, [date, invoiceNumber, driverId, paymentType, paymentDueDate, discount, amountReceived, notes, lines]);
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (!dirtyRef.current) return;
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, []);
 
   const gross = useMemo(
     () => lines.reduce((a, l) => a + (l.quantity || 0) * (l.price || 0), 0),
@@ -110,9 +132,9 @@ export function SalesInvoiceEditPage() {
       toast.error("أضف بنود الفاتورة");
       return;
     }
-    const invalid = lines.find((l) => !l.productId || l.quantity <= 0);
-    if (invalid) {
-      toast.error("تأكد من اختيار المنتج وإدخال كمية صحيحة لكل سطر");
+    const invalidIdx = lines.findIndex((l) => !l.productId || l.quantity <= 0);
+    if (invalidIdx >= 0) {
+      toast.error(`السطر ${invalidIdx + 1}: تأكد من اختيار المنتج وإدخال كمية صحيحة`);
       return;
     }
     if (stockWarnings.length > 0) {
@@ -176,6 +198,7 @@ export function SalesInvoiceEditPage() {
       createdByUserId: inv.createdByUserId,
     });
 
+    dirtyRef.current = false;
     toast.success("تم تحديث الفاتورة");
     navigate(`/sales/${inv.id}`);
   }
@@ -311,7 +334,9 @@ export function SalesInvoiceEditPage() {
                         >
                           <option value="">— اختر منتجاً —</option>
                           {products.map((pr) => (
-                            <option key={pr.id} value={pr.id}>{pr.name} — {pr.code}</option>
+                            <option key={pr.id} value={pr.id}>
+                              {pr.name}{pr.category ? ` (${pr.category})` : ""} — {pr.code}
+                            </option>
                           ))}
                         </Select>
                       </TD>

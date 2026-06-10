@@ -26,6 +26,7 @@ export const seedSettings: Settings = {
   autoBackupEnabled: true,
   autoBackupFrequency: "daily",
   lastBackupDate: "",
+  backupPath: "",
   invoicesSavePath: "",
   subscriptionType: "limited",
   subscriptionStartDate: today,

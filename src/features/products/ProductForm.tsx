@@ -4,7 +4,7 @@ import { Button } from "../../components/ui/Button";
 import { Dialog } from "../../components/ui/Dialog";
 import { Field, Input, Select, Textarea } from "../../components/ui/Input";
 import type { Product } from "../../types";
-import { useApp } from "../../store/AppContext";
+import { useCatalog } from "../../store/CatalogContext";
 import { useToast } from "../../components/ui/Toast";
 
 const UNITS = ["كيلو", "جرام", "لتر", "كيس", "علبة", "كرتونة", "زجاجة", "كوب", "قطعة", "علبة صغيرة"];
@@ -14,6 +14,7 @@ type FormState = Omit<Product, "id" | "createdAt">;
 const EMPTY: FormState = {
   code: "",
   name: "",
+  barcode: undefined,
   category: "مواد غذائية",
   unit: "كرتونة",
   retailUnit: undefined,
@@ -39,7 +40,7 @@ export function ProductFormDialog({
   onClose: () => void;
   editing?: Product | null;
 }) {
-  const { addProduct, updateProduct, suppliers, products, nextProductCode } = useApp();
+  const { addProduct, updateProduct, suppliers, products, nextProductCode } = useCatalog();
   const toast = useToast();
   const [form, setForm] = useState<FormState>(EMPTY);
 
@@ -181,6 +182,16 @@ export function ProductFormDialog({
             value={form.name}
             onChange={(e) => set("name", e.target.value)}
             placeholder="مثل: أرز مصري 5 كجم"
+          />
+        </Field>
+
+        {/* الباركود - اختياري، يُستخدم للمسح الضوئي عند البيع */}
+        <Field label="الباركود" className="col-span-2">
+          <Input
+            value={form.barcode ?? ""}
+            onChange={(e) => set("barcode", e.target.value || undefined)}
+            placeholder="باركود المنتج (EAN/UPC) — اختياري، يُستخدم للمسح الضوئي عند إنشاء الفواتير"
+            className="font-mono"
           />
         </Field>
 

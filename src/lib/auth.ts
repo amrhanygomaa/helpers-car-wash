@@ -18,5 +18,6 @@ export async function verifyFallbackPassword(
   if (storedHash.startsWith("sha256:")) {
     return (await hashPassword(password)) === storedHash;
   }
-  return storedHash === btoa(password);
+  // Legacy btoa path: unsupported — caller should reset the password
+  return false;
 }

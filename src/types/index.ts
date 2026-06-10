@@ -110,6 +110,8 @@ export interface Product {
   id: ID;
   code: string;
   name: string;
+  /** Optional scannable barcode (EAN/UPC/Code-128). Used by the POS scan input. */
+  barcode?: string;
   category: string;
   unit: string;
   retailUnit?: string;
@@ -269,6 +271,8 @@ export interface Settings {
   autoBackupEnabled: boolean;
   autoBackupFrequency: "daily" | "weekly" | "monthly";
   lastBackupDate: string;
+  /** Destination folder for automatic backups (local, external drive, or network/NAS share). */
+  backupPath: string;
   invoicesSavePath: string;
   subscriptionType: "limited" | "lifetime";
   subscriptionStartDate: string;
@@ -286,4 +290,31 @@ export interface ActivityItem {
   date: string;
   amount?: number;
   type: "sale" | "purchase" | "stock" | "cash" | "other";
+}
+
+export type AuditAction =
+  | "invoice_sale_created"
+  | "invoice_sale_updated"
+  | "invoice_sale_cancelled"
+  | "invoice_sale_deleted"
+  | "invoice_purchase_created"
+  | "invoice_purchase_updated"
+  | "invoice_purchase_deleted"
+  | "return_sale_created"
+  | "return_purchase_created"
+  | "stock_adjusted"
+  | "product_deleted"
+  | "customer_deleted"
+  | "supplier_deleted"
+  | "cash_manual_add"
+  | "cash_manual_remove";
+
+export interface AuditLog {
+  id: ID;
+  action: AuditAction;
+  entityLabel: string;
+  userId: ID;
+  userName: string;
+  timestamp: string;
+  details?: string;
 }

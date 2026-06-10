@@ -1,12 +1,14 @@
 import { useState, type FormEvent } from "react";
 import { ShieldCheck, UserPlus } from "lucide-react";
-import { useApp } from "../store/AppContext";
+import { useAuth } from "../store/AuthContext";
+import { useSettings } from "../store/SettingsContext";
 import { Button } from "../components/ui/Button";
 import { Field, Input } from "../components/ui/Input";
 import { useToast } from "../components/ui/Toast";
 
 export function FirstRunSetupPage() {
-  const { createOwner, settings } = useApp();
+  const { createOwner } = useAuth();
+  const { settings } = useSettings();
   const toast = useToast();
   const [username, setUsername] = useState("admin");
   const [password, setPassword] = useState("");

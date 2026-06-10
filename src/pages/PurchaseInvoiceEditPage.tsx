@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ArrowRight, Plus, Save, Trash2 } from "lucide-react";
 import { PageHeader } from "../components/layout/AppLayout";
@@ -6,7 +6,9 @@ import { Card, CardBody, CardHeader } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Field, Input, Select, Textarea } from "../components/ui/Input";
 import { Table, TBody, TD, TH, THead, TR } from "../components/ui/Table";
-import { useApp } from "../store/AppContext";
+import { useInvoicing } from "../store/InvoicingContext";
+import { useCatalog } from "../store/CatalogContext";
+import { useSettings } from "../store/SettingsContext";
 import { useToast } from "../components/ui/Toast";
 import { uid } from "../lib/utils";
 import type { InvoiceLine } from "../types";
@@ -24,7 +26,9 @@ export function PurchaseInvoiceEditPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const toast = useToast();
-  const { purchaseInvoices, products, updatePurchaseInvoice, settings } = useApp();
+  const { purchaseInvoices, updatePurchaseInvoice } = useInvoicing();
+  const { products } = useCatalog();
+  const { settings } = useSettings();
 
   const inv = purchaseInvoices.find((i) => i.id === id);
 
@@ -40,6 +44,22 @@ export function PurchaseInvoiceEditPage() {
         expiryDate: l.expiryDate,
       })) ?? []
   );
+
+  const initializedRef = useRef(false);
+  const dirtyRef = useRef(false);
+  useEffect(() => {
+    if (!initializedRef.current) { initializedRef.current = true; return; }
+    dirtyRef.current = true;
+  }, [date, notes, lines]);
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (!dirtyRef.current) return;
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, []);
 
   const supplierProducts = useMemo(
     () => products.filter((x) => !x.supplierId || x.supplierId === inv?.supplierId),
@@ -82,9 +102,9 @@ export function PurchaseInvoiceEditPage() {
       toast.error("أضف بنود الفاتورة");
       return;
     }
-    const invalid = lines.find((l) => !l.productId || l.quantity <= 0);
-    if (invalid) {
-      toast.error("تأكد من اختيار المنتج وإدخال كمية صحيحة لكل سطر");
+    const invalidIdx = lines.findIndex((l) => !l.productId || l.quantity <= 0);
+    if (invalidIdx >= 0) {
+      toast.error(`السطر ${invalidIdx + 1}: تأكد من اختيار المنتج وإدخال كمية صحيحة`);
       return;
     }
 
@@ -108,6 +128,7 @@ export function PurchaseInvoiceEditPage() {
       notes: notes.trim() || undefined,
     });
 
+    dirtyRef.current = false;
     toast.success("تم تحديث الفاتورة");
     navigate(`/purchases/${inv.id}`);
   }
@@ -204,7 +225,7 @@ export function PurchaseInvoiceEditPage() {
                           <option value="">— اختر منتجاً —</option>
                           {supplierProducts.map((pr) => (
                             <option key={pr.id} value={pr.id}>
-                              {pr.name} — {pr.code}
+                              {pr.name}{pr.category ? ` (${pr.category})` : ""} — {pr.code}
                             </option>
                           ))}
                         </Select>

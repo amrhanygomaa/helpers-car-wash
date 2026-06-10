@@ -6,7 +6,11 @@ import { Card, CardBody, CardHeader } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Badge } from "../components/ui/Badge";
 import { Table, TBody, TD, TH, THead, TR } from "../components/ui/Table";
-import { useApp } from "../store/AppContext";
+import { useInvoicing } from "../store/InvoicingContext";
+import { useCatalog } from "../store/CatalogContext";
+import { useAuth } from "../store/AuthContext";
+import { useSettings } from "../store/SettingsContext";
+import { useReporting } from "../store/ReportingContext";
 import { useToast } from "../components/ui/Toast";
 import { formatCurrency, formatDate } from "../lib/format";
 import { ConfirmDialog, Dialog } from "../components/ui/Dialog";
@@ -19,17 +23,11 @@ export function SalesInvoiceDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const toast = useToast();
-  const {
-    salesInvoices,
-    salesReturns,
-    customers,
-    settings,
-    recordSalesReceipt,
-    cancelSalesInvoice,
-    deleteSalesInvoice,
-    currentUser,
-    customerBalance,
-  } = useApp();
+  const { salesInvoices, salesReturns, recordSalesReceipt, cancelSalesInvoice, deleteSalesInvoice } = useInvoicing();
+  const { customers } = useCatalog();
+  const { currentUser } = useAuth();
+  const { settings } = useSettings();
+  const { customerBalance } = useReporting();
   const inv = salesInvoices.find((s) => s.id === id);
   const canEditSales = hasPermission(currentUser, "salesInvoices", "edit");
   const canReceiveSales = hasPermission(currentUser, "salesInvoices", "receive");
@@ -59,6 +57,7 @@ export function SalesInvoiceDetailPage() {
 
   const customer = customers.find((c) => c.id === inv.customerId);
   const totalCustomerBalance = customerBalance(inv.customerId);
+  const totalCollected = inv.amountReceived + (inv.overpayment ?? 0);
   const linkedReturns = salesReturns.filter((r) => r.originalInvoiceId === inv.id);
   const totalReturns = linkedReturns.reduce((a, r) => a + r.total, 0);
   const canCreateReturn = canAddReturn && !inv.cancelled && totalReturns < inv.total;
@@ -309,18 +308,70 @@ export function SalesInvoiceDetailPage() {
         </Field>
       </Dialog>
 
-      <ConfirmDialog
-        open={cancelOpen}
-        onClose={() => setCancelOpen(false)}
-        onConfirm={() => {
-          cancelSalesInvoice(inv.id);
-          toast.success("تم إلغاء الفاتورة", "تمت إعادة الكميات للمخزون");
-        }}
-        title="إلغاء الفاتورة"
-        message="هل أنت متأكد من إلغاء الفاتورة؟ ستُعاد الكميات إلى المخزون."
-        variant="danger"
-        confirmText="تأكيد الإلغاء"
-      />
+      {totalCollected > 0 ? (
+        <Dialog
+          open={cancelOpen}
+          onClose={() => setCancelOpen(false)}
+          title="إلغاء الفاتورة"
+          subtitle={`المُحصَّل: ${formatCurrency(totalCollected, settings.currency)}`}
+          width="sm"
+          footer={
+            <>
+              <Button variant="outline" onClick={() => setCancelOpen(false)}>
+                تراجع
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  cancelSalesInvoice(inv.id, "credit");
+                  setCancelOpen(false);
+                  toast.success("تم إلغاء الفاتورة", "تم تحويل المبلغ رصيداً دائناً للعميل");
+                }}
+              >
+                تحويل رصيد دائن
+              </Button>
+              <Button
+                variant="danger"
+                onClick={() => {
+                  cancelSalesInvoice(inv.id, "cash");
+                  setCancelOpen(false);
+                  toast.success("تم إلغاء الفاتورة", "تمت إعادة الكميات للمخزون وردّ النقدية");
+                }}
+              >
+                ردّ نقدي
+              </Button>
+            </>
+          }
+        >
+          <div className="text-sm text-slate-700 mb-3">
+            هذه الفاتورة عليها مبلغ مُحصَّل. كيف تريد معالجة المبلغ؟
+          </div>
+          <div className="space-y-2">
+            <div className="p-3 rounded-lg border border-slate-200 text-sm">
+              <div className="font-medium text-slate-900">ردّ نقدي</div>
+              <div className="text-slate-500 text-xs mt-0.5">يُخصم المبلغ من الخزنة فوراً ويُسجَّل قيد ردّ نقدي</div>
+            </div>
+            <div className="p-3 rounded-lg border border-slate-200 text-sm">
+              <div className="font-medium text-slate-900">تحويل رصيد دائن</div>
+              <div className="text-slate-500 text-xs mt-0.5">يبقى المبلغ بالخزنة كرصيد للعميل يُستخدم في الفواتير القادمة</div>
+            </div>
+          </div>
+        </Dialog>
+      ) : (
+        <ConfirmDialog
+          open={cancelOpen}
+          onClose={() => setCancelOpen(false)}
+          onConfirm={() => {
+            cancelSalesInvoice(inv.id);
+            setCancelOpen(false);
+            toast.success("تم إلغاء الفاتورة", "تمت إعادة الكميات للمخزون");
+          }}
+          title="إلغاء الفاتورة"
+          message="هل أنت متأكد من إلغاء الفاتورة؟ ستُعاد الكميات إلى المخزون."
+          variant="danger"
+          confirmText="تأكيد الإلغاء"
+        />
+      )}
 
       <ConfirmDialog
         open={delOpen}

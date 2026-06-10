@@ -6,6 +6,7 @@ export function parseNumericInput(value: string, fallback = 0): number {
     .trim()
     .replace(/[٠-٩]/g, (digit) => String(arabicDigits.indexOf(digit)))
     .replace(/[۰-۹]/g, (digit) => String(persianDigits.indexOf(digit)))
+    .replace(/(\d),(\d{3})(?!\d)/g, "$1$2")
     .replace(/,/g, ".")
     .replace(/\s+/g, "");
 

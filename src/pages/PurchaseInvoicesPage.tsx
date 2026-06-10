@@ -9,7 +9,10 @@ import { Input, Select } from "../components/ui/Input";
 import { Table, TBody, TD, TH, THead, TR } from "../components/ui/Table";
 import { EmptyState } from "../components/ui/EmptyState";
 import { ConfirmDialog } from "../components/ui/Dialog";
-import { useApp } from "../store/AppContext";
+import { useInvoicing } from "../store/InvoicingContext";
+import { useCatalog } from "../store/CatalogContext";
+import { useAuth } from "../store/AuthContext";
+import { useSettings } from "../store/SettingsContext";
 import { useToast } from "../components/ui/Toast";
 import { formatCurrency, formatDate } from "../lib/format";
 import { inRange } from "../lib/utils";
@@ -18,7 +21,10 @@ import { hasPermission } from "../lib/permissions";
 import type { PurchaseInvoice } from "../types";
 
 export function PurchaseInvoicesPage() {
-  const { purchaseInvoices, suppliers, settings, currentUser, deletePurchaseInvoice } = useApp();
+  const { purchaseInvoices, deletePurchaseInvoice } = useInvoicing();
+  const { suppliers } = useCatalog();
+  const { currentUser } = useAuth();
+  const { settings } = useSettings();
   const navigate = useNavigate();
   const toast = useToast();
   const canAddPurchaseInvoice = hasPermission(currentUser, "purchaseInvoices", "add");

@@ -6,14 +6,19 @@ import { Card, CardBody, CardHeader } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Field, Input, Select, Textarea } from "../components/ui/Input";
 import { Table, TBody, TD, TH, THead, TR } from "../components/ui/Table";
-import { useApp } from "../store/AppContext";
+import { useCatalog } from "../store/CatalogContext";
+import { useInvoicing } from "../store/InvoicingContext";
+import { useSettings } from "../store/SettingsContext";
+import { useReporting } from "../store/ReportingContext";
 import { useToast } from "../components/ui/Toast";
 import { uid } from "../lib/utils";
 import type { InvoiceLine, Product, SalesPaymentType, SalesPriceType } from "../types";
 import { formatCurrency } from "../lib/format";
 import { Badge } from "../components/ui/Badge";
 import { DriverDialog } from "../features/drivers/DriverDialog";
+import { BarcodeScanInput } from "../features/products/BarcodeScanInput";
 import { parseNumericInput } from "../lib/numberInput";
+import { findProductByBarcode } from "../lib/barcode";
 
 interface LineDraft {
   id: string;
@@ -65,7 +70,10 @@ function nextInvoiceNumber(existing: string[]): string {
 }
 
 export function SalesInvoiceNewPage() {
-  const { products, customers, drivers, salesInvoices, addSalesInvoice, settings, customerBalance } = useApp();
+  const { products, customers, drivers } = useCatalog();
+  const { salesInvoices, addSalesInvoice } = useInvoicing();
+  const { settings } = useSettings();
+  const { customerBalance, customerCredit } = useReporting();
   const navigate = useNavigate();
   const toast = useToast();
 
@@ -172,6 +180,29 @@ export function SalesInvoiceNewPage() {
     ]);
   }
 
+  function handleScan(code: string) {
+    const product = findProductByBarcode(products, code);
+    if (!product) {
+      toast.error("باركود غير معروف", `لا يوجد منتج بالباركود: ${code}`);
+      return;
+    }
+    const wasExisting = lines.some((l) => l.productId === product.id);
+    // Functional update keeps rapid consecutive scans of the same item accurate.
+    setLines((arr) => {
+      const existing = arr.find((l) => l.productId === product.id);
+      if (existing) {
+        return arr.map((l) =>
+          l.id === existing.id ? { ...l, quantity: l.quantity + 1 } : l
+        );
+      }
+      return [
+        ...arr,
+        { id: uid("line"), productId: product.id, quantity: 1, price: productPrice(product) },
+      ];
+    });
+    toast.success(wasExisting ? "تم تحديث الكمية" : "تمت إضافة المنتج", product.name);
+  }
+
   function changePriceType(nextPriceType: SalesPriceType) {
     if (nextPriceType === priceType) return;
     if (lines.length > 0) {
@@ -217,9 +248,9 @@ export function SalesInvoiceNewPage() {
       toast.error("أضف بنود الفاتورة");
       return;
     }
-    const invalid = lines.find((l) => !l.productId || l.quantity <= 0);
-    if (invalid) {
-      toast.error("تأكد من اختيار المنتج وإدخال كمية صحيحة لكل سطر");
+    const invalidIdx = lines.findIndex((l) => !l.productId || l.quantity <= 0);
+    if (invalidIdx >= 0) {
+      toast.error(`السطر ${invalidIdx + 1}: تأكد من اختيار المنتج وإدخال كمية صحيحة`);
       return;
     }
     if (stockWarnings.length > 0) {
@@ -398,6 +429,9 @@ export function SalesInvoiceNewPage() {
           }
         />
         <CardBody>
+          <div className="mb-4">
+            <BarcodeScanInput onScan={handleScan} disabled={products.length === 0} />
+          </div>
           <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
             <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
               <div>
@@ -549,6 +583,25 @@ export function SalesInvoiceNewPage() {
                 />
               </Field>
             ) : null}
+            {(() => {
+              const credit = customerId ? customerCredit(customerId) : 0;
+              if (credit <= 0) return null;
+              return (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 flex items-center justify-between gap-2 text-sm">
+                  <span className="text-emerald-700 font-medium">
+                    رصيد دائن متاح: {formatCurrency(credit, settings.currency)}
+                  </span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setAmountReceived(Math.min(invoiceNet, credit))}
+                  >
+                    استخدام الرصيد
+                  </Button>
+                </div>
+              );
+            })()}
             <Field label="المبلغ المستلم" required>
               <Input
                 type="number"
@@ -597,15 +650,21 @@ export function SalesInvoiceNewPage() {
               value={formatCurrency(amountReceived, settings.currency)}
             />
             <div className="border-t border-slate-200 pt-2">
-              <Row
-                label="المتبقي"
-                bold
-                value={formatCurrency(
-                  customerChange > 0 ? customerChange : remainingDue,
-                  settings.currency
-                )}
-                tone={remainingDue > 0 ? "amber" : "green"}
-              />
+              {customerChange > 0 ? (
+                <Row
+                  label="باقي للعميل"
+                  bold
+                  value={formatCurrency(customerChange, settings.currency)}
+                  tone="green"
+                />
+              ) : (
+                <Row
+                  label="المتبقي"
+                  bold
+                  value={formatCurrency(remainingDue, settings.currency)}
+                  tone={remainingDue > 0 ? "amber" : "green"}
+                />
+              )}
             </div>
             <div className="pt-2">
               <Button onClick={submit} size="lg" className="w-full">
@@ -639,7 +698,7 @@ function ProductCombo({
       <option value="">— اختر منتجاً —</option>
       {products.map((p) => (
         <option key={p.id} value={p.id}>
-          {p.name} — {p.code}
+          {p.name}{p.category ? ` (${p.category})` : ""} — {p.code}
         </option>
       ))}
     </Select>

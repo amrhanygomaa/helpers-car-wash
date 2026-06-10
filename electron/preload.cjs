@@ -52,5 +52,12 @@ contextBridge.exposeInMainWorld("desktopAPI", {
     clearPrefix: (prefix) => ipcRenderer.invoke("storage:clear-prefix", prefix),
     export: () => ipcRenderer.invoke("storage:export"),
     import: (payload) => ipcRenderer.invoke("storage:import", payload),
+    getBatch: () => ipcRenderer.invoke("storage:get-batch"),
+    setBatch: (entries) => ipcRenderer.invoke("storage:set-batch", entries),
+  },
+  backup: {
+    writeFile: (dir, fileName, content) =>
+      ipcRenderer.invoke("backup:write-file", { dir, fileName, content }),
+    selectDirectory: () => ipcRenderer.invoke("backup:select-directory"),
   },
 });

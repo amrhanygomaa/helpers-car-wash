@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import { Users, Plus, Shield, Trash2, Edit } from "lucide-react";
-import { useApp } from "../store/AppContext";
+import { useUsers } from "../store/UsersContext";
 import { Button } from "../components/ui/Button";
-import { Dialog } from "../components/ui/Dialog";
+import { ConfirmDialog, Dialog } from "../components/ui/Dialog";
 import { Field, Input } from "../components/ui/Input";
 import { useToast } from "../components/ui/Toast";
 import type { AppUser, UserPermissions } from "../types";
@@ -25,7 +25,7 @@ function UserFormDialog({
   onClose: () => void;
   editing?: AppUser | null;
 }) {
-  const { addUser, updateUser, users } = useApp();
+  const { addUser, updateUser, users } = useUsers();
   const toast = useToast();
 
   const [name, setName] = useState(editing?.name || editing?.username || "");
@@ -253,8 +253,9 @@ function UserFormDialog({
 }
 
 export function UsersPage() {
-  const { users, deleteUser } = useApp();
+  const { users, deleteUser } = useUsers();
   const [formState, setFormState] = useState<{ open: boolean; editing?: AppUser }>({ open: false });
+  const [delUserId, setDelUserId] = useState<string | null>(null);
   const toast = useToast();
 
   return (
@@ -311,13 +312,7 @@ export function UsersPage() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => {
-                          if (confirm("تأكيد الحذف؟")) {
-                            if (deleteUser(user.id)) {
-                              toast.success("تم حذف المستخدم");
-                            }
-                          }
-                        }}
+                        onClick={() => setDelUserId(user.id)}
                         className="h-8 px-2 text-red-600 hover:text-red-700 hover:bg-red-50"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -338,6 +333,21 @@ export function UsersPage() {
           editing={formState.editing}
         />
       )}
+
+      <ConfirmDialog
+        open={delUserId !== null}
+        onClose={() => setDelUserId(null)}
+        onConfirm={() => {
+          if (delUserId && deleteUser(delUserId)) {
+            toast.success("تم حذف المستخدم");
+          }
+          setDelUserId(null);
+        }}
+        title="حذف المستخدم"
+        message="هل أنت متأكد من حذف هذا المستخدم نهائياً؟"
+        variant="danger"
+        confirmText="حذف"
+      />
     </div>
   );
 }

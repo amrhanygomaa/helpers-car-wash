@@ -38,23 +38,36 @@ if (!electronRuntime.app) {
 const { app, BrowserWindow, dialog, ipcMain, shell, session } = electronRuntime;
 
 const APP_ID = "com.helperstechnologies.warehouse";
-const STORE_PREFIX = "helpers_inventory_v1::";
-const LICENSE_TOKEN_KEY = "__license_token";
-const LICENSE_LAST_SEEN_KEY = "__license_last_seen_at";
-const AUTH_STATE_KEY = `${STORE_PREFIX}auth`;
 const APP_SALT = "helpers-inventory-system-v1-local-license";
 const CLOCK_SKEW_MS = 5 * 60 * 1000;
 const MAX_TOKEN_LENGTH = 8192;
 const MAX_USERNAME_LENGTH = 80;
 const MAX_PASSWORD_LENGTH = 256;
-const REDACTED_PASSWORD_HASH = "[REDACTED]";
 
-// ── SECURITY: Protected keys that cannot be written via renderer IPC ────
-const PROTECTED_KEYS = new Set([
-  LICENSE_TOKEN_KEY,
-  LICENSE_LAST_SEEN_KEY,
-  AUTH_STATE_KEY,
-]);
+// ── E2E test mode — gated by HW_E2E=1; never reachable in shipped builds ──
+const HW_E2E = process.env.HW_E2E === "1";
+
+// ── Storage security: pure predicates and redaction helpers ─────────────
+const {
+  STORE_PREFIX,
+  REDACTED_PASSWORD_HASH,
+  PROTECTED_KEYS,
+  safeUserForRenderer,
+  safeUsersForRenderer,
+} = require("./storage-security.cjs");
+
+// ── Rate-limiting: pure state machine ────────────────────────────────────
+const {
+  checkRateLimit,
+  recordFailedAttempt,
+  recordFailedSupportAttempt,
+  clearAttempts,
+} = require("./rate-limit.cjs");
+
+// Derived keys used only inside main.cjs
+const LICENSE_TOKEN_KEY = "__license_token";
+const LICENSE_LAST_SEEN_KEY = "__license_last_seen_at";
+const AUTH_STATE_KEY = `${STORE_PREFIX}auth`;
 
 // ── SECURITY: Login brute-force protection ──────────────────────────────
 const LOGIN_MAX_ATTEMPTS = 5;
@@ -160,17 +173,7 @@ function isArgonPasswordHash(value) {
   return typeof value === "string" && value.startsWith("$argon2");
 }
 
-function safeUserForRenderer(user) {
-  if (!user || typeof user !== "object") return user;
-  return {
-    ...user,
-    passwordHash: REDACTED_PASSWORD_HASH,
-  };
-}
-
-function safeUsersForRenderer(users) {
-  return Array.isArray(users) ? users.map(safeUserForRenderer) : [];
-}
+// safeUserForRenderer and safeUsersForRenderer imported from ./storage-security.cjs
 
 function getSession(event) {
   return rendererSessions.get(event.sender.id) || null;
@@ -234,9 +237,10 @@ function getDbKey() {
 function openDatabase() {
   if (db) return db;
 
-  const userDataPath = app.getPath("userData");
-  fs.mkdirSync(userDataPath, { recursive: true });
-  const dbPath = path.join(userDataPath, "helpers-inventory.secure.sqlite");
+  const dbPath = HW_E2E && process.env.HW_E2E_DB_PATH
+    ? process.env.HW_E2E_DB_PATH
+    : path.join(app.getPath("userData"), "helpers-inventory.secure.sqlite");
+  fs.mkdirSync(path.dirname(dbPath), { recursive: true });
   const existed = fs.existsSync(dbPath);
 
   db = new Database(dbPath);
@@ -422,6 +426,7 @@ function evaluateLicense(serial, persistSeen) {
 }
 
 function getLicenseStatus() {
+  if (HW_E2E) return buildLicenseStatus("active", { license: { subscriptionType: "lifetime", subscriptionExpiresAt: null } });
   return evaluateLicense(storageGet(LICENSE_TOKEN_KEY), true);
 }
 
@@ -483,19 +488,8 @@ async function login(username, password) {
 
   // ── SECURITY: Rate-limiting ──────────────────────────────────────
   const now = Date.now();
-  const entry = loginAttempts.get(attemptKey);
-  if (entry && entry.lockedUntil > now) {
-    const remainSec = Math.ceil((entry.lockedUntil - now) / 1000);
-    return {
-      ok: false,
-      error: "rate_limited",
-      remainSeconds: remainSec,
-      attemptsRemaining: 0,
-    };
-  }
-  if (entry && entry.lockedUntil > 0 && entry.lockedUntil <= now) {
-    loginAttempts.delete(attemptKey);
-  }
+  const rateLimited = checkRateLimit(loginAttempts, attemptKey, now);
+  if (rateLimited) return rateLimited;
   // ────────────────────────────────────────────────────────────────
 
   const users = getUsers();
@@ -507,44 +501,11 @@ async function login(username, password) {
   const ok = await verifyPassword(user?.passwordHash || dummyHash, password);
 
   if (!user || !ok) {
-    // ── Increment failed attempts ──
-    const latestNow = Date.now();
-    const latestEntry = loginAttempts.get(attemptKey);
-    if (latestEntry && latestEntry.lockedUntil > latestNow) {
-      return {
-        ok: false,
-        error: "rate_limited",
-        remainSeconds: Math.ceil((latestEntry.lockedUntil - latestNow) / 1000),
-        attemptsRemaining: 0,
-      };
-    }
-    if (latestEntry && latestEntry.lockedUntil > 0 && latestEntry.lockedUntil <= latestNow) {
-      loginAttempts.delete(attemptKey);
-    }
-
-    const current = loginAttempts.get(attemptKey) || { count: 0, lockedUntil: 0 };
-    current.count += 1;
-    if (current.count >= LOGIN_MAX_ATTEMPTS) {
-      current.lockedUntil = latestNow + LOGIN_LOCKOUT_MS;
-      current.count = 0;
-      loginAttempts.set(attemptKey, current);
-      return {
-        ok: false,
-        error: "rate_limited",
-        remainSeconds: Math.ceil(LOGIN_LOCKOUT_MS / 1000),
-        attemptsRemaining: 0,
-      };
-    }
-    loginAttempts.set(attemptKey, current);
-    return {
-      ok: false,
-      error: "invalid_credentials",
-      attemptsRemaining: Math.max(0, LOGIN_MAX_ATTEMPTS - current.count),
-    };
+    return recordFailedAttempt(loginAttempts, attemptKey, Date.now(), LOGIN_MAX_ATTEMPTS, LOGIN_LOCKOUT_MS);
   }
 
   // ── Success — clear attempts ──
-  loginAttempts.delete(attemptKey);
+  clearAttempts(loginAttempts, attemptKey);
 
   // Auto-upgrade legacy password hashes to argon2id
   if (!String(user.passwordHash || "").startsWith("$argon2")) {
@@ -608,31 +569,11 @@ async function updateOwnProfile({ userId, name, currentPassword, newPassword }) 
 }
 
 function getSupportRateLimitResult(key) {
-  const now = Date.now();
-  const entry = supportAttempts.get(key);
-  if (!entry) return null;
-  if (entry.lockedUntil > now) {
-    return {
-      ok: false,
-      error: "rate_limited",
-      remainSeconds: Math.ceil((entry.lockedUntil - now) / 1000),
-    };
-  }
-  if (entry.lockedUntil > 0 && entry.lockedUntil <= now) {
-    supportAttempts.delete(key);
-  }
-  return null;
+  return checkRateLimit(supportAttempts, key, Date.now());
 }
 
 function registerFailedSupportAttempt(key) {
-  const current = supportAttempts.get(key) || { count: 0, lockedUntil: 0 };
-  current.count += 1;
-  if (current.count >= SUPPORT_MAX_ATTEMPTS) {
-    current.count = 0;
-    current.lockedUntil = Date.now() + SUPPORT_LOCKOUT_MS;
-  }
-  supportAttempts.set(key, current);
-  return getSupportRateLimitResult(key);
+  return recordFailedSupportAttempt(supportAttempts, key, Date.now(), SUPPORT_MAX_ATTEMPTS, SUPPORT_LOCKOUT_MS);
 }
 
 async function resetOwnerPassword({ supportCode, username, password }) {
@@ -1292,10 +1233,11 @@ function printRoute(route) {
 
 function registerIpc() {
   // ── SECURITY: Validate storage keys exposed to the renderer ─────────
-  function isRendererStorageKey(key) {
-    const cleanKey = String(key || "");
-    return cleanKey.startsWith(STORE_PREFIX) && !PROTECTED_KEYS.has(cleanKey);
-  }
+  const {
+    isRendererStorageKey,
+    redactStorageRowForExport,
+    storageValueForRenderer,
+  } = require("./storage-security.cjs");
 
   function ownerExistsInStore() {
     return getUsers().some((user) => user.role === "owner");
@@ -1312,43 +1254,8 @@ function registerIpc() {
     return true;
   }
 
-  function redactUsersForExport(value) {
-    try {
-      const users = JSON.parse(value);
-      if (!Array.isArray(users)) return value;
-      return JSON.stringify(safeUsersForRenderer(users));
-    } catch {
-      return value;
-    }
-  }
-
-  function redactBackupUsersForExport(value) {
-    try {
-      const backup = JSON.parse(value);
-      if (!Array.isArray(backup?.state?.users)) return value;
-      return JSON.stringify({
-        ...backup,
-        state: {
-          ...backup.state,
-          users: safeUsersForRenderer(backup.state.users),
-        },
-      });
-    } catch {
-      return value;
-    }
-  }
-
-  function redactStorageRowForExport(row) {
-    if (row.key === `${STORE_PREFIX}users`) {
-      return { ...row, value: redactUsersForExport(row.value) };
-    }
-    return { ...row, value: redactBackupUsersForExport(row.value) };
-  }
-
-  function storageValueForRenderer(key, value) {
-    if (String(key) === `${STORE_PREFIX}users`) return redactUsersForExport(value);
-    return value;
-  }
+  // isRendererStorageKey, redactStorageRowForExport, storageValueForRenderer
+  // imported above from ./storage-security.cjs
 
   function mergeRendererUsersValue(value) {
     const incoming = JSON.parse(String(value));
@@ -1418,6 +1325,42 @@ function registerIpc() {
       return false;
     }
     return storageClearPrefix(String(prefix));
+  });
+
+  // ── Batch operations — eliminates per-key sync IPC bottleneck ────────
+  ipcMain.handle("storage:get-batch", (event) => {
+    if (!canReadRendererStorage(event)) return {};
+    const rows = openDatabase()
+      .prepare("SELECT key, value FROM kv_store WHERE key LIKE ?")
+      .all(`${STORE_PREFIX}%`);
+    const result = {};
+    for (const row of rows) {
+      if (!isRendererStorageKey(row.key)) continue;
+      result[row.key] = storageValueForRenderer(row.key, row.value);
+    }
+    return result;
+  });
+
+  ipcMain.handle("storage:set-batch", (event, entries) => {
+    if (!entries || typeof entries !== "object") return false;
+    try {
+      const tx = openDatabase().transaction(() => {
+        for (const [key, value] of Object.entries(entries)) {
+          if (!isRendererStorageKey(key) || !canMutateRendererStorage(event, key)) continue;
+          try {
+            getStmtSet().run(
+              String(key),
+              normalizeRendererStorageValue(key, value),
+              new Date().toISOString()
+            );
+          } catch { /* skip invalid individual keys */ }
+        }
+      });
+      tx();
+      return true;
+    } catch {
+      return false;
+    }
   });
 
   ipcMain.handle("storage:export", (event) => {
@@ -1532,7 +1475,10 @@ function registerIpc() {
     }
     return result;
   });
-  ipcMain.handle("print:route", (_event, route) => printRoute(route));
+  ipcMain.handle("print:route", (event, route) => {
+    if (!getSession(event)) return { ok: false, error: "not_authenticated" };
+    return printRoute(route);
+  });
   ipcMain.handle("print:current-window", async (event) => {
     try {
       const printOpts = getInvoicePrintOptions();
@@ -1593,6 +1539,41 @@ function registerIpc() {
     });
     if (result.canceled || result.filePaths.length === 0) return null;
     return result.filePaths[0];
+  });
+
+  ipcMain.handle("backup:select-directory", async (event) => {
+    const ownerWindow = BrowserWindow.fromWebContents(event.sender);
+    const result = await dialog.showOpenDialog(ownerWindow, {
+      properties: ["openDirectory", "createDirectory"],
+      title: "اختر مجلد النسخ الاحتياطي (محلي أو شبكة)",
+    });
+    if (result.canceled || result.filePaths.length === 0) return null;
+    return result.filePaths[0];
+  });
+
+  ipcMain.handle("backup:write-file", (event, payload) => {
+    // SECURITY: only an authenticated owner session may write a data backup.
+    if (!hasOwnerSession(event)) return { ok: false, error: "not_authorized" };
+    if (
+      !payload ||
+      typeof payload.dir !== "string" ||
+      typeof payload.fileName !== "string" ||
+      typeof payload.content !== "string"
+    ) {
+      return { ok: false, error: "invalid_input" };
+    }
+    try {
+      const dir = payload.dir;
+      if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) {
+        return { ok: false, error: "path_not_found" };
+      }
+      const base = sanitizeFileName(payload.fileName.replace(/\.json$/i, "")) || "helpers-backup";
+      const target = path.join(dir, `${base}.json`);
+      fs.writeFileSync(target, payload.content, "utf8");
+      return { ok: true, path: target };
+    } catch {
+      return { ok: false, error: "write_failed" };
+    }
   });
 }
 

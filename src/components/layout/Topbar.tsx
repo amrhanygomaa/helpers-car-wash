@@ -1,6 +1,8 @@
 import { useLocation, useNavigate } from "react-router-dom";
 import { Search, Bell, ChevronDown, User } from "lucide-react";
-import { useApp } from "../../store/AppContext";
+import { useAuth } from "../../store/AuthContext";
+import { useCatalog } from "../../store/CatalogContext";
+import { useInvoicing } from "../../store/InvoicingContext";
 import { useMemo, useState } from "react";
 import { formatDate } from "../../lib/format";
 import { hasPermission } from "../../lib/permissions";
@@ -24,8 +26,9 @@ const TITLES: Record<string, string> = {
 export function Topbar() {
   const loc = useLocation();
   const navigate = useNavigate();
-  const { auth, logout, products, customers, suppliers, purchaseInvoices, salesInvoices, currentUser } =
-    useApp();
+  const { auth, logout, currentUser } = useAuth();
+  const { products, customers, suppliers } = useCatalog();
+  const { purchaseInvoices, salesInvoices } = useInvoicing();
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
   const canSearchProducts = hasPermission(currentUser, "products");

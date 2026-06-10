@@ -6,7 +6,10 @@ import { Card, CardBody, CardHeader } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Badge } from "../components/ui/Badge";
 import { Table, TBody, TD, TH, THead, TR } from "../components/ui/Table";
-import { useApp } from "../store/AppContext";
+import { useInvoicing } from "../store/InvoicingContext";
+import { useCatalog } from "../store/CatalogContext";
+import { useAuth } from "../store/AuthContext";
+import { useSettings } from "../store/SettingsContext";
 import { useToast } from "../components/ui/Toast";
 import { formatCurrency, formatDate } from "../lib/format";
 import { ConfirmDialog, Dialog } from "../components/ui/Dialog";
@@ -19,15 +22,10 @@ export function PurchaseInvoiceDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const toast = useToast();
-  const {
-    purchaseInvoices,
-    purchaseReturns,
-    suppliers,
-    settings,
-    recordPurchasePayment,
-    deletePurchaseInvoice,
-    currentUser,
-  } = useApp();
+  const { purchaseInvoices, purchaseReturns, recordPurchasePayment, deletePurchaseInvoice } = useInvoicing();
+  const { suppliers } = useCatalog();
+  const { currentUser } = useAuth();
+  const { settings } = useSettings();
   const inv = purchaseInvoices.find((s) => s.id === id);
   const canEditPurchase = hasPermission(currentUser, "purchaseInvoices", "edit");
   const canPayPurchase = hasPermission(currentUser, "purchaseInvoices", "pay");

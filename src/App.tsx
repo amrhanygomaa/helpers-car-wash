@@ -1,6 +1,5 @@
-import { Navigate, Route, Routes, useLocation } from "react-router-dom";
-import { useApp } from "./store/AppContext";
-import { AppLayout } from "./components/layout/AppLayout";
+import { Navigate, Route, Routes } from "react-router-dom";
+import { useAuth } from "./store/AuthContext";
 import { LoginPage } from "./pages/LoginPage";
 import { ActivationPage } from "./pages/ActivationPage";
 import { FirstRunSetupPage } from "./pages/FirstRunSetupPage";
@@ -29,44 +28,11 @@ import { UsersPage } from "./pages/UsersPage";
 import { ReturnsPage } from "./pages/ReturnsPage";
 import { DriversPage } from "./pages/DriversPage";
 import { EmployeeProfilePage } from "./pages/EmployeeProfilePage";
-import { useToast } from "./components/ui/Toast";
-import type { UserPermissions } from "./types";
-import { hasPermission } from "./lib/permissions";
-
-function ProtectedShell({
-  children,
-  permission,
-  permissionAction = "view",
-  ownerOnly,
-}: {
-  children: React.ReactNode;
-  permission?: keyof UserPermissions;
-  permissionAction?: string;
-  ownerOnly?: boolean;
-}) {
-  const { auth, currentUser } = useApp();
-  const loc = useLocation();
-  const toast = useToast();
-  if (!auth.isAuthenticated || !currentUser) {
-    return <Navigate to="/login" state={{ from: loc.pathname }} replace />;
-  }
-  
-  if (currentUser && currentUser.role !== "owner") {
-    if (ownerOnly) {
-      setTimeout(() => toast.error("ليس لديك صلاحية", "هذه الصفحة مخصصة للمدير فقط"), 0);
-      return <Navigate to="/" replace />;
-    }
-    if (permission && !hasPermission(currentUser, permission, permissionAction)) {
-      setTimeout(() => toast.error("ليس لديك صلاحية", "لا تملك صلاحية لفتح هذه الصفحة"), 0);
-      return <Navigate to="/" replace />;
-    }
-  }
-
-  return <AppLayout>{children}</AppLayout>;
-}
+import { AuditLogPage } from "./pages/AuditLogPage";
+import { ProtectedShell } from "./components/layout/ProtectedShell";
 
 export default function App() {
-  const { auth, isDesktop, licenseStatus, ownerExists, ownerCheckPending } = useApp();
+  const { auth, isDesktop, licenseStatus, ownerExists, ownerCheckPending } = useAuth();
 
   if (isDesktop) {
     if (!licenseStatus || licenseStatus.state !== "active") {
@@ -193,7 +159,7 @@ export default function App() {
       <Route
         path="/sales/:id/edit"
         element={
-          <ProtectedShell permission="salesInvoices">
+          <ProtectedShell permission="salesInvoices" permissionAction="edit">
             <SalesInvoiceEditPage />
           </ProtectedShell>
         }
@@ -251,6 +217,14 @@ export default function App() {
         element={
           <ProtectedShell ownerOnly>
             <EmployeeReportPage />
+          </ProtectedShell>
+        }
+      />
+      <Route
+        path="/audit-log"
+        element={
+          <ProtectedShell ownerOnly>
+            <AuditLogPage />
           </ProtectedShell>
         }
       />

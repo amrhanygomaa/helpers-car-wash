@@ -9,27 +9,25 @@ import {
   ArrowLeft,
   Bell,
   Receipt,
+  Coins,
 } from "lucide-react";
 import { PageHeader } from "../components/layout/AppLayout";
 import { Card, CardBody, CardHeader } from "../components/ui/Card";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
-import { useApp } from "../store/AppContext";
+import { useCatalog } from "../store/CatalogContext";
+import { useInvoicing } from "../store/InvoicingContext";
+import { useReporting } from "../store/ReportingContext";
+import { useSettings } from "../store/SettingsContext";
 import { formatCurrency, formatDate } from "../lib/format";
 import { daysUntil } from "../lib/utils";
 
 export function AlertsPage() {
-  const {
-    products,
-    customers,
-    suppliers,
-    purchaseInvoices,
-    salesInvoices,
-    customerBalance,
-    supplierBalance,
-    settings,
-  } = useApp();
+  const { products, customers, suppliers } = useCatalog();
+  const { purchaseInvoices, salesInvoices } = useInvoicing();
+  const { customerBalance, customerCredit, supplierBalance } = useReporting();
+  const { settings } = useSettings();
 
   const outOfStock = useMemo(
     () => products.filter((p) => p.quantity === 0),
@@ -63,6 +61,12 @@ export function AlertsPage() {
       .filter((x) => x.bal > 0)
       .sort((a, b) => b.bal - a.bal);
   }, [customers, customerBalance]);
+  const customersWithCredit = useMemo(() => {
+    return customers
+      .map((c) => ({ c, credit: customerCredit(c.id) }))
+      .filter((x) => x.credit > 0)
+      .sort((a, b) => b.credit - a.credit);
+  }, [customers, customerCredit]);
   const accountDueInvoices = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -102,13 +106,14 @@ export function AlertsPage() {
         description="كل ما تحتاج لمتابعته اليوم في مكان واحد"
       />
 
-      <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
         <Stat icon={<AlertTriangle className="w-4 h-4" />} label="منتهى المخزون" value={outOfStock.length} tone="red" />
         <Stat icon={<AlertTriangle className="w-4 h-4" />} label="اقتراب انتهاء الكمية" value={lowStockOnly.length} tone="amber" />
         <Stat icon={<CalendarClock className="w-4 h-4" />} label="قريب انتهاء الصلاحية" value={expiringSoon.length} tone="rose" />
         <Stat icon={<CalendarX className="w-4 h-4" />} label="منتهي الصلاحية" value={expired.length} tone="red" />
         <Stat icon={<Receipt className="w-4 h-4" />} label="فواتير آجل متأخرة" value={overdueAccountCount} tone="red" />
-        <Stat icon={<Users className="w-4 h-4" />} label="عملاء لديهم رصيد" value={unpaidCustomers.length} tone="indigo" />
+        <Stat icon={<Users className="w-4 h-4" />} label="عملاء مديونون" value={unpaidCustomers.length} tone="indigo" />
+        <Stat icon={<Coins className="w-4 h-4" />} label="رصيد دائن للعملاء" value={customersWithCredit.length} tone="blue" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -272,6 +277,37 @@ export function AlertsPage() {
         </Card>
 
         <Card>
+          <CardHeader
+            title="عملاء برصيد دائن (دفعوا زيادة)"
+            subtitle={`عدد: ${customersWithCredit.length}`}
+            actions={customersWithCredit.length > 0 ? <Link to="/sales/new" className="text-xs text-brand-700 hover:underline">فاتورة جديدة</Link> : undefined}
+          />
+          <CardBody className="divide-y divide-slate-100 p-0">
+            {customersWithCredit.length === 0 ? (
+              <EmptyState icon={<Coins className="w-5 h-5" />} title="لا يوجد رصيد دائن" description="لا أحد دفع زيادة حتى الآن." />
+            ) : (
+              customersWithCredit.slice(0, 8).map(({ c, credit }) => (
+                <div key={c.id} className="flex items-center gap-3 p-3">
+                  <div className="w-9 h-9 rounded-lg bg-emerald-50 text-emerald-600 grid place-items-center">
+                    <Coins className="w-4 h-4" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-slate-900 truncate">{c.name}</div>
+                    <div className="text-xs text-slate-500">{c.phone ?? "—"}</div>
+                  </div>
+                  <Badge tone="green">رصيد {formatCurrency(credit, settings.currency)}</Badge>
+                  <Link to="/sales/new">
+                    <Button variant="outline" size="sm">
+                      استخدام <ArrowLeft className="w-3.5 h-3.5" />
+                    </Button>
+                  </Link>
+                </div>
+              ))
+            )}
+          </CardBody>
+        </Card>
+
+        <Card>
           <CardHeader title="عملاء لديهم رصيد" subtitle={`عدد: ${unpaidCustomers.length}`} />
           <CardBody className="divide-y divide-slate-100 p-0">
             {unpaidCustomers.length === 0 ? (
@@ -343,7 +379,7 @@ function Stat({
   icon: React.ReactNode;
   label: string;
   value: number;
-  tone: "amber" | "rose" | "red" | "indigo" | "blue";
+  tone: "amber" | "rose" | "red" | "indigo" | "blue" | "green";
 }) {
   const colors: Record<string, string> = {
     amber: "bg-amber-50 text-amber-700",
@@ -351,6 +387,7 @@ function Stat({
     red: "bg-red-50 text-red-700",
     indigo: "bg-indigo-50 text-indigo-700",
     blue: "bg-blue-50 text-blue-700",
+    green: "bg-emerald-50 text-emerald-700",
   };
   return (
     <div className="bg-white border border-slate-200 rounded-xl p-3 flex items-center gap-3">

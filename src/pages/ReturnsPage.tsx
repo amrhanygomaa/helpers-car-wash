@@ -1,12 +1,16 @@
 import { useState } from "react";
-import { useApp } from "../store/AppContext";
+import { useInvoicing } from "../store/InvoicingContext";
+import { useAuth } from "../store/AuthContext";
+import { useSettings } from "../store/SettingsContext";
 import { PageHeader } from "../components/layout/AppLayout";
 import { Receipt, ShoppingBag } from "lucide-react";
 import { formatCurrency, formatDate } from "../lib/format";
 import { hasPermission } from "../lib/permissions";
 
 export function ReturnsPage() {
-  const { salesReturns, purchaseReturns, currentUser, settings } = useApp();
+  const { salesReturns, purchaseReturns } = useInvoicing();
+  const { currentUser } = useAuth();
+  const { settings } = useSettings();
   
   const canViewSales = hasPermission(currentUser, "returns");
   const canViewPurchases = hasPermission(currentUser, "returns");

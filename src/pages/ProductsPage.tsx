@@ -8,7 +8,9 @@ import { Input, Select } from "../components/ui/Input";
 import { Table, TBody, TD, TH, THead, TR } from "../components/ui/Table";
 import { EmptyState } from "../components/ui/EmptyState";
 import { ConfirmDialog } from "../components/ui/Dialog";
-import { useApp } from "../store/AppContext";
+import { useCatalog } from "../store/CatalogContext";
+import { useAuth } from "../store/AuthContext";
+import { useSettings } from "../store/SettingsContext";
 import { useToast } from "../components/ui/Toast";
 import { formatCurrency } from "../lib/format";
 import { daysUntil } from "../lib/utils";
@@ -20,7 +22,9 @@ import { hasPermission } from "../lib/permissions";
 type SortKey = "name" | "quantity" | "wholesalePrice" | "retailPrice" | "purchasePrice";
 
 export function ProductsPage() {
-  const { products, suppliers, deleteProduct, settings, currentUser } = useApp();
+  const { products, suppliers, deleteProduct } = useCatalog();
+  const { currentUser } = useAuth();
+  const { settings } = useSettings();
   const toast = useToast();
   const canAddProduct = hasPermission(currentUser, "products", "add");
   const canEditProduct = hasPermission(currentUser, "products", "edit");
@@ -50,7 +54,8 @@ export function ProductsPage() {
       list = list.filter(
         (p) =>
           p.name.toLowerCase().includes(t) ||
-          p.code.toLowerCase().includes(t)
+          p.code.toLowerCase().includes(t) ||
+          (p.barcode ?? "").toLowerCase().includes(t)
       );
     }
     if (category) list = list.filter((p) => p.category === category);

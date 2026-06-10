@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { useApp } from "../../store/AppContext";
+import { useSettings } from "../../store/SettingsContext";
 import { formatCurrency, formatDate } from "../../lib/format";
 import type { InvoiceLine, SalesReturn } from "../../types";
 
@@ -25,7 +25,7 @@ interface Props {
 }
 
 export function InvoicePrintLayout(props: Props) {
-  const { settings } = useApp();
+  const { settings } = useSettings();
 
   useEffect(() => {
     document.title = `${props.kind === "sales" ? "فاتورة مبيعات" : "فاتورة مشتريات"} ${props.invoiceNumber}`;

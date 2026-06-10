@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Pencil, Plus, Trash2, Eye, Factory, Search } from "lucide-react";
 import { PageHeader } from "../components/layout/AppLayout";
 import { Card, CardBody, CardHeader } from "../components/ui/Card";
@@ -10,7 +10,11 @@ import { ConfirmDialog, Dialog } from "../components/ui/Dialog";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Field, Textarea } from "../components/ui/Input";
 import { Drawer } from "../components/ui/Drawer";
-import { useApp } from "../store/AppContext";
+import { useCatalog } from "../store/CatalogContext";
+import { useInvoicing } from "../store/InvoicingContext";
+import { useReporting } from "../store/ReportingContext";
+import { useAuth } from "../store/AuthContext";
+import { useSettings } from "../store/SettingsContext";
 import { useToast } from "../components/ui/Toast";
 import { formatCurrency, formatDate } from "../lib/format";
 import type { Supplier, CommissionTier, CommissionType } from "../types";
@@ -19,21 +23,11 @@ import { hasPermission } from "../lib/permissions";
 import { formatSupplierCode } from "../lib/codes";
 
 export function SuppliersPage() {
-  const {
-    suppliers,
-    addSupplier,
-    updateSupplier,
-    deleteSupplier,
-    supplierBalance,
-    purchaseInvoices,
-    settings,
-    calculateSupplierCommission,
-    addCommissionTier,
-    updateCommissionTier,
-    deleteCommissionTier,
-    currentUser,
-    nextSupplierCode,
-  } = useApp();
+  const { suppliers, addSupplier, updateSupplier, deleteSupplier, addCommissionTier, updateCommissionTier, deleteCommissionTier, nextSupplierCode } = useCatalog();
+  const { purchaseInvoices } = useInvoicing();
+  const { supplierBalance, calculateSupplierCommission } = useReporting();
+  const { currentUser } = useAuth();
+  const { settings } = useSettings();
   const toast = useToast();
   const canAddSupplier = hasPermission(currentUser, "suppliers", "add");
   const canEditSupplier = hasPermission(currentUser, "suppliers", "edit");
@@ -41,6 +35,17 @@ export function SuppliersPage() {
   const canManageCommissions = hasPermission(currentUser, "suppliers", "commissions");
 
   const [q, setQ] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.key === "/" || (e.ctrlKey && e.key === "f")) && searchRef.current && document.activeElement !== searchRef.current) {
+        e.preventDefault();
+        searchRef.current.focus();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Supplier | null>(null);
   const [viewing, setViewing] = useState<Supplier | null>(null);
@@ -150,9 +155,10 @@ export function SuppliersPage() {
           <div className="relative w-72">
             <Search className="w-4 h-4 absolute top-1/2 -translate-y-1/2 end-3 text-slate-400" />
             <Input
+              ref={searchRef}
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="بحث بالاسم أو الهاتف"
+              placeholder="بحث بالاسم أو الهاتف (/ أو Ctrl+F)"
               className="pe-9"
             />
           </div>

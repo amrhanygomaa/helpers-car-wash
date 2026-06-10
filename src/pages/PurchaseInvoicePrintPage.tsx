@@ -1,11 +1,13 @@
 import { useParams } from "react-router-dom";
-import { useApp } from "../store/AppContext";
+import { useInvoicing } from "../store/InvoicingContext";
+import { useAuth } from "../store/AuthContext";
 import { InvoicePrintLayout } from "../features/invoices/InvoicePrintLayout";
 import { hasPermission } from "../lib/permissions";
 
 export function PurchaseInvoicePrintPage() {
   const { id } = useParams();
-  const { purchaseInvoices, currentUser, auth } = useApp();
+  const { purchaseInvoices } = useInvoicing();
+  const { currentUser, auth } = useAuth();
   if (!auth.isAuthenticated || !hasPermission(currentUser, "purchaseInvoices")) {
     return (
       <div className="min-h-screen grid place-items-center text-sm text-slate-500">

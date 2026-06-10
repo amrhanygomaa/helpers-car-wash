@@ -1,7 +1,7 @@
 import { Dialog } from "../../components/ui/Dialog";
 import { Button } from "../../components/ui/Button";
 import { Field, Input } from "../../components/ui/Input";
-import { useApp } from "../../store/AppContext";
+import { useCatalog } from "../../store/CatalogContext";
 import { useToast } from "../../components/ui/Toast";
 import type { Driver } from "../../types";
 
@@ -16,7 +16,7 @@ export function DriverDialog({
   editing?: Driver | null;
   onSaved?: (driver: Driver) => void;
 }) {
-  const { addDriver, updateDriver } = useApp();
+  const { addDriver, updateDriver } = useCatalog();
   const toast = useToast();
 
   function handleSave(e: React.FormEvent<HTMLFormElement>) {
