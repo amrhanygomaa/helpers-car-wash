@@ -103,6 +103,7 @@
 | [05-Architecture-and-Performance.md](05-Architecture-and-Performance.md) | الملاحظات المعمارية وقابلية التوسّع والأداء |
 | [06-Roadmap-and-Proposed-Features.md](06-Roadmap-and-Proposed-Features.md) | الميزات المقترحة (بيزنس + تقني) بالأولويات والقيمة والجهد |
 | [07-Fix-Plan-for-Implementation.md](07-Fix-Plan-for-Implementation.md) | **خطة تنفيذ مرتّبة جاهزة للتسليم للتنفيذ (Sonnet)** — خطوات + اختبارات + أوامر تحقق |
+| [08-Full-Test-Report-2026-06-11.md](08-Full-Test-Report-2026-06-11.md) | **تقرير الاختبار الشامل 2026-06-11** — تحقّق من تنفيذ إصلاحات V2 (12/16 ✅) + أخطاء V3 الجديدة (خصم مزدوج بتحويل عرض السعر وغيره) |
 
 ---
 
