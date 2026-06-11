@@ -282,7 +282,7 @@ export function SalesInvoicesPage() {
           if (!toDelete) return;
           const ok = deleteSalesInvoice(toDelete.id);
           if (ok) toast.success("تم حذف الفاتورة");
-          else toast.error("تعذر الحذف", "لا يمكن حذف الفاتورة");
+          else toast.error("تعذر الحذف", "الفواتير المرتبطة بمرتجعات لا يمكن حذفها");
           setToDelete(null);
         }}
         title="حذف فاتورة المبيعات"

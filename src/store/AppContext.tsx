@@ -48,7 +48,7 @@ import {
   seedSuppliers,
   seedUsers,
 } from "../data/seed";
-import { uid } from "../lib/utils";
+import { localISODate, todayISO, uid } from "../lib/utils";
 import { buildXlsx } from "../lib/xlsx";
 import { isAutoBackupDue, backupFileName } from "../lib/backupSchedule";
 import {
@@ -435,6 +435,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [quotations, setQuotations] = useState<Quotation[]>(() => lsGet<Quotation[]>("quotations", []));
   const [stocktakes, setStocktakes] = useState<Stocktake[]>(() => lsGet<Stocktake[]>("stocktakes", []));
   const currentUserRef = useRef<AppUser | null>(null);
+  // BUG-01: code counters mirrored in refs so several add* calls inside ONE
+  // event handler (CSV bulk import) each get a distinct code — the state value
+  // alone is frozen for the whole render. Synced back whenever state changes
+  // externally (login load, backup import, demo reset).
+  const nextProductCodeRef = useRef(nextProductCode);
+  const nextSupplierCodeRef = useRef(nextSupplierCode);
+  const nextCustomerCodeRef = useRef(nextCustomerCode);
+  useEffect(() => {
+    nextProductCodeRef.current = nextProductCode;
+  }, [nextProductCode]);
+  useEffect(() => {
+    nextSupplierCodeRef.current = nextSupplierCode;
+  }, [nextSupplierCode]);
+  useEffect(() => {
+    nextCustomerCodeRef.current = nextCustomerCode;
+  }, [nextCustomerCode]);
 
   const logAudit = useCallback((action: AuditAction, entityLabel: string, details?: string) => {
     const user = currentUserRef.current;
@@ -917,14 +933,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Products
   const addProduct: AppActions["addProduct"] = (p) => {
-    const codeStr = nextProductCode.toString();
+    // BUG-01: respect an explicitly provided code (CSV import); otherwise
+    // auto-generate from the ref-mirrored counter so bulk adds stay distinct.
+    const provided = p.code?.trim();
+    let code: string;
+    if (provided) {
+      code = provided;
+      const num = Number(provided);
+      if (Number.isInteger(num) && num >= nextProductCodeRef.current) {
+        nextProductCodeRef.current = num + 1;
+        setNextProductCode(num + 1);
+      }
+    } else {
+      code = nextProductCodeRef.current.toString();
+      nextProductCodeRef.current += 1;
+      setNextProductCode(nextProductCodeRef.current);
+    }
     const product: Product = {
       ...p,
-      code: codeStr,
+      code,
       id: uid("prd"),
       createdAt: new Date().toISOString(),
     };
-    setNextProductCode((prev) => prev + 1);
     setProducts((list) => [product, ...list]);
     return product;
   };
@@ -934,13 +964,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
     );
   };
   const deleteProduct: AppActions["deleteProduct"] = (id) => {
-    // prevent deletion if used in invoices
+    // prevent deletion if used in invoices, draft quotations or draft stocktakes
+    // (BUG-07: a draft quotation would otherwise convert into an invoice whose
+    // stock deduction is silently skipped for the missing product)
     const used =
       purchaseInvoices.some((inv) =>
         inv.lines.some((l) => l.productId === id)
       ) ||
       salesInvoices.some((inv) =>
         inv.lines.some((l) => l.productId === id)
+      ) ||
+      quotations.some(
+        (q) => q.status === "draft" && q.lines.some((l) => l.productId === id)
+      ) ||
+      stocktakes.some(
+        (s) => s.status === "draft" && s.items.some((i) => i.productId === id)
       );
     if (used) return false;
     setProducts((list) => list.filter((p) => p.id !== id));
@@ -983,7 +1021,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         quantity: totalDelta,
         reason,
         referenceType: "manual",
-        date: new Date().toISOString().slice(0, 10),
+        date: todayISO(),
       };
       setStockMovements((l) => [mv, ...l]);
       const looseNote =
@@ -996,13 +1034,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Suppliers
   const addSupplier: AppActions["addSupplier"] = (s) => {
+    // BUG-01: counter via ref — bulk adds in one handler get distinct codes.
     const sup: Supplier = {
       ...s,
-      code: formatSupplierCode(nextSupplierCode),
+      code: formatSupplierCode(nextSupplierCodeRef.current),
       id: uid("sup"),
       createdAt: new Date().toISOString(),
     };
-    setNextSupplierCode((prev) => prev + 1);
+    nextSupplierCodeRef.current += 1;
+    setNextSupplierCode(nextSupplierCodeRef.current);
     setSuppliers((list) => [sup, ...list]);
     return sup;
   };
@@ -1060,13 +1100,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Customers
   const addCustomer: AppActions["addCustomer"] = (c) => {
+    // BUG-01: respect a provided code, else generate from the ref-mirrored counter.
+    const provided = c.code?.trim();
+    let code: string;
+    if (provided) {
+      code = provided;
+      const match = /^CUS-(\d+)$/i.exec(provided);
+      if (match && Number(match[1]) >= nextCustomerCodeRef.current) {
+        nextCustomerCodeRef.current = Number(match[1]) + 1;
+        setNextCustomerCode(nextCustomerCodeRef.current);
+      }
+    } else {
+      code = `CUS-${String(nextCustomerCodeRef.current).padStart(4, "0")}`;
+      nextCustomerCodeRef.current += 1;
+      setNextCustomerCode(nextCustomerCodeRef.current);
+    }
     const cus: Customer = {
       ...c,
-      code: `CUS-${String(nextCustomerCode).padStart(4, "0")}`,
+      code,
       id: uid("cus"),
       createdAt: new Date().toISOString(),
     };
-    setNextCustomerCode((prev) => prev + 1);
     setCustomers((list) => [cus, ...list]);
     return cus;
   };
@@ -1256,7 +1310,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         amount: -amount,
         description: `دفعة على فاتورة مشتريات ${inv.invoiceNumber} — ${inv.supplierName}`,
         referenceId: id,
-        date: new Date().toISOString().slice(0, 10),
+        date: todayISO(),
         paymentMethod,
       };
       setCashEntries((list) => [ce, ...list]);
@@ -1366,7 +1420,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         amount,
         description: `دفعة على فاتورة مبيعات ${inv.invoiceNumber} — ${inv.customerName}`,
         referenceId: id,
-        date: new Date().toISOString().slice(0, 10),
+        date: todayISO(),
         paymentMethod,
       };
       setCashEntries((list) => [ce, ...list]);
@@ -1436,7 +1490,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         amount: cashDelta,
         description: `تعديل تحصيل فاتورة مبيعات ${inv.invoiceNumber} — ${inv.customerName}`,
         referenceId: id,
-        date: new Date().toISOString().slice(0, 10),
+        date: todayISO(),
       };
       setCashEntries((list) => [ce, ...list]);
     }
@@ -1480,7 +1534,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         amount: -totalCollected,
         description: `ردّ نقدية لإلغاء فاتورة مبيعات ${inv.invoiceNumber} — ${inv.customerName}`,
         referenceId: id,
-        date: new Date().toISOString().slice(0, 10),
+        date: todayISO(),
       };
       setCashEntries((list) => [ce, ...list]);
       setSalesInvoices((list) =>
@@ -1505,7 +1559,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         : `تحويل رصيد دائن ${totalCollected}`
       : undefined;
     logAudit("invoice_sale_cancelled", `${inv.invoiceNumber} — ${inv.customerName}`, auditDetails);
-    const cancelDate = new Date().toISOString().slice(0, 10);
+    const cancelDate = todayISO();
     const cancelMovements: StockMovement[] = inv.lines.map((l, idx) => ({
       id: uid(`mov_cancel_${idx}`),
       productId: l.productId,
@@ -1522,6 +1576,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const deleteSalesInvoice: AppActions["deleteSalesInvoice"] = (id) => {
     const inv = salesInvoices.find((i) => i.id === id);
     if (!inv) return false;
+    // BUG-03: a return already restored part of this invoice's stock and may
+    // have refunded cash; reversing the full original lines on delete would
+    // double-count both. Returns must be removed first (no UI for that yet).
+    if (salesReturns.some((r) => r.originalInvoiceId === id)) return false;
     if (!inv.cancelled) {
       setProducts((list) =>
         list.map((p) => {
@@ -1725,6 +1783,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const quot = quotations.find((q) => q.id === quotationId);
     if (!quot) throw new Error("Quotation not found");
     if (quot.status === "converted") throw new Error("Quotation already converted");
+    // BUG-08: enforce stock availability — the sales pages block overselling,
+    // so conversion must too (addSalesInvoice clamps stock at 0 silently).
+    const requiredByProduct = new Map<string, number>();
+    quot.lines.forEach((l) => {
+      requiredByProduct.set(l.productId, (requiredByProduct.get(l.productId) ?? 0) + l.quantity);
+    });
+    const shortages: string[] = [];
+    requiredByProduct.forEach((required, productId) => {
+      const prod = products.find((p) => p.id === productId);
+      if (!prod) {
+        const name = quot.lines.find((l) => l.productId === productId)?.productName ?? productId;
+        shortages.push(`${name}: المنتج لم يعد موجودًا`);
+      } else if (required > prod.quantity) {
+        shortages.push(`${prod.name}: متاح ${prod.quantity} / مطلوب ${required}`);
+      }
+    });
+    if (shortages.length > 0) {
+      throw new Error(`المخزون غير كافٍ — ${shortages.join(" • ")}`);
+    }
     const conversion = quotationConversionFields(quot, opts.amountReceived);
     const inv = addSalesInvoice({
       invoiceNumber: opts.invoiceNumber,
@@ -1761,6 +1838,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       description: entry.description,
       referenceId: entry.referenceId,
       date: entry.date,
+      paymentMethod: entry.paymentMethod,
     };
     setCashEntries((list) => [full, ...list]);
     return full;
@@ -1931,12 +2009,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!supplier || !supplier.commissionTiers) return [];
 
     const now = new Date();
-    const todayStr = now.toISOString().slice(0, 10);
+    const todayStr = localISODate(now);
 
     return supplier.commissionTiers.map(tier => {
       const startDate = new Date();
       startDate.setDate(now.getDate() - tier.periodDays);
-      const startDateStr = startDate.toISOString().slice(0, 10);
+      const startDateStr = localISODate(startDate);
 
       const purchasesSum = purchaseInvoices
         .filter(inv => inv.supplierId === supplierId && inv.date >= startDateStr && inv.date <= todayStr)
@@ -1975,8 +2053,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const [yearStr, qStr] = quarter.split("-Q");
       const year = parseInt(yearStr, 10);
       const q = parseInt(qStr, 10);
-      const quarterStart = new Date(year, (q - 1) * 3, 1).toISOString().slice(0, 10);
-      const quarterEnd = new Date(year, q * 3, 0).toISOString().slice(0, 10);
+      // BUG-04: build boundaries from the LOCAL calendar — toISOString() shifted
+      // them to UTC, dropping Dec 31 receipts from Q4 on UTC+ machines.
+      const quarterStart = localISODate(new Date(year, (q - 1) * 3, 1));
+      const quarterEnd = localISODate(new Date(year, q * 3, 0));
 
       const empInvoiceIds = new Set(
         salesInvoices
@@ -2041,7 +2121,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `backup_${new Date().toISOString().slice(0, 10)}.json`;
+    link.download = `backup_${todayISO()}.json`;
     link.click();
     URL.revokeObjectURL(url);
   }, [buildBackupData]);
@@ -2223,7 +2303,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `${type}_export_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    link.download = `${type}_export_${todayISO()}.xlsx`;
     link.click();
     URL.revokeObjectURL(url);
   }, [products, customers, suppliers, salesInvoices, purchaseInvoices, customerBalance, supplierBalance, calculateSupplierCommission]);

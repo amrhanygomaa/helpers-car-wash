@@ -416,7 +416,7 @@ export function SalesInvoiceDetailPage() {
           if (ok) {
             toast.success("تم الحذف");
             navigate("/sales");
-          } else toast.error("تعذر الحذف");
+          } else toast.error("تعذر الحذف", "الفواتير المرتبطة بمرتجعات لا يمكن حذفها");
         }}
         title="حذف نهائي"
         message="هذا الإجراء لا يمكن التراجع عنه. متابعة؟"

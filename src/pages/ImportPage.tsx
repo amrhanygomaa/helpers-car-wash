@@ -91,7 +91,7 @@ function parseCustomerRows(rows: string[][]): CustomerRow[] {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export function ImportPage() {
-  const { addProduct, addCustomer, nextProductCode, products } = useCatalog();
+  const { addProduct, addCustomer, products } = useCatalog();
   const { settings } = useSettings();
   const { currentUser } = useAuth();
   const toast = useToast();
@@ -136,12 +136,12 @@ export function ImportPage() {
     const existingCodes = new Set(products.map((p) => p.code));
     let skipped = 0;
     let imported = 0;
-    let codeCounter = nextProductCode;
     valid.forEach((r) => {
+      // BUG-01: skip codes that already exist in the catalog OR earlier in this
+      // same file; addProduct now respects the provided code (or auto-assigns).
       if (r.code && existingCodes.has(r.code)) { skipped++; return; }
-      const code = r.code || String(codeCounter++);
-      addProduct({
-        code,
+      const added = addProduct({
+        code: r.code,
         barcode: undefined,
         name: r.name,
         category: r.category,
@@ -159,6 +159,7 @@ export function ImportPage() {
         notes: undefined,
         archived: false,
       });
+      existingCodes.add(added.code);
       imported++;
     });
     toast.success(

@@ -7,7 +7,7 @@ import { useSettings } from "../../store/SettingsContext";
 import { useToast } from "../../components/ui/Toast";
 import type { PurchaseInvoice, ReturnLine } from "../../types";
 import { formatCurrency } from "../../lib/format";
-import { uid } from "../../lib/utils";
+import { todayISO, uid } from "../../lib/utils";
 
 export function PurchaseReturnDialog({
   open,
@@ -51,7 +51,7 @@ export function PurchaseReturnDialog({
     });
 
     addPurchaseReturn({
-      date: new Date().toISOString().slice(0, 10),
+      date: todayISO(),
       originalInvoiceId: invoice.id,
       originalInvoiceNumber: invoice.invoiceNumber,
       supplierId: invoice.supplierId,

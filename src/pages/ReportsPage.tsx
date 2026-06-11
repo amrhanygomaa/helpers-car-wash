@@ -41,7 +41,7 @@ import { useAuth } from "../store/AuthContext";
 import { useSettings } from "../store/SettingsContext";
 import { useToast } from "../components/ui/Toast";
 import { formatCurrency, formatDate } from "../lib/format";
-import { daysUntil, inRange } from "../lib/utils";
+import { daysUntil, inRange, localISODate, todayISO } from "../lib/utils";
 
 type PrintMode =
   | "full"
@@ -73,9 +73,9 @@ export function ReportsPage() {
   const [from, setFrom] = useState<string>(() => {
     const d = new Date();
     d.setDate(d.getDate() - 30);
-    return d.toISOString().slice(0, 10);
+    return localISODate(d);
   });
-  const [to, setTo] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [to, setTo] = useState<string>(() => todayISO());
   const [printMode, setPrintMode] = useState<PrintMode>("full");
   const canViewEmployeeBonuses = currentUser?.role === "owner";
 
@@ -249,7 +249,7 @@ export function ReportsPage() {
     const start = new Date(from);
     const end = new Date(to);
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-      const iso = d.toISOString().slice(0, 10);
+      const iso = localISODate(d);
       map.set(iso, { date: iso.slice(5), sales: 0, purchases: 0 });
     }
     salesInRange.forEach((s) => {
@@ -338,13 +338,13 @@ export function ReportsPage() {
               <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-44" />
             </Field>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={() => { const d=new Date(); d.setDate(d.getDate()-7); setFrom(d.toISOString().slice(0,10)); setTo(new Date().toISOString().slice(0,10));}}>
+              <Button variant="outline" size="sm" onClick={() => { const d=new Date(); d.setDate(d.getDate()-7); setFrom(localISODate(d)); setTo(todayISO());}}>
                 آخر 7 أيام
               </Button>
-              <Button variant="outline" size="sm" onClick={() => { const d=new Date(); d.setDate(d.getDate()-30); setFrom(d.toISOString().slice(0,10)); setTo(new Date().toISOString().slice(0,10));}}>
+              <Button variant="outline" size="sm" onClick={() => { const d=new Date(); d.setDate(d.getDate()-30); setFrom(localISODate(d)); setTo(todayISO());}}>
                 آخر 30 يوم
               </Button>
-              <Button variant="outline" size="sm" onClick={() => { const d=new Date(); d.setDate(d.getDate()-90); setFrom(d.toISOString().slice(0,10)); setTo(new Date().toISOString().slice(0,10));}}>
+              <Button variant="outline" size="sm" onClick={() => { const d=new Date(); d.setDate(d.getDate()-90); setFrom(localISODate(d)); setTo(todayISO());}}>
                 آخر 90 يوم
               </Button>
             </div>

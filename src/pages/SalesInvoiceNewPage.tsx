@@ -11,7 +11,7 @@ import { useInvoicing } from "../store/InvoicingContext";
 import { useSettings } from "../store/SettingsContext";
 import { useReporting } from "../store/ReportingContext";
 import { useToast } from "../components/ui/Toast";
-import { uid } from "../lib/utils";
+import { todayISO, uid } from "../lib/utils";
 import type { InvoiceLine, Product, SalesPaymentType, SalesPriceType } from "../types";
 import { formatCurrency } from "../lib/format";
 import { Badge } from "../components/ui/Badge";
@@ -84,7 +84,7 @@ export function SalesInvoiceNewPage() {
   const [invoiceNumber, setInvoiceNumber] = useState(() =>
     loadDraft()?.invoiceNumber ?? nextInvoiceNumber(salesInvoices.map((s) => s.invoiceNumber))
   );
-  const [date, setDate] = useState(() => loadDraft()?.date ?? new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(() => loadDraft()?.date ?? todayISO());
   const [customerId, setCustomerId] = useState(() => loadDraft()?.customerId ?? customers[0]?.id ?? "");
   const [driverId, setDriverId] = useState(() => loadDraft()?.driverId ?? "");
   const [paymentType, setPaymentType] = useState<SalesPaymentType>(() => loadDraft()?.paymentType ?? "cash");
@@ -115,7 +115,7 @@ export function SalesInvoiceNewPage() {
     clearDraft();
     setDraftRestored(false);
     setInvoiceNumber(nextInvoiceNumber(salesInvoices.map((s) => s.invoiceNumber)));
-    setDate(new Date().toISOString().slice(0, 10));
+    setDate(todayISO());
     setCustomerId(customers[0]?.id ?? "");
     setDriverId("");
     setPaymentType("cash");

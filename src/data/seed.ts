@@ -9,8 +9,9 @@ import type {
   StockMovement,
   Supplier,
 } from "../types";
+import { todayISO } from "../lib/utils";
 
-const today = new Date().toISOString().slice(0, 10);
+const today = todayISO();
 
 export const seedSettings: Settings = {
   companyName: "Helpers Technology",

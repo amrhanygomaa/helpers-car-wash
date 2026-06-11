@@ -10,7 +10,7 @@ import { useCatalog } from "../store/CatalogContext";
 import { useInvoicing } from "../store/InvoicingContext";
 import { useSettings } from "../store/SettingsContext";
 import { useToast } from "../components/ui/Toast";
-import { uid } from "../lib/utils";
+import { todayISO, uid } from "../lib/utils";
 import type { InvoiceLine, Product } from "../types";
 import { formatCurrency } from "../lib/format";
 import { ConfirmDialog } from "../components/ui/Dialog";
@@ -45,7 +45,7 @@ export function QuotationNewPage() {
   const [quotationNumber] = useState(() =>
     nextQuotationNumber(quotations.map((q) => q.quotationNumber))
   );
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(() => todayISO());
   const [validUntil, setValidUntil] = useState("");
   const [customerId, setCustomerId] = useState("");
   const [discount, setDiscount] = useState(0);

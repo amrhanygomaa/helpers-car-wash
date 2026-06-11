@@ -22,7 +22,7 @@ import { useAuth } from "../store/AuthContext";
 import { useSettings } from "../store/SettingsContext";
 import { formatCurrency, formatDate, formatNumber } from "../lib/format";
 import { hasPermission } from "../lib/permissions";
-import { daysUntil, isToday } from "../lib/utils";
+import { daysUntil, isToday, localISODate } from "../lib/utils";
 import { lsGet, lsSet } from "../lib/storage";
 
 /* ─── Types ─── */
@@ -321,7 +321,7 @@ export function DashboardPage() {
   // ── Stats ──
   const stats = useMemo(() => {
     const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+    const monthStart = localISODate(new Date(now.getFullYear(), now.getMonth(), 1));
 
     const totalStockUnits = products.reduce((a, p) => a + p.quantity, 0);
     const lowStock = products.filter((p) => p.quantity <= p.minStock).length;
@@ -367,7 +367,7 @@ export function DashboardPage() {
     const days: { date: string; sales: number; purchases: number }[] = [];
     for (let i = 13; i >= 0; i--) {
       const d = new Date(); d.setDate(d.getDate() - i);
-      const iso = d.toISOString().slice(0, 10);
+      const iso = localISODate(d);
       days.push({
         date: iso.slice(5),
         sales:     canViewSales     ? salesInvoices.filter((s) => s.date.slice(0,10) === iso && !s.cancelled).reduce((a,s) => a+s.total, 0) : 0,

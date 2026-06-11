@@ -10,6 +10,7 @@ import { useCatalog } from "../store/CatalogContext";
 import { useAuth } from "../store/AuthContext";
 import { formatDate } from "../lib/format";
 import { hasPermission } from "../lib/permissions";
+import { todayISO } from "../lib/utils";
 
 export function StocktakesPage() {
   const { stocktakes, products, addStocktake } = useCatalog();
@@ -34,7 +35,7 @@ export function StocktakesPage() {
           : {}),
       }));
     const stk = addStocktake({
-      date: new Date().toISOString().slice(0, 10),
+      date: todayISO(),
       items,
       notes: "",
     });

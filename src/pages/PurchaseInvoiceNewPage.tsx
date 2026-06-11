@@ -11,7 +11,7 @@ import { useInvoicing } from "../store/InvoicingContext";
 import { useCatalog } from "../store/CatalogContext";
 import { useSettings } from "../store/SettingsContext";
 import { useToast } from "../components/ui/Toast";
-import { uid } from "../lib/utils";
+import { todayISO, uid } from "../lib/utils";
 import type { InvoiceLine, Product } from "../types";
 import { formatCurrency } from "../lib/format";
 import { BarcodeScanInput } from "../features/products/BarcodeScanInput";
@@ -45,7 +45,7 @@ export function PurchaseInvoiceNewPage() {
   const [invoiceNumber] = useState(() =>
     nextInvoiceNumber(purchaseInvoices.map((s) => s.invoiceNumber))
   );
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(() => todayISO());
   const [supplierId, setSupplierId] = useState(suppliers[0]?.id ?? "");
   const [amountPaid, setAmountPaid] = useState<number>(0);
   const [notes, setNotes] = useState("");

@@ -14,7 +14,7 @@ import { useReporting } from "../store/ReportingContext";
 import { useAuth } from "../store/AuthContext";
 import { useSettings } from "../store/SettingsContext";
 import { useToast } from "../components/ui/Toast";
-import { uid } from "../lib/utils";
+import { todayISO, uid } from "../lib/utils";
 import type { CashEntryType, PaymentMethod } from "../types";
 import { formatCurrency, formatDate, PAYMENT_METHOD_LABELS } from "../lib/format";
 import { hasPermission } from "../lib/permissions";
@@ -90,7 +90,7 @@ export function CashboxPage() {
       type: entryType,
       amount: signed,
       description: desc.trim(),
-      date: new Date().toISOString().slice(0, 10),
+      date: todayISO(),
       paymentMethod,
     });
     toast.success(entryType === "manual-add" ? "تم إضافة نقدية" : "تم خصم نقدية");

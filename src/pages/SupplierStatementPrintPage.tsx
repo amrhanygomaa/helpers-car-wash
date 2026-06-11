@@ -38,7 +38,9 @@ export function SupplierStatementPrintPage() {
         madin: inv.total + (returnSumByInvoice.get(inv.id) ?? 0),
         daen: 0,
       })),
-      // Credit: payments
+      // Credit: payments. BUG-02: supplier payments are stored as NEGATIVE cash
+      // amounts, and paying the supplier must REDUCE what we owe — so negative
+      // entries are daen here (the inverse of the customer statement mapping).
       ...cashEntries
         .filter((ce) => ce.referenceId != null && invoiceIds.has(ce.referenceId))
         .map((ce) => ({
@@ -46,8 +48,8 @@ export function SupplierStatementPrintPage() {
           date: ce.date,
           sortKey: `${ce.date}-5-${ce.id}`,
           description: ce.description,
-          madin: ce.amount < 0 ? Math.abs(ce.amount) : 0,
-          daen: ce.amount > 0 ? ce.amount : 0,
+          madin: ce.amount > 0 ? ce.amount : 0,
+          daen: ce.amount < 0 ? Math.abs(ce.amount) : 0,
         })),
       // Credit: purchase returns
       ...partyReturns.map((r) => ({

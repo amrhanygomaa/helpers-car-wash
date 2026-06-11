@@ -17,6 +17,7 @@ import { Field, Input, Select } from "../components/ui/Input";
 import type { SalesPaymentType, SalesPriceType } from "../types";
 import { hasPermission } from "../lib/permissions";
 import { printAppRoute } from "../lib/print";
+import { todayISO } from "../lib/utils";
 
 function nextInvoiceNumber(existing: string[]): string {
   const nums = existing
@@ -44,7 +45,7 @@ export function QuotationDetailPage() {
   const [invoiceNumber, setInvoiceNumber] = useState(() =>
     nextInvoiceNumber(salesInvoices.map((s) => s.invoiceNumber))
   );
-  const [invDate, setInvDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [invDate, setInvDate] = useState(() => todayISO());
   const [paymentType, setPaymentType] = useState<SalesPaymentType>("cash");
   const [priceType, setPriceType] = useState<SalesPriceType>("wholesale");
   const [amountReceived, setAmountReceived] = useState(0);
@@ -90,8 +91,12 @@ export function QuotationDetailPage() {
       toast.success("تم تحويل العرض إلى فاتورة", `فاتورة رقم ${inv.invoiceNumber}`);
       setConvertOpen(false);
       navigate(`/sales/${inv.id}`);
-    } catch {
-      toast.error("تعذر تحويل العرض");
+    } catch (err) {
+      // BUG-08: surface the store's stock-shortage detail instead of a generic message
+      toast.error(
+        "تعذر تحويل العرض",
+        err instanceof Error && err.message.startsWith("المخزون") ? err.message : undefined
+      );
     }
   }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { uid, todayISO, isToday, daysUntil, inRange } from "../../../src/lib/utils";
+import { uid, todayISO, localISODate, isToday, daysUntil, inRange } from "../../../src/lib/utils";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -26,6 +26,31 @@ describe("todayISO", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-05-28T12:00:00.000Z"));
     expect(todayISO()).toBe("2026-05-28");
+  });
+
+  it("uses the LOCAL calendar day just after local midnight (BUG-04)", () => {
+    vi.useFakeTimers();
+    // local 00:30 on June 1 — toISOString() would report May 31 on UTC+ machines
+    vi.setSystemTime(new Date(2026, 5, 1, 0, 30, 0));
+    expect(todayISO()).toBe("2026-06-01");
+  });
+});
+
+describe("localISODate", () => {
+  it("formats local calendar components regardless of timezone (BUG-04)", () => {
+    // Dec 31 local midnight — the old toISOString() approach returned Dec 30
+    // on UTC+ machines, dropping the last day of every quarter
+    expect(localISODate(new Date(2026, 11, 31))).toBe("2026-12-31");
+  });
+
+  it("zero-pads month and day", () => {
+    expect(localISODate(new Date(2026, 0, 5))).toBe("2026-01-05");
+  });
+
+  it("defaults to now", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 2, 15, 13, 0, 0));
+    expect(localISODate()).toBe("2026-03-15");
   });
 });
 

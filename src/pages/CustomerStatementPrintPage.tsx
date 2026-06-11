@@ -21,6 +21,27 @@ export function CustomerStatementPrintPage() {
     const partyReturns = salesReturns.filter(
       (r) => r.customerId === id && invoiceIds.has(r.originalInvoiceId)
     );
+    // BUG-05: refunds reference the RETURN id, and the store caps them at the
+    // amount actually paid — so the statement must use the real refund entries
+    // (madin) plus the full return value (daen) instead of assuming a net-zero
+    // cash return. Credit settlements (settleAllDues) move money between
+    // invoices with no cash entry at all, so they are reconstructed per invoice.
+    const returnIdsByInvoice = new Map<string, Set<string>>();
+    partyReturns.forEach((r) => {
+      const set = returnIdsByInvoice.get(r.originalInvoiceId) ?? new Set<string>();
+      set.add(r.id);
+      returnIdsByInvoice.set(r.originalInvoiceId, set);
+    });
+    const allReturnIds = new Set(partyReturns.map((r) => r.id));
+    const cashNetByRef = new Map<string, number>();
+    cashEntries.forEach((ce) => {
+      if (ce.referenceId == null) return;
+      if (!invoiceIds.has(ce.referenceId) && !allReturnIds.has(ce.referenceId)) return;
+      cashNetByRef.set(ce.referenceId, (cashNetByRef.get(ce.referenceId) ?? 0) + ce.amount);
+    });
+    const cancelledWithCredit = salesInvoices.filter(
+      (inv) => inv.customerId === id && inv.cancelled && (inv.overpayment ?? 0) > 0
+    );
 
     const raw: Omit<StatementRow, "balance">[] = [
       // Debit: invoices
@@ -43,28 +64,57 @@ export function CustomerStatementPrintPage() {
           madin: ce.amount < 0 ? Math.abs(ce.amount) : 0,
           daen: ce.amount > 0 ? ce.amount : 0,
         })),
-      // Credit-only returns (refundCash = false)
-      ...partyReturns
-        .filter((r) => !r.refundCash)
-        .map((r) => ({
-          key: `ret-${r.id}`,
-          date: r.date,
-          sortKey: `${r.date}-3-${r.returnNumber}`,
-          description: `مرتجع ${r.returnNumber}`,
-          madin: 0,
-          daen: r.total,
+      // Returns: full value credited back (goods returned)
+      ...partyReturns.map((r) => ({
+        key: `ret-${r.id}`,
+        date: r.date,
+        sortKey: `${r.date}-3-${r.returnNumber}`,
+        description: r.refundCash ? `مرتجع نقدي ${r.returnNumber}` : `مرتجع ${r.returnNumber}`,
+        madin: 0,
+        daen: r.total,
+      })),
+      // Actual cash refunds for returns (negative entries, capped by the store)
+      ...cashEntries
+        .filter((ce) => ce.referenceId != null && allReturnIds.has(ce.referenceId))
+        .map((ce) => ({
+          key: `ret-refund-${ce.id}`,
+          date: ce.date,
+          sortKey: `${ce.date}-4-${ce.id}`,
+          description: ce.description,
+          madin: ce.amount < 0 ? Math.abs(ce.amount) : 0,
+          daen: ce.amount > 0 ? ce.amount : 0,
         })),
-      // Cash returns: both madin and daen (net 0 change to balance — goods back + cash returned)
-      ...partyReturns
-        .filter((r) => r.refundCash)
-        .map((r) => ({
-          key: `ret-cash-${r.id}`,
-          date: r.date,
-          sortKey: `${r.date}-3-${r.returnNumber}`,
-          description: `مرتجع نقدي ${r.returnNumber}`,
-          madin: r.total,
-          daen: r.total,
-        })),
+      // Credit settlements: recognized money with no cash entry (settleAllDues)
+      ...invoices.flatMap((inv) => {
+        const cashNet = cashNetByRef.get(inv.id) ?? 0;
+        const refundsNet = [...(returnIdsByInvoice.get(inv.id) ?? [])].reduce(
+          (sum, retId) => sum + (cashNetByRef.get(retId) ?? 0),
+          0
+        );
+        const creditDelta =
+          inv.amountReceived + (inv.overpayment ?? 0) - cashNet - refundsNet;
+        if (Math.abs(creditDelta) < 0.005) return [];
+        return [{
+          key: `credit-${inv.id}`,
+          date: inv.date,
+          sortKey: `${inv.date}-7-${inv.invoiceNumber}`,
+          description:
+            creditDelta > 0
+              ? `سداد من الرصيد الدائن — فاتورة ${inv.invoiceNumber}`
+              : `تحويل رصيد دائن — فاتورة ${inv.invoiceNumber}`,
+          madin: creditDelta < 0 ? -creditDelta : 0,
+          daen: creditDelta > 0 ? creditDelta : 0,
+        }];
+      }),
+      // Remaining credit held on cancelled invoices (cancel-with-credit)
+      ...cancelledWithCredit.map((inv) => ({
+        key: `cancelled-credit-${inv.id}`,
+        date: inv.date,
+        sortKey: `${inv.date}-8-${inv.invoiceNumber}`,
+        description: `رصيد دائن — فاتورة ملغاة ${inv.invoiceNumber}`,
+        madin: 0,
+        daen: inv.overpayment ?? 0,
+      })),
     ].sort((a, b) => a.sortKey.localeCompare(b.sortKey));
 
     let balance = 0;
