@@ -11,6 +11,7 @@ import {
 import type {
   AuditAction,
   AuditLog,
+  AuditSnapshot,
   CashEntry,
   Customer,
   Product,
@@ -203,6 +204,9 @@ interface AppActions {
   addCashEntry: (
     entry: Omit<CashEntry, "id"> & { id?: string }
   ) => CashEntry;
+
+  // Audit-log restore
+  restoreDeletedInvoice: (auditId: string) => boolean;
 
   // Derived
   currentCashBalance: () => number;
@@ -453,7 +457,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     nextCustomerCodeRef.current = nextCustomerCode;
   }, [nextCustomerCode]);
 
-  const logAudit = useCallback((action: AuditAction, entityLabel: string, details?: string) => {
+  const logAudit = useCallback((action: AuditAction, entityLabel: string, details?: string, snapshot?: AuditSnapshot) => {
     const user = currentUserRef.current;
     if (!user) return;
     const entry: AuditLog = {
@@ -464,6 +468,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       userName: user.name,
       timestamp: new Date().toISOString(),
       details,
+      snapshot,
     };
     setAuditLogs((list) => [entry, ...list].slice(0, 1000));
   }, []);
@@ -1331,7 +1336,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setPurchaseInvoices((list) => list.filter((i) => i.id !== id));
     setStockMovements((list) => list.filter((m) => m.referenceId !== id));
     setCashEntries((list) => list.filter((c) => c.referenceId !== id));
-    logAudit("invoice_purchase_deleted", `${inv.invoiceNumber} — ${inv.supplierName}`, `المدفوع: ${inv.amountPaid}`);
+    logAudit(
+      "invoice_purchase_deleted",
+      `${inv.invoiceNumber} — ${inv.supplierName}`,
+      `المدفوع: ${inv.amountPaid}`,
+      {
+        kind: "purchase-invoice",
+        invoice: inv,
+        cashEntries: cashEntries.filter((c) => c.referenceId === id),
+        stockMovements: stockMovements.filter((m) => m.referenceId === id),
+      }
+    );
     return true;
   };
 
@@ -1453,7 +1468,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (newLines.some((l) => l.isRetailUnit) && p.piecesPerUnit) {
           return { ...p, ...applyPieceDeduction(p, newQty) };
         }
-        return { ...p, quantity: p.quantity - newQty };
+        // clamp at zero like addSalesInvoice — the edit page validates stock,
+        // this is the store-level backstop (OBS-05)
+        return { ...p, quantity: Math.max(0, p.quantity - newQty) };
       })
     );
 
@@ -1597,12 +1614,81 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSalesInvoices((list) => list.filter((i) => i.id !== id));
     setStockMovements((list) => list.filter((m) => m.referenceId !== id));
     setCashEntries((list) => list.filter((c) => c.referenceId !== id));
-    logAudit("invoice_sale_deleted", `${inv.invoiceNumber} — ${inv.customerName}`, `المستلم: ${inv.amountReceived}`);
+    logAudit(
+      "invoice_sale_deleted",
+      `${inv.invoiceNumber} — ${inv.customerName}`,
+      `المستلم: ${inv.amountReceived}`,
+      {
+        kind: "sales-invoice",
+        invoice: inv,
+        cashEntries: cashEntries.filter((c) => c.referenceId === id),
+        stockMovements: stockMovements.filter((m) => m.referenceId === id),
+      }
+    );
+    return true;
+  };
+
+  // Restore a deleted invoice from its audit-log snapshot: re-insert the
+  // invoice, its cash entries and stock movements, and re-apply the stock
+  // effect the delete reversed. The snapshot is consumed so an entry can only
+  // be restored once; blocked if the id or invoice number exists again.
+  const restoreDeletedInvoice = (auditId: string): boolean => {
+    const entry = auditLogs.find((a) => a.id === auditId);
+    const snap = entry?.snapshot;
+    if (!entry || !snap) return false;
+    if (snap.kind === "sales-invoice") {
+      const inv = snap.invoice as SalesInvoice;
+      if (salesInvoices.some((i) => i.id === inv.id || i.invoiceNumber === inv.invoiceNumber)) {
+        return false;
+      }
+      setSalesInvoices((list) => [inv, ...list]);
+      if (!inv.cancelled) {
+        setProducts((list) =>
+          list.map((p) => {
+            const matchingLines = inv.lines.filter((l) => l.productId === p.id);
+            if (matchingLines.length === 0) return p;
+            const totalQty = matchingLines.reduce((sum, l) => sum + l.quantity, 0);
+            if (matchingLines.some((l) => l.isRetailUnit) && p.piecesPerUnit) {
+              return { ...p, ...applyPieceDeduction(p, totalQty) };
+            }
+            return { ...p, quantity: Math.max(0, p.quantity - totalQty) };
+          })
+        );
+      }
+    } else {
+      const inv = snap.invoice as PurchaseInvoice;
+      if (purchaseInvoices.some((i) => i.id === inv.id || i.invoiceNumber === inv.invoiceNumber)) {
+        return false;
+      }
+      setPurchaseInvoices((list) => [inv, ...list]);
+      setProducts((list) =>
+        list.map((p) => {
+          const totalQty = inv.lines
+            .filter((l) => l.productId === p.id)
+            .reduce((sum, l) => sum + l.quantity, 0);
+          if (totalQty === 0) return p;
+          return { ...p, quantity: p.quantity + totalQty };
+        })
+      );
+    }
+    setCashEntries((list) => [...snap.cashEntries, ...list]);
+    setStockMovements((list) => [...snap.stockMovements, ...list]);
+    setAuditLogs((list) =>
+      list.map((a) => (a.id === auditId ? { ...a, snapshot: undefined } : a))
+    );
+    logAudit("invoice_restored", entry.entityLabel, "استعادة من سجل التدقيق");
     return true;
   };
 
   // Returns
   const addSalesReturn: AppActions["addSalesReturn"] = (r) => {
+    // Defense in depth (OBS-08): the UI blocks returns on cancelled invoices,
+    // but a cancelled invoice already restored its stock — a return would
+    // double-restore it and could refund cash from the retained credit.
+    const original = salesInvoices.find((inv) => inv.id === r.originalInvoiceId);
+    if (original?.cancelled) {
+      throw new Error("لا يمكن إنشاء مرتجع لفاتورة ملغاة");
+    }
     const id = uid("sr");
     const salesReturnNums = salesReturns.map((x) => parseInt(x.returnNumber.replace(/\D/g, ""), 10)).filter((n) => !isNaN(n));
     const nextSRNum = salesReturnNums.length ? salesReturnNums.reduce((a, b) => (a > b ? a : b), 0) + 1 : 1;
@@ -2169,7 +2255,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       if (Array.isArray(s.stockMovements)) setStockMovements(s.stockMovements);
       if (Array.isArray(s.cashEntries)) setCashEntries(s.cashEntries);
-      if (typeof s.nextProductCode === "number") setNextProductCode(s.nextProductCode);
+      const importedProducts: Product[] = Array.isArray(s.products) ? s.products : [];
+      if (typeof s.nextProductCode === "number") {
+        setNextProductCode(s.nextProductCode);
+      } else if (importedProducts.length > 0) {
+        // derive the counter from numeric product codes (same fallback the
+        // supplier/customer counters already had) so future auto-codes can't collide
+        const maxCode = importedProducts.reduce((max, p) => {
+          const num = Number(String(p.code ?? "").trim());
+          return Number.isInteger(num) ? Math.max(max, num) : max;
+        }, 999);
+        setNextProductCode(maxCode + 1);
+      }
       const importedSuppliers = Array.isArray(s.suppliers) ? s.suppliers : [];
       if (typeof s.nextSupplierCode === "number") {
         setNextSupplierCode(Math.max(s.nextSupplierCode, nextSupplierCodeFromExisting(importedSuppliers)));
@@ -2353,6 +2450,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       addSalesReturn,
       addPurchaseReturn,
       addCashEntry,
+      restoreDeletedInvoice,
       currentCashBalance,
       customerBalance,
       customerCredit,
@@ -2421,7 +2519,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // F3-6: settings, the audit log, and session/auth are also exposed through
   // dedicated contexts so their consumers re-render independently of the main store.
   const settingsValue = useMemo(() => ({ settings, updateSettings }), [settings, updateSettings]);
-  const auditLogValue = useMemo(() => ({ auditLogs }), [auditLogs]);
+  // restoreDeletedInvoice is a plain function (same pattern as catalog actions);
+  // every path that mutates invoices also appends an audit entry, so memoizing
+  // on auditLogs alone always captures fresh state.
+  const auditLogValue = useMemo(
+    () => ({ auditLogs, restoreDeletedInvoice }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [auditLogs]
+  );
   const authValue = useMemo(
     () => ({
       auth,

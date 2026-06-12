@@ -12,6 +12,8 @@ import type { AuditLog } from "../types";
  */
 export interface AuditLogContextValue {
   auditLogs: AuditLog[];
+  /** Restore a deleted invoice from its snapshot entry; false if not restorable. */
+  restoreDeletedInvoice: (auditId: string) => boolean;
 }
 
 export const AuditLogContext = createContext<AuditLogContextValue | null>(null);

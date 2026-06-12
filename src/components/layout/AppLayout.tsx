@@ -43,14 +43,14 @@ export function AppLayout({ children }: { children: ReactNode }) {
     <div className="h-screen overflow-hidden flex bg-slate-50" dir="rtl">
       {isLocked && <LockScreen />}
       <div className="no-print">
-        <Sidebar
-          collapsed={sidebarCollapsed}
-          onToggleCollapse={() => setSidebarCollapsed((value) => !value)}
-        />
+        <Sidebar collapsed={sidebarCollapsed} />
       </div>
       <div className="flex-1 min-w-0 min-h-0 flex flex-col">
         <div className="no-print">
-          <Topbar />
+          <Topbar
+            sidebarCollapsed={sidebarCollapsed}
+            onToggleSidebar={() => setSidebarCollapsed((value) => !value)}
+          />
         </div>
         <main className="flex-1 min-h-0 overflow-y-auto p-5 space-y-5">{children}</main>
 

@@ -366,7 +366,20 @@ export type AuditAction =
   | "supplier_archived"
   | "supplier_restored"
   | "cash_manual_add"
-  | "cash_manual_remove";
+  | "cash_manual_remove"
+  | "invoice_restored";
+
+/**
+ * Full snapshot captured when an invoice is deleted — everything the delete
+ * removed (the invoice, its cash entries, its stock movements) so the audit
+ * log can restore the operation exactly.
+ */
+export interface AuditSnapshot {
+  kind: "sales-invoice" | "purchase-invoice";
+  invoice: SalesInvoice | PurchaseInvoice;
+  cashEntries: CashEntry[];
+  stockMovements: StockMovement[];
+}
 
 export interface AuditLog {
   id: ID;
@@ -376,4 +389,6 @@ export interface AuditLog {
   userName: string;
   timestamp: string;
   details?: string;
+  /** Present on restorable deletions; cleared once the entry is restored. */
+  snapshot?: AuditSnapshot;
 }

@@ -110,6 +110,9 @@ export function ImportPage() {
   const toast = useToast();
   const canAddProduct = hasPermission(currentUser, "products", "add");
   const canAddCustomer = hasPermission(currentUser, "customers", "add");
+  // OBS-03: the route itself is open to any logged-in user — gate the page
+  // content so an employee without any add permission sees a clear denial.
+  const canUseImport = canAddProduct || canAddCustomer;
 
   // Product state
   const [productRows, setProductRows] = useState<ProductRow[]>([]);
@@ -205,6 +208,14 @@ export function ImportPage() {
   const productErrors = productRows.filter((r) => r.error).length;
   const customerValid = customerRows.filter((r) => !r.error).length;
   const customerErrors = customerRows.filter((r) => r.error).length;
+
+  if (!canUseImport) {
+    return (
+      <div className="grid place-items-center py-20 text-sm text-slate-500">
+        ليس لديك صلاحية لاستيراد البيانات — تحتاج صلاحية إضافة منتجات أو عملاء.
+      </div>
+    );
+  }
 
   return (
     <>

@@ -9,9 +9,17 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { renderHook, act, cleanup } from "@testing-library/react";
 import type { ReactNode } from "react";
+import { webcrypto } from "node:crypto";
 import { AppProvider, useApp } from "../../../src/store/AppContext";
 import type { InvoiceLine, Product } from "../../../src/types";
 import { lsClearAll } from "../../../src/lib/storage";
+import { hashPassword } from "../../../src/lib/auth";
+
+// jsdom lacks SubtleCrypto — hashPassword needs it for the fallback login used
+// by the audit-restore probes (logAudit only records when a user is signed in)
+if (!globalThis.crypto?.subtle) {
+  Object.defineProperty(globalThis, "crypto", { value: webcrypto });
+}
 
 const wrapper = ({ children }: { children: ReactNode }) => (
   <AppProvider>{children}</AppProvider>
@@ -480,5 +488,89 @@ describe("PROBE-M — quotation conversion stock guard (BUG-08 fixed)", () => {
     expect(result.current.products.find((p) => p.id === prodId)?.quantity).toBe(5);
     expect(result.current.salesInvoices.length).toBe(invoicesBefore);
     expect(result.current.quotations.find((q) => q.id === quotId)?.status).toBe("draft");
+  });
+});
+
+// ── P19/P20: restore deleted invoices from the audit log ─────────────────────
+
+describe("PROBE-N — audit-log invoice restore", () => {
+  async function mountWithOwner(username: string) {
+    const { result } = mountStore();
+    const hash = await hashPassword("secret123");
+    act(() => {
+      result.current.addUser({
+        name: "مالك", username, passwordHash: hash, role: "owner",
+        permissions: undefined as never,
+      });
+    });
+    await act(async () => {
+      const login = await result.current.login(username, "secret123");
+      expect(login.ok).toBe(true);
+    });
+    return result;
+  }
+
+  it("P19: deleted sales invoice is fully restored (invoice + stock + cash), once only", async () => {
+    const result = await mountWithOwner("owner-p19");
+    let prodId = "", invId = "";
+    act(() => { prodId = result.current.addProduct(baseProduct({ quantity: 100 })).id; });
+    const openingCash = result.current.currentCashBalance();
+    act(() => {
+      invId = result.current.addSalesInvoice({
+        invoiceNumber: "INV-PN-1", date: "2026-06-10",
+        customerId: "CUST-PN", customerName: "عميل",
+        lines: [makeLine(prodId, 10, 50)], total: 500, amountReceived: 500,
+        paymentType: "cash", priceType: "wholesale",
+      }).id;
+    });
+    act(() => { result.current.deleteSalesInvoice(invId); });
+    expect(result.current.products.find((p) => p.id === prodId)?.quantity).toBe(100);
+    expect(result.current.currentCashBalance()).toBe(openingCash);
+
+    const entry = result.current.auditLogs.find((a) => a.action === "invoice_sale_deleted");
+    expect(entry?.snapshot?.kind).toBe("sales-invoice");
+
+    let ok = false;
+    act(() => { ok = result.current.restoreDeletedInvoice(entry!.id); });
+    expect(ok).toBe(true);
+    expect(result.current.salesInvoices.some((i) => i.id === invId)).toBe(true);
+    expect(result.current.products.find((p) => p.id === prodId)?.quantity).toBe(90);
+    expect(result.current.currentCashBalance()).toBe(openingCash + 500);
+    expect(result.current.stockMovements.some((m) => m.referenceId === invId)).toBe(true);
+    expect(result.current.auditLogs.some((a) => a.action === "invoice_restored")).toBe(true);
+
+    // snapshot consumed — restoring twice must be rejected without side effects
+    let again = true;
+    act(() => { again = result.current.restoreDeletedInvoice(entry!.id); });
+    expect(again).toBe(false);
+    expect(result.current.products.find((p) => p.id === prodId)?.quantity).toBe(90);
+  });
+
+  it("P20: deleted purchase invoice is fully restored (invoice + stock + cash)", async () => {
+    const result = await mountWithOwner("owner-p20");
+    let prodId = "", invId = "";
+    act(() => { prodId = result.current.addProduct(baseProduct({ quantity: 20 })).id; });
+    const openingCash = result.current.currentCashBalance();
+    act(() => {
+      invId = result.current.addPurchaseInvoice({
+        invoiceNumber: "PUR-PN-1", date: "2026-06-10",
+        supplierId: "SUP-PN", supplierName: "مورد",
+        lines: [makeLine(prodId, 10, 100)], total: 1000, amountPaid: 300,
+      }).id;
+    });
+    expect(result.current.products.find((p) => p.id === prodId)?.quantity).toBe(30);
+    act(() => { result.current.deletePurchaseInvoice(invId); });
+    expect(result.current.products.find((p) => p.id === prodId)?.quantity).toBe(20);
+    expect(result.current.currentCashBalance()).toBe(openingCash);
+
+    const entry = result.current.auditLogs.find((a) => a.action === "invoice_purchase_deleted");
+    expect(entry?.snapshot?.kind).toBe("purchase-invoice");
+
+    let ok = false;
+    act(() => { ok = result.current.restoreDeletedInvoice(entry!.id); });
+    expect(ok).toBe(true);
+    expect(result.current.purchaseInvoices.some((i) => i.id === invId)).toBe(true);
+    expect(result.current.products.find((p) => p.id === prodId)?.quantity).toBe(30);
+    expect(result.current.currentCashBalance()).toBe(openingCash - 300);
   });
 });

@@ -1,4 +1,5 @@
-import { NavLink } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { NavLink, useLocation } from "react-router-dom";
 import type { ComponentType } from "react";
 import {
   LayoutDashboard,
@@ -17,17 +18,17 @@ import {
   ArrowLeftRight,
   Truck,
   UserRound,
-  PanelRightClose,
-  PanelRightOpen,
   Shield,
   FileText,
   ClipboardList,
   Upload,
+  ChevronDown,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
+import { lsGet, lsSet } from "../../lib/storage";
 import { useAuth } from "../../store/AuthContext";
 import { useSettings } from "../../store/SettingsContext";
-import type { UserPermissions } from "../../types";
+import type { AppUser, UserPermissions } from "../../types";
 import { hasPermission } from "../../lib/permissions";
 
 type NavItem = {
@@ -39,51 +40,139 @@ type NavItem = {
   employeeOnly?: boolean;
 };
 
-const NAV: NavItem[] = [
+type NavGroup = {
+  id: string;
+  label: string;
+  items: NavItem[];
+};
+
+const TOP_ITEMS: NavItem[] = [
   { to: "/", label: "لوحة التحكم", icon: LayoutDashboard },
-  { to: "/products", label: "المنتجات", icon: Package, permission: "products" },
-  { to: "/inventory", label: "المخزون", icon: Warehouse, permission: "inventory" },
-  { to: "/stocktakes", label: "الجرد الدوري", icon: ClipboardList, permission: "inventory" },
-  { to: "/import", label: "استيراد بيانات", icon: Upload },
-  { to: "/suppliers", label: "الموردين", icon: Factory, permission: "suppliers" },
-  { to: "/customers", label: "العملاء", icon: Users, permission: "customers" },
-  { to: "/purchases", label: "فواتير المشتريات", icon: ShoppingBag, permission: "purchaseInvoices" },
-  { to: "/sales", label: "فواتير المبيعات", icon: Receipt, permission: "salesInvoices" },
-  { to: "/quotations", label: "عروض الأسعار", icon: FileText, permission: "salesInvoices" },
-  { to: "/drivers", label: "السائقين", icon: Truck, permission: "drivers" },
-  { to: "/returns", label: "المرتجعات", icon: ArrowLeftRight, permission: "returns" },
-  { to: "/alerts", label: "التنبيهات", icon: Bell, permission: "alerts" },
-  { to: "/cashbox", label: "الخزينة", icon: Wallet, permission: "cashbox" },
-  { to: "/dues", label: "المستحقات", icon: HandCoins, permission: "reports" },
-  { to: "/reports", label: "التقارير", icon: BarChart3, permission: "reports" },
-  { to: "/reports/employees", label: "تقرير الموظفين", icon: Users, ownerOnly: true },
-  { to: "/users", label: "المستخدمين", icon: Users, ownerOnly: true },
-  { to: "/audit-log", label: "سجل التدقيق", icon: Shield, ownerOnly: true },
-  { to: "/my-profile", label: "ملفي الشخصي", icon: UserRound, employeeOnly: true },
-  { to: "/settings", label: "الإعدادات", icon: Settings, ownerOnly: true },
 ];
 
-export function Sidebar({
-  collapsed,
-  onToggleCollapse,
-}: {
-  collapsed: boolean;
-  onToggleCollapse: () => void;
-}) {
+const GROUPS: NavGroup[] = [
+  {
+    id: "invoices",
+    label: "الفواتير",
+    items: [
+      { to: "/sales", label: "فواتير المبيعات", icon: Receipt, permission: "salesInvoices" },
+      { to: "/purchases", label: "فواتير المشتريات", icon: ShoppingBag, permission: "purchaseInvoices" },
+      { to: "/quotations", label: "عروض الأسعار", icon: FileText, permission: "salesInvoices" },
+      { to: "/returns", label: "المرتجعات", icon: ArrowLeftRight, permission: "returns" },
+    ],
+  },
+  {
+    id: "inventory",
+    label: "المخزون",
+    items: [
+      { to: "/products", label: "المنتجات", icon: Package, permission: "products" },
+      { to: "/inventory", label: "المخزون", icon: Warehouse, permission: "inventory" },
+      { to: "/stocktakes", label: "الجرد الدوري", icon: ClipboardList, permission: "inventory" },
+      { to: "/alerts", label: "التنبيهات", icon: Bell, permission: "alerts" },
+    ],
+  },
+  {
+    id: "parties",
+    label: "العملاء والموردون",
+    items: [
+      { to: "/customers", label: "العملاء", icon: Users, permission: "customers" },
+      { to: "/suppliers", label: "الموردين", icon: Factory, permission: "suppliers" },
+      { to: "/drivers", label: "السائقين", icon: Truck, permission: "drivers" },
+    ],
+  },
+  {
+    id: "finance",
+    label: "المالية والتقارير",
+    items: [
+      { to: "/cashbox", label: "الخزينة", icon: Wallet, permission: "cashbox" },
+      { to: "/dues", label: "المستحقات", icon: HandCoins, permission: "reports" },
+      { to: "/reports", label: "التقارير", icon: BarChart3, permission: "reports" },
+      { to: "/reports/employees", label: "تقرير الموظفين", icon: Users, ownerOnly: true },
+    ],
+  },
+  {
+    id: "admin",
+    label: "الإدارة",
+    items: [
+      { to: "/users", label: "المستخدمين", icon: Users, ownerOnly: true },
+      { to: "/audit-log", label: "سجل التدقيق", icon: Shield, ownerOnly: true },
+      { to: "/import", label: "استيراد البيانات", icon: Upload },
+      { to: "/settings", label: "الإعدادات", icon: Settings, ownerOnly: true },
+    ],
+  },
+];
+
+const BOTTOM_ITEMS: NavItem[] = [
+  { to: "/my-profile", label: "ملفي الشخصي", icon: UserRound, employeeOnly: true },
+];
+
+function canSee(item: NavItem, user: AppUser | null): boolean {
+  if (!user) return false;
+  if (user.role === "owner") return !item.employeeOnly;
+  if (item.ownerOnly) return false;
+  if (item.employeeOnly && user.role !== "employee") return false;
+  if (item.permission && !hasPermission(user, item.permission)) return false;
+  return true;
+}
+
+function itemMatchesPath(item: NavItem, pathname: string): boolean {
+  if (item.to === "/") return pathname === "/";
+  return pathname === item.to || pathname.startsWith(item.to + "/");
+}
+
+export function Sidebar({ collapsed }: { collapsed: boolean }) {
   const { logout, currentUser } = useAuth();
   const { settings } = useSettings();
-  
-  const filteredNav = NAV.filter(item => {
-    if (!currentUser) return false;
-    if (currentUser.role === "owner") {
-      return !item.employeeOnly;
+  const { pathname } = useLocation();
+
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() =>
+    lsGet("sidebarOpenGroups", {})
+  );
+  useEffect(() => {
+    lsSet("sidebarOpenGroups", openGroups);
+  }, [openGroups]);
+
+  // Keep the group that contains the current page open so the active item is
+  // never hidden behind a collapsed group.
+  useEffect(() => {
+    const activeGroup = GROUPS.find((g) => g.items.some((i) => itemMatchesPath(i, pathname)));
+    if (activeGroup && openGroups[activeGroup.id] === false) {
+      setOpenGroups((prev) => ({ ...prev, [activeGroup.id]: true }));
     }
-    if (item.ownerOnly) return false;
-    if (item.employeeOnly && currentUser.role !== "employee") return false;
-    if (item.permission && !hasPermission(currentUser, item.permission)) return false;
-    return true;
-  });
-  
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
+
+  const topItems = TOP_ITEMS.filter((i) => canSee(i, currentUser));
+  const groups = GROUPS.map((g) => ({
+    ...g,
+    items: g.items.filter((i) => canSee(i, currentUser)),
+  })).filter((g) => g.items.length > 0);
+  const bottomItems = BOTTOM_ITEMS.filter((i) => canSee(i, currentUser));
+
+  const renderItem = (item: NavItem, indented = false) => {
+    const Icon = item.icon;
+    return (
+      <NavLink
+        key={item.to}
+        to={item.to}
+        end={item.to === "/" || item.to === "/reports"}
+        title={collapsed ? item.label : undefined}
+        className={({ isActive }) =>
+          cn(
+            "flex items-center h-9 rounded-lg text-sm transition-colors",
+            collapsed ? "justify-center px-0 h-10" : indented ? "gap-3 px-3 ms-2" : "gap-3 px-3",
+            isActive
+              ? "bg-brand-50 text-brand-700 font-medium"
+              : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+          )
+        }
+      >
+        <Icon className="w-4 h-4 shrink-0" />
+        <span className={cn(collapsed && "sr-only")}>{item.label}</span>
+      </NavLink>
+    );
+  };
+
   return (
     <aside
       className={cn(
@@ -94,12 +183,17 @@ export function Sidebar({
       <div
         className={cn(
           "border-b border-slate-100 flex items-center gap-3",
-          collapsed ? "p-3 justify-center flex-col" : "p-4"
+          collapsed ? "p-3 justify-center" : "p-4"
         )}
       >
-        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-600 to-brand-800 grid place-items-center text-white font-bold overflow-hidden shrink-0">
+        <div
+          className={cn(
+            "w-10 h-10 rounded-xl grid place-items-center overflow-hidden shrink-0",
+            !settings.logoImage && "bg-gradient-to-br from-brand-600 to-brand-800 text-white font-bold"
+          )}
+        >
           {settings.logoImage ? (
-            <img src={settings.logoImage} alt="Logo" className="w-full h-full object-cover" />
+            <img src={settings.logoImage} alt="Logo" className="w-full h-full object-contain" />
           ) : (
             settings.logoText || "HD"
           )}
@@ -110,50 +204,51 @@ export function Sidebar({
           </div>
           <div className="text-[11px] text-slate-500">نظام المخزون والمبيعات</div>
         </div>
-        <button
-          type="button"
-          onClick={onToggleCollapse}
-          title={collapsed ? "فتح القائمة" : "طي القائمة"}
-          aria-label={collapsed ? "فتح القائمة" : "طي القائمة"}
-          className={cn(
-            "w-9 h-9 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 grid place-items-center transition-colors",
-            collapsed ? "mt-1" : "ms-auto"
-          )}
-        >
-          {collapsed ? (
-            <PanelRightOpen className="w-4 h-4" />
-          ) : (
-            <PanelRightClose className="w-4 h-4" />
-          )}
-        </button>
       </div>
       <nav className={cn("p-2 flex-1 overflow-y-auto", collapsed && "space-y-1")}>
-        {filteredNav.map((item) => {
-          const Icon = item.icon;
-          return (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.to === "/" || item.to === "/reports"}
-              title={collapsed ? item.label : undefined}
-              className={({ isActive }) =>
-                cn(
-                  "flex items-center h-10 rounded-lg text-sm transition-colors",
-                  collapsed ? "justify-center px-0" : "gap-3 px-3",
-                  isActive
-                    ? "bg-brand-50 text-brand-700 font-medium"
-                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-                )
-              }
-            >
-              <Icon className="w-4 h-4 shrink-0" />
-              <span className={cn(collapsed && "sr-only")}>{item.label}</span>
-            </NavLink>
-          );
-        })}
+        {collapsed ? (
+          // icon-only mode: flat list, groups add nothing at this width
+          [...topItems, ...groups.flatMap((g) => g.items), ...bottomItems].map((item) =>
+            renderItem(item)
+          )
+        ) : (
+          <>
+            {topItems.map((item) => renderItem(item))}
+            {groups.map((group) => {
+              const open = openGroups[group.id] ?? true;
+              return (
+                <div key={group.id} className="mt-1">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setOpenGroups((prev) => ({ ...prev, [group.id]: !open }))
+                    }
+                    className="w-full flex items-center justify-between px-3 h-8 text-[11px] font-bold text-slate-400 hover:text-slate-600 uppercase tracking-wide"
+                  >
+                    <span>{group.label}</span>
+                    <ChevronDown
+                      className={cn("w-3.5 h-3.5 transition-transform", !open && "-rotate-90")}
+                    />
+                  </button>
+                  {open ? (
+                    <div className="space-y-0.5">
+                      {group.items.map((item) => renderItem(item, true))}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+            {bottomItems.length > 0 ? (
+              <div className="mt-1 pt-1 border-t border-slate-100">
+                {bottomItems.map((item) => renderItem(item))}
+              </div>
+            ) : null}
+          </>
+        )}
       </nav>
       <div className="p-3 border-t border-slate-100">
         <button
+          type="button"
           onClick={logout}
           title={collapsed ? "تسجيل الخروج" : undefined}
           className={cn(

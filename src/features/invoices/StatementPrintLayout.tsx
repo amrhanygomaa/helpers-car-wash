@@ -120,13 +120,13 @@ export function StatementPrintLayout({ kind, partyName, partyCode, partyPhone, r
               <div
                 style={{
                   width: 52, height: 52, borderRadius: 10, overflow: "hidden", flexShrink: 0,
-                  background: "linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%)",
+                  background: settings.logoImage ? "transparent" : "linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%)",
                   display: "flex", alignItems: "center", justifyContent: "center",
                   color: "white", fontWeight: 700, fontSize: 16,
                 }}
               >
                 {settings.logoImage
-                  ? <img src={settings.logoImage} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  ? <img src={settings.logoImage} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
                   : settings.logoText}
               </div>
               <div>

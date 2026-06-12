@@ -1,13 +1,16 @@
 import { useMemo, useState } from "react";
-import { Shield } from "lucide-react";
+import { Shield, RotateCcw } from "lucide-react";
 import { PageHeader } from "../components/layout/AppLayout";
 import { Card, CardBody, CardHeader } from "../components/ui/Card";
 import { Field, Input, Select } from "../components/ui/Input";
 import { Table, TBody, TD, TH, THead, TR } from "../components/ui/Table";
 import { Badge } from "../components/ui/Badge";
+import { Button } from "../components/ui/Button";
+import { ConfirmDialog } from "../components/ui/Dialog";
+import { useToast } from "../components/ui/Toast";
 import { useAuditLog } from "../store/AuditLogContext";
 import { formatDateTime } from "../lib/format";
-import type { AuditAction } from "../types";
+import type { AuditAction, AuditLog } from "../types";
 
 const ACTION_META: Record<
   AuditAction,
@@ -37,6 +40,7 @@ const ACTION_META: Record<
   customer_restored:       { label: "استعادة عميل",            tone: "blue" },
   supplier_archived:       { label: "أرشفة مورد",              tone: "slate" },
   supplier_restored:       { label: "استعادة مورد",            tone: "blue" },
+  invoice_restored:        { label: "استعادة فاتورة",          tone: "blue" },
 };
 
 type Category = "all" | "sales" | "purchases" | "returns" | "stock" | "deletions" | "cash";
@@ -54,11 +58,13 @@ const CATEGORY_ACTIONS: Record<Category, AuditAction[] | null> = {
 const PAGE_SIZE = 50;
 
 export function AuditLogPage() {
-  const { auditLogs } = useAuditLog();
+  const { auditLogs, restoreDeletedInvoice } = useAuditLog();
+  const toast = useToast();
   const [q, setQ] = useState("");
   const [category, setCategory] = useState<Category>("all");
   const [userId, setUserId] = useState("");
   const [page, setPage] = useState(0);
+  const [toRestore, setToRestore] = useState<AuditLog | null>(null);
 
   const users = useMemo(() => {
     const map = new Map<string, string>();
@@ -156,6 +162,7 @@ export function AuditLogPage() {
                     <TH>الكيان</TH>
                     <TH className="w-36">المستخدم</TH>
                     <TH>التفاصيل</TH>
+                    <TH className="w-28"></TH>
                   </TR>
                 </THead>
                 <TBody>
@@ -172,6 +179,18 @@ export function AuditLogPage() {
                         <TD className="font-medium text-slate-900 text-sm">{log.entityLabel}</TD>
                         <TD className="text-slate-600 text-sm">{log.userName}</TD>
                         <TD className="text-slate-500 text-xs">{log.details ?? "—"}</TD>
+                        <TD>
+                          {log.snapshot ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setToRestore(log)}
+                              title="إرجاع الفاتورة وحركاتها كما كانت قبل الحذف"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" /> استعادة
+                            </Button>
+                          ) : null}
+                        </TD>
                       </TR>
                     );
                   })}
@@ -192,6 +211,27 @@ export function AuditLogPage() {
           </>
         )}
       </Card>
+
+      <ConfirmDialog
+        open={!!toRestore}
+        onClose={() => setToRestore(null)}
+        onConfirm={() => {
+          if (!toRestore) return;
+          const ok = restoreDeletedInvoice(toRestore.id);
+          if (ok) {
+            toast.success("تمت الاستعادة", "رجعت الفاتورة وحركات المخزون والخزنة كما كانت");
+          } else {
+            toast.error(
+              "تعذرت الاستعادة",
+              "الفاتورة موجودة بالفعل أو رقمها مستخدم في فاتورة أحدث"
+            );
+          }
+          setToRestore(null);
+        }}
+        title="استعادة الفاتورة المحذوفة"
+        message={`سيتم إرجاع ${toRestore?.entityLabel ?? ""} بكامل حركاتها (المخزون والخزنة) كما كانت قبل الحذف. متابعة؟`}
+        confirmText="استعادة"
+      />
     </>
   );
 }

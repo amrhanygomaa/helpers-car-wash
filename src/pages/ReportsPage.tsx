@@ -1022,7 +1022,7 @@ export function ReportsPage() {
                   <YAxis fontSize={12} stroke="#94a3b8" tick={{ fill: "#64748b" }} />
                   <Tooltip
                     contentStyle={{ borderRadius: 12, border: "none", boxShadow: "0 10px 15px -3px rgb(0 0 0 / 0.1)" }}
-                    formatter={(v, name) => [formatCurrency(Number(v), settings.currency), name === "sales" ? "مبيعات" : name === "purchases" ? "مشتريات" : "هامش الربح"]}
+                    formatter={(v, name) => [formatCurrency(Number(v), settings.currency), String(name)]}
                   />
                   <Bar dataKey="sales" name="مبيعات" fill="#10b981" radius={[4, 4, 0, 0]} barSize={20} />
                   <Bar dataKey="purchases" name="مشتريات" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={20} />

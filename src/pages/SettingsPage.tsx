@@ -9,7 +9,7 @@ import { lsGet } from "../lib/storage";
 import { Save, Printer, Download, Upload, Database, FileSpreadsheet, ShieldCheck, Clock, Image as ImageIcon, Trash2, FolderOpen } from "lucide-react";
 
 export function SettingsPage() {
-  const { settings, updateSettings, exportBackup, importBackup, backupToPath, exportToExcel } = useApp();
+  const { settings, updateSettings, exportBackup, importBackup, backupToPath, exportToExcel, licenseStatus } = useApp();
   const toast = useToast();
   const [form, setForm] = useState(settings);
 
@@ -70,9 +70,13 @@ export function SettingsPage() {
           <CardBody className="space-y-3">
             <div className="flex items-center gap-6 mb-4">
               <div className="relative group/logo">
-                <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-brand-600 to-brand-800 border-4 border-white shadow-lg overflow-hidden flex items-center justify-center text-white font-bold text-2xl">
+                <div
+                  className={`w-20 h-20 rounded-2xl border-4 border-white shadow-lg overflow-hidden flex items-center justify-center text-2xl ${
+                    form.logoImage ? "bg-white" : "bg-gradient-to-br from-brand-600 to-brand-800 text-white font-bold"
+                  }`}
+                >
                   {form.logoImage ? (
-                    <img src={form.logoImage} alt="Logo" className="w-full h-full object-cover" />
+                    <img src={form.logoImage} alt="Logo" className="w-full h-full object-contain" />
                   ) : (
                     form.logoText || "HD"
                   )}
@@ -343,7 +347,9 @@ export function SettingsPage() {
                   <ShieldCheck className="w-5 h-5" />
                   <span>حالة الاشتراك</span>
                 </div>
-                <div className="text-[10px] text-slate-400 font-mono">ID: {settings.companyName.slice(0, 3)}-{new Date(form.subscriptionStartDate).getTime().toString().slice(-4)}</div>
+                <div className="text-[10px] text-slate-400 font-mono" title="كود الجهاز المستخدم في الترخيص والدعم الفني">
+                  كود الجهاز: {licenseStatus?.machineCode ?? "—"}
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-6 p-4 rounded-xl bg-white border border-brand-100 shadow-sm">

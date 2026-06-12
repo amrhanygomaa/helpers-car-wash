@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from "react-router-dom";
-import { Search, Bell, ChevronDown, User, Lock } from "lucide-react";
+import { Search, Bell, ChevronDown, User, Lock, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { useAuth } from "../../store/AuthContext";
 import { useSettings } from "../../store/SettingsContext";
 import { useCatalog } from "../../store/CatalogContext";
@@ -8,23 +8,38 @@ import { useMemo, useState } from "react";
 import { formatDate } from "../../lib/format";
 import { hasPermission } from "../../lib/permissions";
 
+// order matters: more specific paths must precede their prefixes (startsWith match)
 const TITLES: Record<string, string> = {
   "/": "لوحة التحكم",
   "/products": "المنتجات",
   "/inventory": "المخزون",
+  "/stocktakes": "الجرد الدوري",
   "/suppliers": "الموردين",
   "/customers": "العملاء",
+  "/drivers": "السائقين",
   "/purchases": "فواتير المشتريات",
   "/sales": "فواتير المبيعات",
+  "/quotations": "عروض الأسعار",
+  "/returns": "المرتجعات",
   "/alerts": "التنبيهات",
   "/cashbox": "الخزينة",
   "/dues": "المستحقات",
+  "/reports/employees": "تقرير الموظفين",
   "/reports": "التقارير",
+  "/import": "استيراد البيانات",
+  "/users": "المستخدمين",
+  "/audit-log": "سجل التدقيق",
   "/my-profile": "ملفي الشخصي",
   "/settings": "الإعدادات",
 };
 
-export function Topbar() {
+export function Topbar({
+  sidebarCollapsed,
+  onToggleSidebar,
+}: {
+  sidebarCollapsed: boolean;
+  onToggleSidebar: () => void;
+}) {
   const loc = useLocation();
   const navigate = useNavigate();
   const { auth, logout, lockSession, currentUser } = useAuth();
@@ -124,6 +139,19 @@ export function Topbar() {
   return (
     <header className="sticky top-0 z-30 bg-white/90 backdrop-blur border-b border-slate-200 h-14 flex items-center gap-4 px-4">
       <div className="flex items-center gap-3 min-w-0">
+        <button
+          type="button"
+          onClick={onToggleSidebar}
+          title={sidebarCollapsed ? "فتح القائمة" : "طي القائمة"}
+          aria-label={sidebarCollapsed ? "فتح القائمة" : "طي القائمة"}
+          className="w-9 h-9 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 grid place-items-center transition-colors shrink-0"
+        >
+          {sidebarCollapsed ? (
+            <PanelRightOpen className="w-4 h-4" />
+          ) : (
+            <PanelRightClose className="w-4 h-4" />
+          )}
+        </button>
         <div className="text-sm text-slate-500">اليوم {formatDate(new Date().toISOString())}</div>
         <span className="text-slate-300">|</span>
         <h1 className="font-semibold text-slate-900 text-base truncate">{title}</h1>
