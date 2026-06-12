@@ -58,6 +58,7 @@ import {
   settleSalesInvoiceReturn,
   settlePurchaseInvoiceReturn,
   quotationConversionFields,
+  employeeCollectedCash,
 } from "./_pure";
 import { SettingsContext } from "./SettingsContext";
 import { AuditLogContext } from "./AuditLogContext";
@@ -2058,33 +2059,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const quarterStart = localISODate(new Date(year, (q - 1) * 3, 1));
       const quarterEnd = localISODate(new Date(year, q * 3, 0));
 
-      const empInvoiceIds = new Set(
-        salesInvoices
-          .filter((inv) => inv.createdByUserId === userId && !inv.cancelled)
-          .map((inv) => inv.id)
+      // OBS-02: the single shared commission base — ReportsPage uses the same fn.
+      const totalCollected = employeeCollectedCash(
+        salesInvoices,
+        salesReturns,
+        cashEntries,
+        userId,
+        quarterStart,
+        quarterEnd
       );
-
-      // IDs of returns linked to this employee's invoices (for cash refund deductions)
-      const empReturnIds = new Set(
-        salesReturns
-          .filter((r) => r.originalInvoiceId != null && empInvoiceIds.has(r.originalInvoiceId))
-          .map((r) => r.id)
-      );
-
-      // Net cash = receipts on invoices + edits/cancellation adjustments + return refunds
-      const totalCollected = cashEntries
-        .filter(
-          (ce) =>
-            ce.referenceId != null &&
-            ce.date >= quarterStart &&
-            ce.date <= quarterEnd &&
-            (
-              (empInvoiceIds.has(ce.referenceId) &&
-                (ce.type === "sales-receipt" || ce.type === "adjustment")) ||
-              (empReturnIds.has(ce.referenceId) && ce.type === "adjustment")
-            )
-        )
-        .reduce((sum, ce) => sum + ce.amount, 0);
 
       const commissionPct = employee?.salesCommissionPct ?? 0;
       const commissionEarned = (totalCollected * commissionPct) / 100;

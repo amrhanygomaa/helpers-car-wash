@@ -6,6 +6,7 @@ import type {
   SalesReturn,
   PurchaseReturn,
   ReturnLine,
+  CashEntry,
 } from "../types";
 
 export type PaymentStatusResult = "paid" | "partial" | "unpaid";
@@ -97,6 +98,44 @@ export function quotationConversionFields(
     amountReceived: received,
     overpayment: Math.max(0, requested - quot.total),
   };
+}
+
+/**
+ * Net cash an employee actually collected in [from, to] (inclusive):
+ * receipts + edit/cancellation adjustments on the employee's invoices, plus
+ * refund adjustments on returns of those invoices. This is THE single
+ * definition of the employee commission base — EmployeeReportPage (quarters)
+ * and ReportsPage (free date range) must both use it (OBS-02, report 09).
+ */
+export function employeeCollectedCash(
+  salesInvoices: Pick<SalesInvoice, "id" | "createdByUserId" | "cancelled">[],
+  salesReturns: Pick<SalesReturn, "id" | "originalInvoiceId">[],
+  cashEntries: Pick<CashEntry, "referenceId" | "date" | "type" | "amount">[],
+  userId: string,
+  from: string,
+  to: string,
+): number {
+  const empInvoiceIds = new Set(
+    salesInvoices
+      .filter((inv) => inv.createdByUserId === userId && !inv.cancelled)
+      .map((inv) => inv.id),
+  );
+  const empReturnIds = new Set(
+    salesReturns
+      .filter((r) => r.originalInvoiceId != null && empInvoiceIds.has(r.originalInvoiceId))
+      .map((r) => r.id),
+  );
+  return cashEntries
+    .filter(
+      (ce) =>
+        ce.referenceId != null &&
+        ce.date >= from &&
+        ce.date <= to &&
+        ((empInvoiceIds.has(ce.referenceId) &&
+          (ce.type === "sales-receipt" || ce.type === "adjustment")) ||
+          (empReturnIds.has(ce.referenceId) && ce.type === "adjustment")),
+    )
+    .reduce((sum, ce) => sum + ce.amount, 0);
 }
 
 export function settleSalesInvoiceReturn(

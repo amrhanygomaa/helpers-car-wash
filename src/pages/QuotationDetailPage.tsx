@@ -14,7 +14,7 @@ import { useToast } from "../components/ui/Toast";
 import { formatCurrency, formatDate } from "../lib/format";
 import { ConfirmDialog, Dialog } from "../components/ui/Dialog";
 import { Field, Input, Select } from "../components/ui/Input";
-import type { SalesPaymentType, SalesPriceType } from "../types";
+import type { SalesPaymentType } from "../types";
 import { hasPermission } from "../lib/permissions";
 import { printAppRoute } from "../lib/print";
 import { todayISO } from "../lib/utils";
@@ -47,7 +47,6 @@ export function QuotationDetailPage() {
   );
   const [invDate, setInvDate] = useState(() => todayISO());
   const [paymentType, setPaymentType] = useState<SalesPaymentType>("cash");
-  const [priceType, setPriceType] = useState<SalesPriceType>("wholesale");
   const [amountReceived, setAmountReceived] = useState(0);
   const [paymentDueDate, setPaymentDueDate] = useState("");
   const [driverId, setDriverId] = useState("");
@@ -82,7 +81,10 @@ export function QuotationDetailPage() {
         invoiceNumber: invoiceNumber.trim(),
         date: invDate,
         paymentType,
-        priceType,
+        // OBS-06: the quote's line prices ARE the agreed prices (always priced
+        // wholesale at creation) — offering a retail switch here only mislabeled
+        // the invoice without repricing anything.
+        priceType: "wholesale",
         amountReceived,
         paymentDueDate: paymentType === "account" && paymentDueDate ? paymentDueDate : undefined,
         driverId: driverId || undefined,
@@ -284,12 +286,6 @@ export function QuotationDetailPage() {
               <Input type="date" value={paymentDueDate} onChange={(e) => setPaymentDueDate(e.target.value)} />
             </Field>
           )}
-          <Field label="نوع السعر">
-            <Select value={priceType} onChange={(e) => setPriceType(e.target.value as SalesPriceType)}>
-              <option value="wholesale">جملة</option>
-              <option value="retail">تجزئة</option>
-            </Select>
-          </Field>
           <Field label="المبلغ المستلم">
             <Input
               type="number"

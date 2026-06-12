@@ -42,6 +42,7 @@ import { useSettings } from "../store/SettingsContext";
 import { useToast } from "../components/ui/Toast";
 import { formatCurrency, formatDate } from "../lib/format";
 import { daysUntil, inRange, localISODate, todayISO } from "../lib/utils";
+import { employeeCollectedCash } from "../store/_pure";
 
 type PrintMode =
   | "full"
@@ -58,7 +59,7 @@ type PrintMode =
 export function ReportsPage() {
   const { products, customers, suppliers } = useCatalog();
   const { users } = useUsers();
-  const { salesInvoices, purchaseInvoices } = useInvoicing();
+  const { salesInvoices, purchaseInvoices, salesReturns, cashEntries } = useInvoicing();
   const { settings } = useSettings();
   const {
     customerBalance,
@@ -88,14 +89,53 @@ export function ReportsPage() {
     [purchaseInvoices, from, to]
   );
 
-  const totalSales = salesInRange.reduce((a, s) => a + s.total, 0);
+  const invoiceById = useMemo(
+    () => new Map(salesInvoices.map((s) => [s.id, s])),
+    [salesInvoices]
+  );
+
+  // OBS-01: returns reverse revenue and profit. Returns on cancelled invoices
+  // are excluded because the cancellation already reversed the whole invoice.
+  const salesReturnsInRange = useMemo(
+    () =>
+      salesReturns.filter(
+        (r) => inRange(r.date, from, to) && !invoiceById.get(r.originalInvoiceId)?.cancelled
+      ),
+    [salesReturns, from, to, invoiceById]
+  );
+
+  // Cost of a returned line: original invoice line (by sourceLineId, then by
+  // product), falling back to the product's current purchase price.
+  const returnLineCost = (originalInvoiceId: string, rl: { sourceLineId?: string; productId: string }) => {
+    const orig = invoiceById.get(originalInvoiceId);
+    const origLine =
+      orig?.lines.find((l) => l.id === rl.sourceLineId) ??
+      orig?.lines.find((l) => l.productId === rl.productId);
+    return origLine?.costPrice ?? products.find((x) => x.id === rl.productId)?.purchasePrice ?? 0;
+  };
+
+  const returnsTotalInRange = salesReturnsInRange.reduce((a, r) => a + r.total, 0);
+  const returnsByPriceType = salesReturnsInRange.reduce(
+    (acc, r) => {
+      const type = invoiceById.get(r.originalInvoiceId)?.priceType === "retail" ? "retail" : "wholesale";
+      acc[type] += r.total;
+      return acc;
+    },
+    { wholesale: 0, retail: 0 }
+  );
+
+  // Net sales: invoice totals are already net of their discount; returns in
+  // the period are deducted so the report shows what was actually kept.
+  const totalSales = salesInRange.reduce((a, s) => a + s.total, 0) - returnsTotalInRange;
   const totalPurchases = purchasesInRange.reduce((a, p) => a + p.total, 0);
-  const wholesaleSalesTotal = salesInRange
-    .filter((s) => s.priceType === "wholesale")
-    .reduce((a, s) => a + s.total, 0);
-  const retailSalesTotal = salesInRange
-    .filter((s) => s.priceType === "retail")
-    .reduce((a, s) => a + s.total, 0);
+  const wholesaleSalesTotal =
+    salesInRange
+      .filter((s) => s.priceType === "wholesale")
+      .reduce((a, s) => a + s.total, 0) - returnsByPriceType.wholesale;
+  const retailSalesTotal =
+    salesInRange
+      .filter((s) => s.priceType === "retail")
+      .reduce((a, s) => a + s.total, 0) - returnsByPriceType.retail;
 
   const totalCommissions = useMemo(() => {
     return suppliers.reduce((sum, s) => {
@@ -104,6 +144,8 @@ export function ReportsPage() {
     }, 0);
   }, [suppliers, calculateSupplierCommission]);
 
+  // OBS-01: estimated GROSS profit = Σ(line price − cost) − invoice discounts
+  // − profit reversed by returns in the period.
   const estimatedProfit = useMemo(() => {
     let p = 0;
     salesInRange.forEach((inv) => {
@@ -111,28 +153,62 @@ export function ReportsPage() {
         const cost = l.costPrice ?? products.find((x) => x.id === l.productId)?.purchasePrice ?? 0;
         p += (l.price - cost) * l.quantity;
       });
+      p -= inv.discount ?? 0;
+    });
+    salesReturnsInRange.forEach((r) => {
+      r.lines.forEach((rl) => {
+        p -= (rl.price - returnLineCost(r.originalInvoiceId, rl)) * rl.quantity;
+      });
     });
     return p;
-  }, [salesInRange, products]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [salesInRange, salesReturnsInRange, invoiceById, products]);
 
   const monthlyProfitData = useMemo(() => {
     const map = new Map<string, { month: string; sales: number; purchases: number; profit: number }>();
+    const entryOf = (key: string) =>
+      map.get(key) ?? { month: key, sales: 0, purchases: 0, profit: 0 };
     salesInvoices.filter((s) => !s.cancelled).forEach((s) => {
-      const key = s.date.slice(0, 7);
-      const entry = map.get(key) ?? { month: key, sales: 0, purchases: 0, profit: 0 };
+      const entry = entryOf(s.date.slice(0, 7));
       entry.sales += s.total;
-      entry.profit += s.total;
-      map.set(key, entry);
+      let invProfit = -(s.discount ?? 0);
+      s.lines.forEach((l) => {
+        const cost = l.costPrice ?? products.find((x) => x.id === l.productId)?.purchasePrice ?? 0;
+        invProfit += (l.price - cost) * l.quantity;
+      });
+      entry.profit += invProfit;
+      map.set(entry.month, entry);
+    });
+    salesReturns.forEach((r) => {
+      if (invoiceById.get(r.originalInvoiceId)?.cancelled) return;
+      const entry = entryOf(r.date.slice(0, 7));
+      entry.sales -= r.total;
+      r.lines.forEach((rl) => {
+        entry.profit -= (rl.price - returnLineCost(r.originalInvoiceId, rl)) * rl.quantity;
+      });
+      map.set(entry.month, entry);
     });
     purchaseInvoices.forEach((p) => {
-      const key = p.date.slice(0, 7);
-      const entry = map.get(key) ?? { month: key, sales: 0, purchases: 0, profit: 0 };
+      const entry = entryOf(p.date.slice(0, 7));
       entry.purchases += p.total;
-      entry.profit -= p.total;
-      map.set(key, entry);
+      map.set(entry.month, entry);
     });
     return Array.from(map.values()).sort((a, b) => a.month.localeCompare(b.month));
-  }, [salesInvoices, purchaseInvoices]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [salesInvoices, salesReturns, purchaseInvoices, invoiceById, products]);
+
+  const monthlyTotals = useMemo(
+    () =>
+      monthlyProfitData.reduce(
+        (acc, m) => ({
+          sales: acc.sales + m.sales,
+          purchases: acc.purchases + m.purchases,
+          profit: acc.profit + m.profit,
+        }),
+        { sales: 0, purchases: 0, profit: 0 }
+      ),
+    [monthlyProfitData]
+  );
 
   const employeeBonusRows = useMemo(() => {
     return users
@@ -141,7 +217,18 @@ export function ReportsPage() {
         const invoices = salesInRange.filter((invoice) => invoice.createdByUserId === employee.id);
         const employeeTotalSales = invoices.reduce((sum, invoice) => sum + invoice.total, 0);
         const commissionPct = employee.salesCommissionPct ?? 0;
-        const bonus = (employeeTotalSales * commissionPct) / 100;
+        // OBS-02: the commission base is what the employee actually COLLECTED
+        // in the period — same definition as EmployeeReportPage (shared pure fn).
+        // The sales target, by contrast, stays measured on sales made.
+        const collected = employeeCollectedCash(
+          salesInvoices,
+          salesReturns,
+          cashEntries,
+          employee.id,
+          from,
+          to
+        );
+        const bonus = (collected * commissionPct) / 100;
         const salary = employee.monthlySalary ?? 0;
         const target = employee.monthlySalesTarget ?? 0;
         const remainingTarget = target > 0 ? Math.max(0, target - employeeTotalSales) : 0;
@@ -151,6 +238,7 @@ export function ReportsPage() {
           employee,
           invoiceCount: invoices.length,
           totalSales: employeeTotalSales,
+          collected,
           commissionPct,
           bonus,
           salary,
@@ -162,7 +250,7 @@ export function ReportsPage() {
         };
       })
       .sort((a, b) => b.bonus - a.bonus || b.totalSales - a.totalSales);
-  }, [users, salesInRange]);
+  }, [users, salesInRange, salesInvoices, salesReturns, cashEntries, from, to]);
 
   const totalEmployeeBonuses = employeeBonusRows.reduce((sum, row) => sum + row.bonus, 0);
   const totalEmployeeSales = employeeBonusRows.reduce((sum, row) => sum + row.totalSales, 0);
@@ -170,7 +258,9 @@ export function ReportsPage() {
   const employeesTargetAchieved = employeeBonusRows.filter((row) => row.achievedTarget).length;
   const unattributedEmployeeInvoices = salesInRange.filter((invoice) => !invoice.createdByUserId);
   const unattributedEmployeeSales = unattributedEmployeeInvoices.reduce((sum, invoice) => sum + invoice.total, 0);
-  const estimatedProfitAfterBonuses = estimatedProfit - totalCommissions - totalEmployeeBonuses;
+  // Supplier bonuses are income the store EARNS from suppliers (they were
+  // wrongly subtracted before); employee bonuses are an expense.
+  const estimatedProfitAfterBonuses = estimatedProfit + totalCommissions - totalEmployeeBonuses;
 
   const totalReceivables = useMemo(
     () => customers.reduce((sum, c) => sum + Math.max(0, customerBalance(c.id)), 0),
@@ -362,7 +452,7 @@ export function ReportsPage() {
                 <option value="suppliers">كشف أرصدة الموردين</option>
                 <option value="supplierDues">كشف فلوس علينا للموردين</option>
                 <option value="commissions">تقرير عمولات الموردين</option>
-                <option value="monthlyProfit">تقرير صافي الربح الشهري</option>
+                <option value="monthlyProfit">تقرير الربح الشهري</option>
                 <option value="customerDues">كشف فلوس لدينا من عملاء</option>
               </Select>
               <Button variant="outline" onClick={() => window.print()}>
@@ -374,7 +464,7 @@ export function ReportsPage() {
       </div>
 
       <div className="no-print grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        <Stat icon={<TrendingUp className="w-5 h-5" />} tone="green" label="إجمالي المبيعات" value={formatCurrency(totalSales, settings.currency)} />
+        <Stat icon={<TrendingUp className="w-5 h-5" />} tone="green" label="صافي المبيعات (بعد المرتجعات)" value={formatCurrency(totalSales, settings.currency)} />
         <Stat icon={<TrendingDown className="w-5 h-5" />} tone="blue" label="إجمالي المشتريات" value={formatCurrency(totalPurchases, settings.currency)} />
         <Stat icon={<Coins className="w-5 h-5" />} tone="amber" label="الربح التقديري" value={formatCurrency(estimatedProfit, settings.currency)} />
         <Stat icon={<TrendingUp className="w-5 h-5" />} tone="emerald" label="بونص الموردين" value={formatCurrency(totalCommissions, settings.currency)} />
@@ -397,7 +487,7 @@ export function ReportsPage() {
           <TabsTrigger value="suppliers">أرصدة الموردين</TabsTrigger>
           <TabsTrigger value="supplierDues">فلوس علينا للموردين</TabsTrigger>
           <TabsTrigger value="commissions">عمولات الموردين</TabsTrigger>
-          <TabsTrigger value="monthlyProfit">صافي الربح الشهري</TabsTrigger>
+          <TabsTrigger value="monthlyProfit">الربح الشهري</TabsTrigger>
           <TabsTrigger value="customerDues">فلوس لدينا من عملاء</TabsTrigger>
           {canViewEmployeeBonuses ? <TabsTrigger value="employeeBonuses">بونص الموظفين</TabsTrigger> : null}
         </TabsList>
@@ -908,22 +998,22 @@ export function ReportsPage() {
         <TabsContent value="monthlyProfit">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
             <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-              <div className="text-xs font-bold text-emerald-600">إجمالي المبيعات</div>
-              <div className="mt-1 text-xl font-bold text-emerald-700">{formatCurrency(totalSales, settings.currency)}</div>
+              <div className="text-xs font-bold text-emerald-600">صافي المبيعات (كل الشهور)</div>
+              <div className="mt-1 text-xl font-bold text-emerald-700">{formatCurrency(monthlyTotals.sales, settings.currency)}</div>
             </div>
             <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
-              <div className="text-xs font-bold text-blue-600">إجمالي المشتريات</div>
-              <div className="mt-1 text-xl font-bold text-blue-700">{formatCurrency(totalPurchases, settings.currency)}</div>
+              <div className="text-xs font-bold text-blue-600">إجمالي المشتريات (كل الشهور)</div>
+              <div className="mt-1 text-xl font-bold text-blue-700">{formatCurrency(monthlyTotals.purchases, settings.currency)}</div>
             </div>
-            <div className={`rounded-xl border p-4 ${totalSales - totalPurchases >= 0 ? "border-green-200 bg-green-50" : "border-rose-200 bg-rose-50"}`}>
-              <div className={`text-xs font-bold ${totalSales - totalPurchases >= 0 ? "text-green-600" : "text-rose-600"}`}>صافي الربح في الفترة</div>
-              <div className={`mt-1 text-xl font-bold ${totalSales - totalPurchases >= 0 ? "text-green-700" : "text-rose-700"}`}>
-                {formatCurrency(totalSales - totalPurchases, settings.currency)}
+            <div className={`rounded-xl border p-4 ${monthlyTotals.profit >= 0 ? "border-green-200 bg-green-50" : "border-rose-200 bg-rose-50"}`}>
+              <div className={`text-xs font-bold ${monthlyTotals.profit >= 0 ? "text-green-600" : "text-rose-600"}`}>هامش الربح الإجمالي</div>
+              <div className={`mt-1 text-xl font-bold ${monthlyTotals.profit >= 0 ? "text-green-700" : "text-rose-700"}`}>
+                {formatCurrency(monthlyTotals.profit, settings.currency)}
               </div>
             </div>
           </div>
           <Card>
-            <CardHeader title="صافي الربح الشهري" subtitle="مبيعات وإجمالي مشتريات كل شهر" />
+            <CardHeader title="الربح الشهري" subtitle="صافي المبيعات والمشتريات وهامش الربح (سعر البيع − التكلفة − الخصومات − المرتجعات) لكل شهر" />
             <CardBody className="h-72">
               <ResponsiveContainer>
                 <BarChart data={monthlyProfitData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
@@ -932,11 +1022,11 @@ export function ReportsPage() {
                   <YAxis fontSize={12} stroke="#94a3b8" tick={{ fill: "#64748b" }} />
                   <Tooltip
                     contentStyle={{ borderRadius: 12, border: "none", boxShadow: "0 10px 15px -3px rgb(0 0 0 / 0.1)" }}
-                    formatter={(v, name) => [formatCurrency(Number(v), settings.currency), name === "sales" ? "مبيعات" : name === "purchases" ? "مشتريات" : "صافي الربح"]}
+                    formatter={(v, name) => [formatCurrency(Number(v), settings.currency), name === "sales" ? "مبيعات" : name === "purchases" ? "مشتريات" : "هامش الربح"]}
                   />
                   <Bar dataKey="sales" name="مبيعات" fill="#10b981" radius={[4, 4, 0, 0]} barSize={20} />
                   <Bar dataKey="purchases" name="مشتريات" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={20} />
-                  <Bar dataKey="profit" name="صافي الربح" fill="#8b5cf6" radius={[4, 4, 0, 0]} barSize={20} />
+                  <Bar dataKey="profit" name="هامش الربح" fill="#8b5cf6" radius={[4, 4, 0, 0]} barSize={20} />
                 </BarChart>
               </ResponsiveContainer>
             </CardBody>
@@ -953,7 +1043,7 @@ export function ReportsPage() {
                       <TH>الشهر</TH>
                       <TH className="text-end">المبيعات</TH>
                       <TH className="text-end">المشتريات</TH>
-                      <TH className="text-end">صافي الربح</TH>
+                      <TH className="text-end">هامش الربح</TH>
                     </TR>
                   </THead>
                   <TBody>
@@ -1070,8 +1160,9 @@ export function ReportsPage() {
                       <TH>الموظف</TH>
                       <TH className="text-end">عدد الفواتير</TH>
                       <TH className="text-end">إجمالي المبيعات</TH>
+                      <TH className="text-end">المحصَّل في الفترة</TH>
                       <TH className="text-end">نسبة العمولة</TH>
-                      <TH className="text-end">البونص</TH>
+                      <TH className="text-end">البونص (من المحصَّل)</TH>
                       <TH className="text-end">الراتب الشهري</TH>
                       <TH className="text-end">التارجت الشهري</TH>
                       <TH>الحالة</TH>
@@ -1081,7 +1172,7 @@ export function ReportsPage() {
                   <TBody>
                     {employeeBonusRows.length === 0 ? (
                       <TR>
-                        <TD colSpan={9} className="text-center py-8 text-slate-500">
+                        <TD colSpan={10} className="text-center py-8 text-slate-500">
                           لا يوجد موظفون مسجلون
                         </TD>
                       </TR>
@@ -1093,6 +1184,9 @@ export function ReportsPage() {
                           </TD>
                           <TD className="text-end tabular-nums">{row.invoiceCount}</TD>
                           <TD className="text-end">{formatCurrency(row.totalSales, settings.currency)}</TD>
+                          <TD className="text-end font-medium text-emerald-700">
+                            {formatCurrency(row.collected, settings.currency)}
+                          </TD>
                           <TD className="text-end tabular-nums">{row.commissionPct}%</TD>
                           <TD className="text-end font-bold text-rose-700">
                             {formatCurrency(row.bonus, settings.currency)}
@@ -1160,7 +1254,7 @@ export function ReportsPage() {
               {printMode === "suppliers" && "كشف مستحقات الموردين"}
               {printMode === "supplierDues" && "كشف الفلوس المطلوبة للموردين"}
               {printMode === "commissions" && "تقرير عمولات الموردين"}
-              {printMode === "monthlyProfit" && "تقرير صافي الربح الشهري"}
+              {printMode === "monthlyProfit" && "تقرير الربح الشهري"}
               {printMode === "customerDues" && "كشف فلوس لدينا من العملاء"}
             </h2>
             <p className="text-xs opacity-50">نظام الهلبرز لإدارة المستودعات</p>
@@ -1514,16 +1608,16 @@ export function ReportsPage() {
           <section>
             <div className="grid grid-cols-3 gap-4 mb-6 text-sm">
               <div className="border border-slate-200 rounded-lg p-3">
-                <div className="text-slate-500">إجمالي المبيعات</div>
-                <div className="font-bold text-lg">{formatCurrency(totalSales, settings.currency)}</div>
+                <div className="text-slate-500">صافي المبيعات</div>
+                <div className="font-bold text-lg">{formatCurrency(monthlyTotals.sales, settings.currency)}</div>
               </div>
               <div className="border border-slate-200 rounded-lg p-3">
                 <div className="text-slate-500">إجمالي المشتريات</div>
-                <div className="font-bold text-lg">{formatCurrency(totalPurchases, settings.currency)}</div>
+                <div className="font-bold text-lg">{formatCurrency(monthlyTotals.purchases, settings.currency)}</div>
               </div>
               <div className="border border-slate-200 rounded-lg p-3">
-                <div className="text-slate-500">صافي الربح</div>
-                <div className="font-bold text-lg">{formatCurrency(totalSales - totalPurchases, settings.currency)}</div>
+                <div className="text-slate-500">هامش الربح</div>
+                <div className="font-bold text-lg">{formatCurrency(monthlyTotals.profit, settings.currency)}</div>
               </div>
             </div>
             <table className="w-full text-xs">
@@ -1532,7 +1626,7 @@ export function ReportsPage() {
                   <th className="py-2 text-right">الشهر</th>
                   <th className="py-2 text-left">المبيعات</th>
                   <th className="py-2 text-left">المشتريات</th>
-                  <th className="py-2 text-left">صافي الربح</th>
+                  <th className="py-2 text-left">هامش الربح</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -1548,9 +1642,9 @@ export function ReportsPage() {
               <tfoot>
                 <tr className="border-t-2 border-slate-900 font-bold bg-slate-50">
                   <td className="py-3 text-right">الإجمالي</td>
-                  <td className="py-3 text-left tabular-nums font-mono">{formatCurrency(totalSales, settings.currency)}</td>
-                  <td className="py-3 text-left tabular-nums font-mono">{formatCurrency(totalPurchases, settings.currency)}</td>
-                  <td className="py-3 text-left tabular-nums font-mono text-lg">{formatCurrency(totalSales - totalPurchases, settings.currency)}</td>
+                  <td className="py-3 text-left tabular-nums font-mono">{formatCurrency(monthlyTotals.sales, settings.currency)}</td>
+                  <td className="py-3 text-left tabular-nums font-mono">{formatCurrency(monthlyTotals.purchases, settings.currency)}</td>
+                  <td className="py-3 text-left tabular-nums font-mono text-lg">{formatCurrency(monthlyTotals.profit, settings.currency)}</td>
                 </tr>
               </tfoot>
             </table>

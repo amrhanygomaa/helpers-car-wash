@@ -44,8 +44,21 @@ function parseProductRows(rows: string[][]): ProductRow[] {
     const purchasePrice = parseFloat(pp ?? "0") || 0;
     const wholesalePrice = parseFloat(wp ?? "0") || 0;
     const retailPrice = parseFloat(rp ?? "0") || 0;
-    const minStock = parseInt(ms ?? "0", 10) || 0;
-    const quantity = parseInt(qty ?? "0", 10) || 0;
+    // OBS-04: a typo like "-50" or "2.5" must surface as a row error instead of
+    // silently importing negative prices/stock or truncating fractions.
+    if (purchasePrice < 0 || wholesalePrice < 0 || retailPrice < 0) {
+      err.push("الأسعار لا يمكن أن تكون سالبة");
+    }
+    const minStockRaw = Number(ms || "0");
+    const quantityRaw = Number(qty || "0");
+    if (!Number.isInteger(quantityRaw) || quantityRaw < 0) {
+      err.push("الكمية يجب أن تكون عددًا صحيحًا غير سالب");
+    }
+    if (!Number.isInteger(minStockRaw) || minStockRaw < 0) {
+      err.push("أدنى مخزون يجب أن يكون عددًا صحيحًا غير سالب");
+    }
+    const minStock = Number.isInteger(minStockRaw) && minStockRaw >= 0 ? minStockRaw : 0;
+    const quantity = Number.isInteger(quantityRaw) && quantityRaw >= 0 ? quantityRaw : 0;
     return {
       code: code || "",
       name: name || "",
@@ -237,6 +250,7 @@ export function ImportPage() {
                   type="file"
                   accept=".csv,.txt"
                   className="hidden"
+                  aria-label="ملف CSV للمنتجات"
                   onChange={handleProductFile}
                 />
                 <Button
@@ -351,6 +365,7 @@ export function ImportPage() {
                   type="file"
                   accept=".csv,.txt"
                   className="hidden"
+                  aria-label="ملف CSV للعملاء"
                   onChange={handleCustomerFile}
                 />
                 <Button
