@@ -18,6 +18,9 @@ import { Badge } from "../components/ui/Badge";
 import { ConfirmDialog } from "../components/ui/Dialog";
 import { DriverDialog } from "../features/drivers/DriverDialog";
 import { BarcodeScanInput } from "../features/products/BarcodeScanInput";
+import { CustomerFormDialog } from "../features/customers/CustomerFormDialog";
+import { useAuth } from "../store/AuthContext";
+import { hasPermission } from "../lib/permissions";
 import { parseNumericInput } from "../lib/numberInput";
 import { findProductByBarcode } from "../lib/barcode";
 
@@ -72,6 +75,8 @@ function nextInvoiceNumber(existing: string[]): string {
 
 export function SalesInvoiceNewPage() {
   const { products: allProducts, customers: allCustomers, drivers } = useCatalog();
+  const { currentUser } = useAuth();
+  const canAddCustomer = hasPermission(currentUser, "customers", "add");
   const products = useMemo(() => allProducts.filter((p) => !p.archived), [allProducts]);
   const customers = useMemo(() => allCustomers.filter((c) => !c.archived), [allCustomers]);
   const { salesInvoices, addSalesInvoice } = useInvoicing();
@@ -95,6 +100,7 @@ export function SalesInvoiceNewPage() {
   const [notes, setNotes] = useState(() => loadDraft()?.notes ?? "");
   const [lines, setLines] = useState<LineDraft[]>(() => loadDraft()?.lines ?? []);
   const [newDriverOpen, setNewDriverOpen] = useState(false);
+  const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
   const [pendingPriceType, setPendingPriceType] = useState<SalesPriceType | null>(null);
   const isDirtyRef = useRef(false);
   useEffect(() => { isDirtyRef.current = lines.length > 0; }, [lines]);
@@ -391,13 +397,21 @@ export function SalesInvoiceNewPage() {
               <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
             </Field>
             <Field label="العميل" required>
-              <Select value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
-                {customers.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </Select>
+              <div className="flex items-center gap-1.5">
+                <Select aria-label="العميل" value={customerId} onChange={(e) => setCustomerId(e.target.value)} className="flex-1">
+                  {customers.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </Select>
+                {canAddCustomer && (
+                  <Button size="icon" variant="outline" className="shrink-0"
+                    onClick={() => setCustomerDialogOpen(true)} title="إضافة عميل جديد">
+                    <Plus className="w-4 h-4" />
+                  </Button>
+                )}
+              </div>
             </Field>
             <Field label="السائق (اختياري)">
               <div className="flex items-center gap-2">
