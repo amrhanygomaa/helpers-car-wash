@@ -152,7 +152,7 @@ interface AppActions {
     id: string,
     patch: { lines: InvoiceLine[]; date: string; notes?: string }
   ) => void;
-  recordPurchasePayment: (id: string, amount: number, paymentMethod?: import("../types").PaymentMethod) => void;
+  recordPurchasePayment: (id: string, amount: number, paymentMethod?: import("../types").PaymentMethod, notes?: string) => void;
   deletePurchaseInvoice: (id: string) => boolean;
 
   // Sales invoices
@@ -1304,9 +1304,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const recordPurchasePayment: AppActions["recordPurchasePayment"] = (
     id,
     amount,
-    paymentMethod
+    paymentMethod,
+    notes
   ) => {
     if (amount <= 0) return;
+    const entry: import("../types").PaymentLogEntry = {
+      id: uid("plog"),
+      date: todayISO(),
+      amount,
+      paymentMethod: paymentMethod ?? "cash",
+      notes: notes?.trim() || undefined,
+    };
     setPurchaseInvoices((list) =>
       list.map((inv) => {
         if (inv.id !== id) return inv;
@@ -1319,6 +1327,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           remaining: Math.max(0, inv.total - paid),
           status: computeStatus(inv.total, paid),
           overpayment: excess > 0 ? (inv.overpayment ?? 0) + excess : inv.overpayment,
+          paymentLog: [...(inv.paymentLog ?? []), entry],
         };
       })
     );
