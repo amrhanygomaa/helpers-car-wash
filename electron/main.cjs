@@ -841,6 +841,9 @@ function buildInvoicePrintHtml(route) {
     : [];
   const allReturnLines = invoiceReturns.flatMap((r) => r.lines || []);
   const returnsTotal = invoiceReturns.reduce((a, r) => a + (r.total || 0), 0);
+
+  const paymentMethodLabels = { cash: "نقدي", bank: "تحويل بنكي", vodafone: "فودافون كاش", instapay: "انستاباي", other: "أخرى" };
+  const paymentLog = !isSales && Array.isArray(invoice.paymentLog) ? invoice.paymentLog : [];
   const paymentLabel = isSales
     ? invoice.paymentType === "cash"
       ? "نقدي"
@@ -1060,6 +1063,17 @@ function buildInvoicePrintHtml(route) {
       font-size: 12px;
     }
     .return-deduction { color: #dc2626; }
+    .paylog-section { margin-bottom: 16px; }
+    .paylog-title {
+      font-weight: 700;
+      color: #1e3a5f;
+      border-bottom: 1.5px solid #1e3a5f;
+      padding-bottom: 4px;
+      margin-bottom: 8px;
+      font-size: 12px;
+    }
+    .paylog-table th { background: #e8f0fb; color: #1e3a5f; }
+    .paid-highlight { color: #15803d; font-weight: 700; }
     @media print {
       .print-toolbar { display: none; }
       .page {
