@@ -71,6 +71,7 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
           "placeholder:text-slate-400",
           "focus-ring",
           "disabled:bg-slate-50 disabled:text-slate-400",
+          type === "number" && "[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none",
           className
         )}
         {...props}
