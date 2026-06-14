@@ -1157,11 +1157,42 @@ function buildInvoicePrintHtml(route) {
     </div>
     ` : ""}
 
+    ${paymentLog.length > 0 ? `
+    <div class="paylog-section">
+      <div class="paylog-title">سجل سداد الدفعات</div>
+      <table class="paylog-table">
+        <thead>
+          <tr>
+            <th class="center" style="width:36px">#</th>
+            <th class="center" style="width:100px">التاريخ</th>
+            <th class="center" style="width:110px">وسيلة الدفع</th>
+            <th class="center" style="width:130px">المبلغ المسدد</th>
+            <th>ملاحظات</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${paymentLog.map((e, i) => `
+          <tr style="background:${i % 2 === 1 ? "#f0f7ff" : "#ffffff"}">
+            <td class="center">${i + 1}</td>
+            <td class="center">${formatDate(e.date)}</td>
+            <td class="center">${escapeHtml(paymentMethodLabels[e.paymentMethod] || e.paymentMethod)}</td>
+            <td class="center mono paid-highlight">${escapeHtml(formatCurrency(e.amount, settings.currency))}</td>
+            <td class="muted">${e.notes ? escapeHtml(e.notes) : "—"}</td>
+          </tr>`).join("")}
+        </tbody>
+      </table>
+    </div>
+    ` : ""}
+
     <div class="totals">
       <div class="totals-box">
         <div class="total-row"><span>الإجمالي</span><span class="mono">${escapeHtml(formatCurrency(invoice.total, settings.currency))}</span></div>
         ${returnsTotal > 0 ? `<div class="total-row return-deduction"><span>خصم المرتجع</span><span class="mono">- ${escapeHtml(formatCurrency(returnsTotal, settings.currency))}</span></div>` : ""}
-        <div class="total-row"><span>${isSales ? "المبلغ المستلم" : "المبلغ المدفوع"}</span><span class="mono">${escapeHtml(formatCurrency(amountPaid, settings.currency))}</span></div>
+        ${paymentLog.length > 1
+          ? paymentLog.map((e, i) => `<div class="total-row"><span>دفعة ${i + 1} (${escapeHtml(paymentMethodLabels[e.paymentMethod] || e.paymentMethod)})</span><span class="mono paid-highlight">${escapeHtml(formatCurrency(e.amount, settings.currency))}</span></div>`).join("")
+          : `<div class="total-row"><span>${isSales ? "تم استلام" : "تم سداد"}</span><span class="mono paid-highlight">${escapeHtml(formatCurrency(amountPaid, settings.currency))}</span></div>`
+        }
+        ${paymentLog.length > 1 ? `<div class="total-row"><span>إجمالي ما تم سداده</span><span class="mono paid-highlight">${escapeHtml(formatCurrency(amountPaid, settings.currency))}</span></div>` : ""}
         <div class="total-row final"><span>المتبقي</span><span class="mono">${escapeHtml(formatCurrency(invoice.remaining, settings.currency))}</span></div>
       </div>
     </div>

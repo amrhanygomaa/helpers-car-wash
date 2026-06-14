@@ -38,6 +38,7 @@ export function PurchaseInvoicePrintPage() {
       notes={inv.notes}
       paymentLabel={inv.status === "paid" ? "مسدد" : inv.status === "partial" ? "جزئي" : "آجل"}
       returns={invoiceReturns.length > 0 ? invoiceReturns : undefined}
+      paymentLog={inv.paymentLog}
     />
   );
 }

@@ -1,7 +1,8 @@
 import { useEffect } from "react";
 import { useSettings } from "../../store/SettingsContext";
 import { formatCurrency, formatDate } from "../../lib/format";
-import type { InvoiceLine, ReturnLine } from "../../types";
+import type { InvoiceLine, PaymentLogEntry, ReturnLine } from "../../types";
+import { PAYMENT_METHOD_LABELS } from "../../lib/format";
 
 interface Props {
   kind: "sales" | "purchase";
@@ -23,6 +24,7 @@ interface Props {
   paymentDueDate?: string;
   customerBalance?: number;
   customerName?: string;
+  paymentLog?: PaymentLogEntry[];
 }
 
 export function InvoicePrintLayout(props: Props) {
@@ -213,6 +215,37 @@ export function InvoicePrintLayout(props: Props) {
             </div>
           )}
 
+          {/* ── PAYMENT LOG (purchase only) ── */}
+          {!isSales && props.paymentLog && props.paymentLog.length > 0 && (
+            <div style={{ marginTop: 14 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#1e3a5f", marginBottom: 6, borderBottom: "1.5px solid #1e3a5f", paddingBottom: 4 }}>
+                سجل سداد الدفعات
+              </div>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+                <thead>
+                  <tr>
+                    <Th center style={{ width: 28 }}>#</Th>
+                    <Th center style={{ width: 90 }}>التاريخ</Th>
+                    <Th center style={{ width: 100 }}>وسيلة الدفع</Th>
+                    <Th center style={{ width: 110 }}>المبلغ المسدد</Th>
+                    <Th>ملاحظات</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {props.paymentLog.map((entry, idx) => (
+                    <tr key={entry.id} style={{ background: idx % 2 === 1 ? "#f0f7ff" : "#ffffff" }}>
+                      <Td center muted>{idx + 1}</Td>
+                      <Td center>{formatDate(entry.date)}</Td>
+                      <Td center>{PAYMENT_METHOD_LABELS[entry.paymentMethod] ?? entry.paymentMethod}</Td>
+                      <Td center mono bold accent>{formatCurrency(entry.amount, settings.currency)}</Td>
+                      <Td muted>{entry.notes ?? "—"}</Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
           {/* ── TOTALS + SIGNATURES ── */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginTop: 14 }}>
 
@@ -246,10 +279,30 @@ export function InvoicePrintLayout(props: Props) {
                   />
                 </>
               )}
-              <TotalRow
-                label={isSales ? "المبلغ المستلم" : "المبلغ المدفوع"}
-                value={formatCurrency(props.amountPaid, settings.currency)}
-              />
+              {!isSales && props.paymentLog && props.paymentLog.length > 1
+                ? props.paymentLog.map((entry, i) => (
+                    <TotalRow
+                      key={entry.id}
+                      label={`دفعة ${i + 1} (${PAYMENT_METHOD_LABELS[entry.paymentMethod] ?? entry.paymentMethod})`}
+                      value={formatCurrency(entry.amount, settings.currency)}
+                      paid
+                    />
+                  ))
+                : (
+                  <TotalRow
+                    label={isSales ? "تم استلام" : "تم سداد"}
+                    value={formatCurrency(props.amountPaid, settings.currency)}
+                    paid
+                  />
+                )
+              }
+              {!isSales && props.paymentLog && props.paymentLog.length > 1 && (
+                <TotalRow
+                  label="إجمالي ما تم سداده"
+                  value={formatCurrency(props.amountPaid, settings.currency)}
+                  paid
+                />
+              )}
               <TotalRow
                 label="المتبقي"
                 value={props.remaining > 0 ? `- ${formatCurrency(props.remaining, settings.currency)}` : formatCurrency(props.remaining, settings.currency)}
@@ -359,9 +412,11 @@ function Td({ children, center, muted, bold, mono, accent }: {
   );
 }
 
-function TotalRow({ label, value, highlight, discount, deduction }: { label: string; value: string; highlight?: boolean; discount?: boolean; deduction?: boolean }) {
+function TotalRow({ label, value, highlight, discount, deduction, paid }: { label: string; value: string; highlight?: boolean; discount?: boolean; deduction?: boolean; paid?: boolean }) {
   const bgColor = highlight
     ? "#1e3a5f"
+    : paid
+    ? "#f0fdf4"
     : discount
     ? "#f0fdf4"
     : deduction
@@ -370,6 +425,8 @@ function TotalRow({ label, value, highlight, discount, deduction }: { label: str
 
   const textColor = highlight
     ? "white"
+    : paid
+    ? "#15803d"
     : discount
     ? "#16a34a"
     : deduction
