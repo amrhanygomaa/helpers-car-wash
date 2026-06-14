@@ -4,7 +4,7 @@ import { PageHeader } from "../components/layout/AppLayout";
 import { Card, CardBody, CardHeader } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Badge } from "../components/ui/Badge";
-import { Input, Select } from "../components/ui/Input";
+import { Field, Input, Select } from "../components/ui/Input";
 import { Table, TBody, TD, TH, THead, TR } from "../components/ui/Table";
 import { EmptyState } from "../components/ui/EmptyState";
 import { ConfirmDialog } from "../components/ui/Dialog";
@@ -32,9 +32,8 @@ export function ProductsPage() {
   const [q, setQ] = useState("");
   const [category, setCategory] = useState("");
   const [supplier, setSupplier] = useState("");
-  const [filter, setFilter] = useState<"all" | "low" | "expiring" | "expired">(
-    "all"
-  );
+  const [expiryFilter, setExpiryFilter] = useState<"all" | "expiring" | "expired">("all");
+  const [stockFilter, setStockFilter] = useState<"all" | "low" | "out">("all");
   const [sort, setSort] = useState<SortKey>("name");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
@@ -63,14 +62,19 @@ export function ProductsPage() {
     }
     if (category) list = list.filter((p) => p.category === category);
     if (supplier) list = list.filter((p) => p.supplierId === supplier);
-    if (filter === "low") list = list.filter((p) => p.quantity <= p.minStock);
-    if (filter === "expiring")
+    // حالة الكمية: قارب على النفاذ (أقل من أو يساوي الحد الأدنى لكن غير صفر) / نفذ (صفر)
+    if (stockFilter === "low")
+      list = list.filter((p) => p.quantity > 0 && p.quantity <= p.minStock);
+    if (stockFilter === "out") list = list.filter((p) => p.quantity <= 0);
+
+    // حالة الصلاحية: قارب الانتهاء (خلال 14 يوم) / منتهي
+    if (expiryFilter === "expiring")
       list = list.filter((p) => {
         if (!p.hasExpiry || !p.expiryDate) return false;
         const du = daysUntil(p.expiryDate);
         return du !== null && du >= 0 && du <= 14;
       });
-    if (filter === "expired")
+    if (expiryFilter === "expired")
       list = list.filter((p) => {
         if (!p.hasExpiry || !p.expiryDate) return false;
         const du = daysUntil(p.expiryDate);
@@ -86,7 +90,7 @@ export function ProductsPage() {
       return sortDir === "asc" ? cmp : -cmp;
     });
     return list;
-  }, [products, q, category, supplier, filter, sort, sortDir]);
+  }, [products, q, category, supplier, expiryFilter, stockFilter, sort, sortDir]);
 
   function handleDelete() {
     if (!toDelete) return;
@@ -137,57 +141,75 @@ export function ProductsPage() {
           ) : undefined}
         />
         <CardBody className="space-y-3">
-          <div className="flex flex-wrap gap-2 items-center">
-            <div className="relative w-64">
-              <Search className="w-4 h-4 absolute top-1/2 -translate-y-1/2 end-3 text-slate-400" />
-              <Input
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="بحث بالاسم أو الكود"
-                className="pe-9"
-              />
-            </div>
-            <Select value={category} onChange={(e) => setCategory(e.target.value)} className="w-44">
-              <option value="">كل الفئات</option>
-              {categories.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </Select>
-            <Select value={supplier} onChange={(e) => setSupplier(e.target.value)} className="w-52">
-              <option value="">كل الموردين</option>
-              {suppliers.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </Select>
-            <Select
-              value={filter}
-              onChange={(e) => setFilter(e.target.value as typeof filter)}
-              className="w-40"
-            >
-              <option value="all">كل المنتجات</option>
-              <option value="low">قليلة المخزون</option>
-              <option value="expiring">تقارب الصلاحية</option>
-              <option value="expired">منتهية الصلاحية</option>
-            </Select>
-            <div className="ms-auto flex items-center gap-2">
-              <Select
-                value={sort}
-                onChange={(e) => setSort(e.target.value as SortKey)}
-                className="w-40"
-              >
-                <option value="name">الاسم</option>
-                <option value="quantity">الكمية</option>
-                <option value="wholesalePrice">سعر الجملة</option>
-                <option value="retailPrice">سعر التجزئة</option>
-                <option value="purchasePrice">سعر الشراء</option>
+          <div className="flex flex-wrap gap-2 items-end">
+            <Field label="بحث" className="w-64">
+              <div className="relative">
+                <Search className="w-4 h-4 absolute top-1/2 -translate-y-1/2 end-3 text-slate-400" />
+                <Input
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  placeholder="بحث بالاسم أو الكود"
+                  className="pe-9"
+                />
+              </div>
+            </Field>
+            <Field label="الفئة" className="w-44">
+              <Select value={category} onChange={(e) => setCategory(e.target.value)}>
+                <option value="">كل الفئات</option>
+                {categories.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
               </Select>
+            </Field>
+            <Field label="المورد" className="w-52">
+              <Select value={supplier} onChange={(e) => setSupplier(e.target.value)}>
+                <option value="">كل الموردين</option>
+                {suppliers.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="حالة الصلاحية" className="w-40">
+              <Select
+                value={expiryFilter}
+                onChange={(e) => setExpiryFilter(e.target.value as typeof expiryFilter)}
+              >
+                <option value="all">كل حالات الصلاحية</option>
+                <option value="expiring">قارب الانتهاء</option>
+                <option value="expired">منتهي</option>
+              </Select>
+            </Field>
+            <Field label="حالة الكمية" className="w-40">
+              <Select
+                value={stockFilter}
+                onChange={(e) => setStockFilter(e.target.value as typeof stockFilter)}
+              >
+                <option value="all">كل حالات الكمية</option>
+                <option value="low">قارب على النفاذ</option>
+                <option value="out">نفذ</option>
+              </Select>
+            </Field>
+            <div className="ms-auto flex items-end gap-2">
+              <Field label="ترتيب حسب" className="w-40">
+                <Select
+                  value={sort}
+                  onChange={(e) => setSort(e.target.value as SortKey)}
+                >
+                  <option value="name">الاسم</option>
+                  <option value="quantity">الكمية</option>
+                  <option value="wholesalePrice">سعر الجملة</option>
+                  <option value="retailPrice">سعر التجزئة</option>
+                  <option value="purchasePrice">سعر الشراء</option>
+                </Select>
+              </Field>
               <Button
                 variant="outline"
                 size="sm"
+                className="h-9"
                 onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
               >
                 {sortDir === "asc" ? "تصاعدي" : "تنازلي"}
@@ -209,10 +231,12 @@ export function ProductsPage() {
                   <TH>الفئة</TH>
                   <TH>الوحدة</TH>
                   <TH className="text-end">الكمية</TH>
+                  <TH>حالة الكمية</TH>
                   <TH className="text-end">سعر الشراء</TH>
                   <TH className="text-end">سعر الجملة</TH>
                   <TH className="text-end">سعر التجزئة</TH>
                   <TH>الصلاحية</TH>
+                  <TH>حالة الصلاحية</TH>
                   <TH>المورد</TH>
                   <TH className="text-end">إجراءات</TH>
                 </TR>
@@ -221,7 +245,8 @@ export function ProductsPage() {
                 {filtered.map((p) => {
                   const supName = suppliers.find((s) => s.id === p.supplierId)?.name;
                   const du = daysUntil(p.expiryDate);
-                  const low = p.quantity <= p.minStock;
+                  const out = p.quantity <= 0;
+                  const low = !out && p.quantity <= p.minStock;
                   const expired = p.hasExpiry && du !== null && du < 0;
                   const soon =
                     p.hasExpiry && du !== null && du >= 0 && du <= 14;
@@ -229,12 +254,7 @@ export function ProductsPage() {
                     <TR key={p.id}>
                       <TD className="font-mono text-xs">{p.code}</TD>
                       <TD>
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium text-slate-900">{p.name}</span>
-                          {low && <Badge tone="amber">مخزون منخفض</Badge>}
-                          {expired && <Badge tone="red">منتهي</Badge>}
-                          {soon && !expired && <Badge tone="rose">قارب الانتهاء</Badge>}
-                        </div>
+                        <span className="font-medium text-slate-900">{p.name}</span>
                       </TD>
                       <TD>{p.category}</TD>
                       <TD>{p.unit}</TD>
@@ -242,6 +262,15 @@ export function ProductsPage() {
                         {p.piecesPerUnit
                           ? `${p.quantity} ${p.unit}${p.looseQuantity ? ` + ${p.looseQuantity} ${p.retailUnit ?? "قطعة"}` : ""}`
                           : `${p.quantity} ${p.unit}`}
+                      </TD>
+                      <TD>
+                        {out ? (
+                          <Badge tone="red">نفذ</Badge>
+                        ) : low ? (
+                          <Badge tone="amber">قارب على النفاذ</Badge>
+                        ) : (
+                          <Badge tone="green">متوفر</Badge>
+                        )}
                       </TD>
                       <TD className="text-end text-slate-600">
                         {formatCurrency(p.purchasePrice, settings.currency)}
@@ -259,6 +288,17 @@ export function ProductsPage() {
                           </span>
                         ) : (
                           <span className="text-xs text-slate-400">—</span>
+                        )}
+                      </TD>
+                      <TD>
+                        {!p.hasExpiry ? (
+                          <span className="text-xs text-slate-400">—</span>
+                        ) : expired ? (
+                          <Badge tone="red">منتهي</Badge>
+                        ) : soon ? (
+                          <Badge tone="rose">قارب الانتهاء</Badge>
+                        ) : (
+                          <Badge tone="green">سليمة</Badge>
                         )}
                       </TD>
                       <TD className="text-slate-600 text-xs">{supName ?? "—"}</TD>
@@ -306,6 +346,11 @@ export function ProductsPage() {
                     <TD className="text-slate-400 font-mono text-xs">{p.code}</TD>
                     <TD className="text-slate-500 line-through">{p.name}</TD>
                     <TD className="text-slate-400">{p.category}</TD>
+                    <TD />
+                    <TD />
+                    <TD />
+                    <TD />
+                    <TD />
                     <TD />
                     <TD />
                     <TD />

@@ -34,7 +34,7 @@ import type {
   InvoiceLine,
   LoginResult,
 } from "../types";
-import { lsClearAll, lsGet, lsRemove, lsSet, lsSetBatch } from "../lib/storage";
+import { lsClearAll, lsGet, lsRemove, lsSet, lsSetBatch, reloadStorageCache } from "../lib/storage";
 import { hashPassword, verifyFallbackPassword } from "../lib/auth";
 import { normalizeUser } from "../lib/permissions";
 import { formatSupplierCode, nextSupplierCodeFromExisting } from "../lib/codes";
@@ -584,6 +584,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!settings.autoBackupEnabled) return;
 
     function checkAndBackup() {
+      // Only back up while authenticated — otherwise we'd snapshot the empty
+      // pre-login seed and stamp lastBackupDate against it.
+      if (isDesktop && !currentUserRef.current) return;
       const s = liveStateRef.current;
       if (!s.settings.autoBackupEnabled) return;
 
@@ -667,6 +670,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // single async IPC call — previously this was 16 separate IPC calls
   // that kept the main process busy and caused sync reads to block.
   useEffect(() => {
+    // Never persist before the user is authenticated. Pre-login the renderer
+    // state is the empty seed, the main process rejects the write anyway, and
+    // the optimistic cache update would poison the cache with empty arrays —
+    // which previously led to the real data being overwritten on disk after login.
+    if (isDesktop && !auth.isAuthenticated) return;
     const timer = window.setTimeout(() => {
       lsSetBatch({
         settings,
@@ -691,13 +699,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
       unflushedChangesRef.current = false;
     }, 2000);
     return () => window.clearTimeout(timer);
-  }, [settings, products, suppliers, customers, purchaseInvoices, salesInvoices, stockMovements, cashEntries, nextProductCode, nextSupplierCode, nextCustomerCode, users, salesReturns, purchaseReturns, drivers, auditLogs, quotations, stocktakes]);
+  }, [isDesktop, auth.isAuthenticated, settings, products, suppliers, customers, purchaseInvoices, salesInvoices, stockMovements, cashEntries, nextProductCode, nextSupplierCode, nextCustomerCode, users, salesReturns, purchaseReturns, drivers, auditLogs, quotations, stocktakes]);
 
   const login = useCallback(async (username: string, passwordRaw: string) => {
     const attemptKey = loginAttemptKey(username);
     if (window.desktopAPI?.auth) {
       const result = await window.desktopAPI.auth.login(username, passwordRaw);
       if (!result.ok) return result;
+      // Refresh the cache from the DB now that a session exists — the startup
+      // cache was loaded pre-session (empty / possibly poisoned). Without this,
+      // loadStoredStateFromDesktop could read empty arrays and a later flush
+      // would overwrite the real data on disk.
+      await reloadStorageCache();
       loadStoredStateFromDesktop();
       if (result.user) {
         const updatedUser = normalizeUser(result.user);
@@ -762,6 +775,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const result = await window.desktopAPI.setup.createOwner(username, password);
       if (!result.ok || !result.user) return false;
       setDesktopOwnerExists(true);
+      await reloadStorageCache();
       loadStoredStateFromDesktop();
       const owner = normalizeUser(result.user);
       setUsers((list) => [owner, ...list.filter((u) => u.id !== owner.id)]);
@@ -2589,8 +2603,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       addSalesReturn, addPurchaseReturn,
       addCashEntry, currentCashBalance,
     }),
+    // currentCashBalance is a useCallback that also depends on settings.openingBalance,
+    // so it must be a dep here — otherwise editing the opening balance leaves consumers
+    // (Cashbox "الرصيد الحالي", Dashboard) holding a stale balance closure until the next
+    // cash entry or a restart. Other actions are plain functions and stay omitted by design.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [quotations, salesInvoices, purchaseInvoices, salesReturns, purchaseReturns, cashEntries, stockMovements]
+    [quotations, salesInvoices, purchaseInvoices, salesReturns, purchaseReturns, cashEntries, stockMovements, currentCashBalance]
   );
 
   // F3-6: Catalog slice — products / suppliers / customers / drivers + their CRUD actions.

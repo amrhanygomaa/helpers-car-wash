@@ -35,10 +35,16 @@ export function ProductFormDialog({
   open,
   onClose,
   editing,
+  onCreated,
+  defaultSupplierId,
 }: {
   open: boolean;
   onClose: () => void;
   editing?: Product | null;
+  /** Called with the newly created product after a successful add (not on edit). */
+  onCreated?: (product: Product) => void;
+  /** Pre-selects this supplier when creating a new product. */
+  defaultSupplierId?: string;
 }) {
   const { addProduct, updateProduct, suppliers, products, nextProductCode } = useCatalog();
   const toast = useToast();
@@ -77,7 +83,7 @@ export function ProductFormDialog({
       void _c;
       setForm(rest);
     } else {
-      setForm({ ...EMPTY, code: nextProductCode.toString() });
+      setForm({ ...EMPTY, code: nextProductCode.toString(), supplierId: defaultSupplierId });
     }
     setErrors({});
     setAddingCategory(false);
@@ -86,7 +92,7 @@ export function ProductFormDialog({
     setAddingUnit(false);
     setNewUnitInput("");
     setCustomUnits([]);
-  }, [editing, open, nextProductCode]);
+  }, [editing, open, nextProductCode, defaultSupplierId]);
 
   function validate(): boolean {
     const e: Record<string, string> = {};
@@ -139,8 +145,9 @@ export function ProductFormDialog({
       updateProduct(editing.id, form);
       toast.success("تم تحديث المنتج");
     } else {
-      addProduct(form);
+      const created = addProduct(form);
       toast.success("تم إضافة المنتج");
+      onCreated?.(created);
     }
     onClose();
   }

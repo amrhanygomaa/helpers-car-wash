@@ -834,9 +834,10 @@ function buildInvoicePrintHtml(route) {
   const partyName = isSales ? invoice.customerName : invoice.supplierName;
   const amountPaid = isSales ? invoice.amountReceived : invoice.amountPaid;
 
-  const allSalesReturns = isSales ? readJsonKey(`${STORE_PREFIX}salesReturns`, []) : [];
-  const invoiceReturns = isSales && Array.isArray(allSalesReturns)
-    ? allSalesReturns.filter((r) => r.originalInvoiceId === invoice.id)
+  const returnsKey = isSales ? `${STORE_PREFIX}salesReturns` : `${STORE_PREFIX}purchaseReturns`;
+  const allReturns = readJsonKey(returnsKey, []);
+  const invoiceReturns = Array.isArray(allReturns)
+    ? allReturns.filter((r) => r.originalInvoiceId === invoice.id)
     : [];
   const allReturnLines = invoiceReturns.flatMap((r) => r.lines || []);
   const returnsTotal = invoiceReturns.reduce((a, r) => a + (r.total || 0), 0);

@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "vite",
     "electron:dev": "cross-env ELECTRON_RENDERER_URL=http://127.0.0.1:5173 concurrently -k \"vite --host 127.0.0.1 --strictPort\" \"wait-on http://127.0.0.1:5173 && node electron/run-electron.cjs .\"",
+    "dev:live": "node scripts/dev-live.cjs",
     "build": "tsc -b && vite build",
     "dist:win": "node scripts/prepare-dist-win.cjs && npm run build && electron-builder --win nsis",
     "license:init": "node ../helpers_sys_activate/scripts/generate-license.cjs --init-keypair",

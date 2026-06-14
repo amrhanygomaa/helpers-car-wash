@@ -27,6 +27,27 @@ export async function loadStorageCache(): Promise<void> {
   _cacheReady = true;
 }
 
+/**
+ * Re-fetch authoritative values from the DB and overwrite the in-memory cache.
+ * Call this right AFTER a successful login: the initial loadStorageCache() runs
+ * before any session exists, so the main process returns {} and — worse — the
+ * debounced flush can poison the cache with empty arrays (writes are rejected
+ * by the main process but the optimistic cache update still happens). Refreshing
+ * here guarantees post-login reads reflect the real, on-disk data.
+ */
+export async function reloadStorageCache(): Promise<void> {
+  if (!window.desktopAPI?.storage?.getBatch) return;
+  try {
+    const batch: Record<string, string> = await window.desktopAPI.storage.getBatch();
+    for (const [key, value] of Object.entries(batch)) {
+      _cache.set(key, value);
+    }
+    _cacheReady = true;
+  } catch {
+    // Keep the existing cache on failure.
+  }
+}
+
 export function lsGet<T>(key: string, fallback: T): T {
   try {
     if (window.desktopAPI?.storage) {

@@ -16,6 +16,9 @@ import type { InvoiceLine, Product } from "../types";
 import { formatCurrency } from "../lib/format";
 import { BarcodeScanInput } from "../features/products/BarcodeScanInput";
 import { findProductByBarcode } from "../lib/barcode";
+import { ProductFormDialog } from "../features/products/ProductForm";
+import { useAuth } from "../store/AuthContext";
+import { hasPermission } from "../lib/permissions";
 
 interface LineDraft {
   id: string;
@@ -39,6 +42,8 @@ export function PurchaseInvoiceNewPage() {
   const suppliers = useMemo(() => allSuppliers.filter((s) => !s.archived), [allSuppliers]);
   const { purchaseInvoices, addPurchaseInvoice } = useInvoicing();
   const { settings } = useSettings();
+  const { currentUser } = useAuth();
+  const canAddProduct = hasPermission(currentUser, "products", "add");
   const navigate = useNavigate();
   const toast = useToast();
 
@@ -60,6 +65,8 @@ export function PurchaseInvoiceNewPage() {
     );
   }
   const [lines, setLines] = useState<LineDraft[]>([]);
+  // Line id currently waiting for a freshly-created product to be slotted in.
+  const [newProductForLine, setNewProductForLine] = useState<string | null>(null);
   const isDirtyRef = useRef(false);
   useEffect(() => { isDirtyRef.current = lines.length > 0; }, [lines]);
   const blocker = useBlocker(useCallback(() => isDirtyRef.current, []));
@@ -218,7 +225,7 @@ export function PurchaseInvoiceNewPage() {
               <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
             </Field>
             <Field label="المورد" required>
-              <Select value={supplierId} onChange={(e) => handleSupplierChange(e.target.value)}>
+              <Select aria-label="المورد" value={supplierId} onChange={(e) => handleSupplierChange(e.target.value)}>
                 {suppliers.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.name}
@@ -270,13 +277,26 @@ export function PurchaseInvoiceNewPage() {
                   return (
                     <TR key={l.id}>
                       <TD>
-                        <ProductCombo
-                          products={products.filter(
-                            (x) => !x.supplierId || x.supplierId === supplierId
+                        <div className="flex items-center gap-1.5">
+                          <ProductCombo
+                            products={products.filter(
+                              (x) => !x.supplierId || x.supplierId === supplierId
+                            )}
+                            value={l.productId}
+                            onChange={(pid) => updateLine(l.id, { productId: pid })}
+                          />
+                          {canAddProduct && (
+                            <Button
+                              size="icon"
+                              variant="outline"
+                              className="shrink-0"
+                              onClick={() => setNewProductForLine(l.id)}
+                              title="إضافة منتج جديد"
+                            >
+                              <Plus className="w-4 h-4" />
+                            </Button>
                           )}
-                          value={l.productId}
-                          onChange={(pid) => updateLine(l.id, { productId: pid })}
-                        />
+                        </div>
                       </TD>
                       <TD>
                         <Input
@@ -382,6 +402,21 @@ export function PurchaseInvoiceNewPage() {
           </CardBody>
         </Card>
       </div>
+      <ProductFormDialog
+        open={newProductForLine !== null}
+        onClose={() => setNewProductForLine(null)}
+        defaultSupplierId={supplierId || undefined}
+        onCreated={(created) => {
+          if (newProductForLine) {
+            // products list isn't re-rendered yet, so set price/expiry from the new product directly.
+            updateLine(newProductForLine, {
+              productId: created.id,
+              price: created.purchasePrice,
+              expiryDate: created.expiryDate,
+            });
+          }
+        }}
+      />
       <ConfirmDialog
         open={blocker.state === "blocked"}
         onClose={() => blocker.reset?.()}
@@ -405,7 +440,7 @@ function ProductCombo({
   onChange: (id: string) => void;
 }) {
   return (
-    <Select value={value} onChange={(e) => onChange(e.target.value)} className="w-full">
+    <Select aria-label="المنتج" value={value} onChange={(e) => onChange(e.target.value)} className="w-full">
       <option value="">— اختر منتجاً —</option>
       {products.map((p) => (
         <option key={p.id} value={p.id}>

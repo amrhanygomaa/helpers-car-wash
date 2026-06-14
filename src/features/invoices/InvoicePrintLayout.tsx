@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useSettings } from "../../store/SettingsContext";
 import { formatCurrency, formatDate } from "../../lib/format";
-import type { InvoiceLine, SalesReturn } from "../../types";
+import type { InvoiceLine, ReturnLine } from "../../types";
 
 interface Props {
   kind: "sales" | "purchase";
@@ -18,7 +18,8 @@ interface Props {
   notes?: string;
   paymentLabel?: string;
   priceTypeLabel?: string;
-  returns?: SalesReturn[];
+  // Accepts both SalesReturn and PurchaseReturn (purchase returns have no refundCash).
+  returns?: Array<{ lines: ReturnLine[]; total: number; refundCash?: boolean }>;
   paymentDueDate?: string;
   customerBalance?: number;
   customerName?: string;

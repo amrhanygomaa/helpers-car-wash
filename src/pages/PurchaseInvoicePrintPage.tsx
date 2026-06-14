@@ -6,7 +6,7 @@ import { hasPermission } from "../lib/permissions";
 
 export function PurchaseInvoicePrintPage() {
   const { id } = useParams();
-  const { purchaseInvoices } = useInvoicing();
+  const { purchaseInvoices, purchaseReturns } = useInvoicing();
   const { currentUser, auth } = useAuth();
   if (!auth.isAuthenticated || !hasPermission(currentUser, "purchaseInvoices")) {
     return (
@@ -23,6 +23,7 @@ export function PurchaseInvoicePrintPage() {
       </div>
     );
   }
+  const invoiceReturns = purchaseReturns.filter((r) => r.originalInvoiceId === inv.id);
   return (
     <InvoicePrintLayout
       kind="purchase"
@@ -36,6 +37,7 @@ export function PurchaseInvoicePrintPage() {
       remaining={inv.remaining}
       notes={inv.notes}
       paymentLabel={inv.status === "paid" ? "مسدد" : inv.status === "partial" ? "جزئي" : "آجل"}
+      returns={invoiceReturns.length > 0 ? invoiceReturns : undefined}
     />
   );
 }
