@@ -710,6 +710,11 @@ export function SalesInvoiceNewPage() {
         onClose={() => setNewDriverOpen(false)}
         onSaved={(drv) => setDriverId(drv.id)}
       />
+      <CustomerFormDialog
+        open={customerDialogOpen}
+        onClose={() => setCustomerDialogOpen(false)}
+        onCreated={(created) => setCustomerId(created.id)}
+      />
       <ConfirmDialog
         open={blocker.state === "blocked"}
         onClose={() => blocker.reset?.()}
