@@ -235,7 +235,7 @@ export function InvoicePrintLayout(props: Props) {
               {returnsTotal > 0 && (
                 <>
                   <TotalRow
-                    label="المرتجع"
+                    label={`المرتجع ${(props.returns ?? []).some(r => r.refundCash) ? "(رد نقدي)" : "(مخصوم من الرصيد)"}`}
                     value={`- ${formatCurrency(returnsTotal, settings.currency)}`}
                     deduction
                   />

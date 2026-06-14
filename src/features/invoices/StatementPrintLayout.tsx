@@ -210,28 +210,29 @@ export function StatementPrintLayout({ kind, partyName, partyCode, partyPhone, r
                   ))
                 )}
               </tbody>
+              <tfoot style={{ borderTop: "2px solid #1e3a5f" }}>
+                <tr style={{ background: "#f8fafc" }}>
+                  <td colSpan={2} style={{ padding: "10px 12px", border: "1px solid #e2e8f0", textAlign: "left", fontWeight: 700, fontSize: 12, color: "#64748b" }}>
+                    إجمالي الحركات (مدين / دائن)
+                  </td>
+                  <td style={{ padding: "10px 6px", border: "1px solid #e2e8f0", textAlign: "center", fontWeight: 700, fontSize: 12, fontFamily: "monospace", color: "#0f172a" }}>
+                    {totalMadin > 0 ? formatCurrency(totalMadin, settings.currency) : "—"}
+                  </td>
+                  <td style={{ padding: "10px 6px", border: "1px solid #e2e8f0", textAlign: "center", fontWeight: 700, fontSize: 12, fontFamily: "monospace", color: "#16a34a" }}>
+                    {totalDaen > 0 ? formatCurrency(totalDaen, settings.currency) : "—"}
+                  </td>
+                  <td style={{ border: "1px solid #e2e8f0", background: "#f8fafc" }}></td>
+                </tr>
+                <tr>
+                  <td colSpan={4} style={{ padding: "12px", border: "1px solid #1e3a5f", background: "#1e3a5f", textAlign: "left", fontWeight: 700, fontSize: 14, color: "white" }}>
+                    الرصيد النهائي
+                  </td>
+                  <td style={{ padding: "12px 6px", border: "1px solid #1e3a5f", background: "#1e3a5f", textAlign: "center", fontWeight: 800, fontSize: 14, fontFamily: "monospace", color: "white" }}>
+                    {finalBalance === 0 ? "صفر" : finalBalance > 0 ? formatCurrency(finalBalance, settings.currency) : `رصيد دائن: ${formatCurrency(-finalBalance, settings.currency)}`}
+                  </td>
+                </tr>
+              </tfoot>
             </table>
-          </div>
-
-          {/* ── TOTALS ── */}
-          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
-            <div style={{ width: 320, border: "1px solid #cbd5e1", borderRadius: 8, overflow: "hidden" }}>
-              <SummaryRow label="إجمالي المدين" value={formatCurrency(totalMadin, settings.currency)} />
-              <SummaryRow label="إجمالي الدائن" value={formatCurrency(totalDaen, settings.currency)} green />
-              <SummaryRow
-                label="الرصيد النهائي"
-                value={
-                  finalBalance === 0
-                    ? "لا يوجد رصيد"
-                    : finalBalance > 0
-                      ? formatCurrency(finalBalance, settings.currency)
-                      : `دائن: ${formatCurrency(-finalBalance, settings.currency)}`
-                }
-                highlight
-                red={finalBalance > 0}
-                green={finalBalance < 0}
-              />
-            </div>
           </div>
 
           <div style={{ flex: 1 }} />
@@ -285,15 +286,4 @@ function Td({ children, center, muted, mono, bold, green, red }: {
   );
 }
 
-function SummaryRow({ label, value, highlight, green, red }: {
-  label: string; value: string; highlight?: boolean; green?: boolean; red?: boolean;
-}) {
-  const bg = highlight ? "#1e3a5f" : "#f8fafc";
-  const color = highlight ? "white" : green ? "#16a34a" : red ? "#dc2626" : "#334155";
-  return (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: highlight ? "10px 12px" : "7px 12px", background: bg, borderBottom: highlight ? "none" : "1px solid #e2e8f0", color }}>
-      <span style={{ fontSize: highlight ? 13 : 12, fontWeight: highlight ? 700 : 500 }}>{label}</span>
-      <span style={{ fontSize: highlight ? 14 : 12, fontWeight: 700, fontFamily: "monospace" }}>{value}</span>
-    </div>
-  );
-}
+

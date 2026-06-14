@@ -140,24 +140,37 @@ export function employeeCollectedCash(
 
 export function settleSalesInvoiceReturn(
   invoice: SalesInvoice,
-  ret: Pick<SalesReturn, "lines" | "total" | "refundCash">,
+  ret: Pick<SalesReturn, "total" | "refundCash">,
 ) {
-  // Keep original lines and total unchanged — returns are shown as separate records.
-  const returnTotal = Math.min(invoice.total, ret.total);
-  const paidAndCredit = invoice.amountReceived + (invoice.overpayment ?? 0);
-  const cashRefund = ret.refundCash ? Math.min(returnTotal, paidAndCredit) : 0;
-  const paidAndCreditAfterReturn = Math.max(0, paidAndCredit - cashRefund);
-  const effectiveTotal = Math.max(0, invoice.total - returnTotal);
-  const amountReceived = Math.min(effectiveTotal, paidAndCreditAfterReturn);
-  const overpayment = Math.max(0, paidAndCreditAfterReturn - amountReceived);
-  const remaining = Math.max(0, effectiveTotal - amountReceived);
+  let cashRefund = 0;
+  let remaining = invoice.remaining;
+  let amountReceived = invoice.amountReceived;
+  let overpayment = invoice.overpayment ?? 0;
+
+  // 1. The return reduces what the customer owes first.
+  const deductFromRemaining = Math.min(remaining, ret.total);
+  remaining -= deductFromRemaining;
+  const leftToApply = ret.total - deductFromRemaining;
+
+  // 2. If there's still return value left, it means it eats into what they already paid.
+  if (leftToApply > 0) {
+    const deductFromReceived = Math.min(amountReceived, leftToApply);
+    amountReceived -= deductFromReceived;
+    overpayment += leftToApply; // It turns into credit
+  }
+
+  // 3. If refundCash is requested, we refund from the available credit (overpayment)
+  if (ret.refundCash && overpayment > 0) {
+    cashRefund = Math.min(ret.total, overpayment);
+    overpayment -= cashRefund;
+  }
 
   return {
     invoice: {
       ...invoice,
       amountReceived,
       remaining,
-      status: computeStatus(effectiveTotal, amountReceived),
+      status: (remaining <= 0 ? "paid" : amountReceived <= 0 ? "unpaid" : "partial") as "paid" | "unpaid" | "partial",
       overpayment: overpayment > 0 ? overpayment : undefined,
       paymentDueDate: remaining > 0 ? invoice.paymentDueDate : undefined,
     },
@@ -167,21 +180,32 @@ export function settleSalesInvoiceReturn(
 
 export function settlePurchaseInvoiceReturn(
   invoice: PurchaseInvoice,
-  ret: Pick<PurchaseReturn, "lines" | "total">,
+  ret: Pick<PurchaseReturn, "total">,
 ) {
-  const adjusted = applyReturnToInvoiceLines(invoice.lines, ret.lines);
-  const paidAndCredit = invoice.amountPaid + (invoice.overpayment ?? 0);
-  const amountPaid = Math.min(adjusted.total, paidAndCredit);
-  const overpayment = Math.max(0, paidAndCredit - amountPaid);
-  const remaining = Math.max(0, adjusted.total - amountPaid);
+  let remaining = invoice.remaining;
+  let amountPaid = invoice.amountPaid;
+  let overpayment = invoice.overpayment ?? 0;
+
+  // 1. The return reduces what we owe the supplier first.
+  const deductFromRemaining = Math.min(remaining, ret.total);
+  remaining -= deductFromRemaining;
+  const leftToApply = ret.total - deductFromRemaining;
+
+  // 2. If there's still return value left, it eats into what we already paid.
+  if (leftToApply > 0) {
+    const deductFromPaid = Math.min(amountPaid, leftToApply);
+    amountPaid -= deductFromPaid;
+    overpayment += leftToApply; // It turns into supplier credit
+  }
+
+  // Purchase returns don't handle cash refunds natively yet.
+  // Overpayment remains as supplier credit.
 
   return {
     ...invoice,
-    lines: adjusted.lines,
-    total: adjusted.total,
     amountPaid,
     remaining,
-    status: computeStatus(adjusted.total, amountPaid),
+    status: (remaining <= 0 ? "paid" : amountPaid <= 0 ? "unpaid" : "partial") as "paid" | "unpaid" | "partial",
     overpayment: overpayment > 0 ? overpayment : undefined,
   };
 }
