@@ -159,6 +159,7 @@ export interface PurchaseInvoice {
   overpayment?: number;
   status: PaymentStatus;
   notes?: string;
+  paymentLog?: PaymentLogEntry[];
   createdAt: string;
 }
 
@@ -297,6 +298,14 @@ export type CashEntryType =
   | "adjustment";
 
 export type PaymentMethod = "cash" | "bank" | "vodafone" | "instapay" | "other";
+
+export interface PaymentLogEntry {
+  id: ID;
+  date: string;
+  amount: number;
+  paymentMethod: PaymentMethod;
+  notes?: string;
+}
 
 export interface CashEntry {
   id: ID;
