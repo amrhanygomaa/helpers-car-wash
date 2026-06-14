@@ -17,6 +17,7 @@ import { formatCurrency } from "../lib/format";
 import { BarcodeScanInput } from "../features/products/BarcodeScanInput";
 import { findProductByBarcode } from "../lib/barcode";
 import { ProductFormDialog } from "../features/products/ProductForm";
+import { SupplierFormDialog } from "../features/suppliers/SupplierForm";
 import { useAuth } from "../store/AuthContext";
 import { hasPermission } from "../lib/permissions";
 
@@ -44,6 +45,7 @@ export function PurchaseInvoiceNewPage() {
   const { settings } = useSettings();
   const { currentUser } = useAuth();
   const canAddProduct = hasPermission(currentUser, "products", "add");
+  const canAddSupplier = hasPermission(currentUser, "suppliers", "add");
   const navigate = useNavigate();
   const toast = useToast();
 
@@ -67,6 +69,7 @@ export function PurchaseInvoiceNewPage() {
   const [lines, setLines] = useState<LineDraft[]>([]);
   // Line id currently waiting for a freshly-created product to be slotted in.
   const [newProductForLine, setNewProductForLine] = useState<string | null>(null);
+  const [supplierDialogOpen, setSupplierDialogOpen] = useState(false);
   const isDirtyRef = useRef(false);
   useEffect(() => { isDirtyRef.current = lines.length > 0; }, [lines]);
   const blocker = useBlocker(useCallback(() => isDirtyRef.current, []));
@@ -225,13 +228,26 @@ export function PurchaseInvoiceNewPage() {
               <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
             </Field>
             <Field label="المورد" required>
-              <Select aria-label="المورد" value={supplierId} onChange={(e) => handleSupplierChange(e.target.value)}>
-                {suppliers.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </Select>
+              <div className="flex items-center gap-1.5">
+                <Select aria-label="المورد" value={supplierId} onChange={(e) => handleSupplierChange(e.target.value)} className="flex-1">
+                  {suppliers.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </Select>
+                {canAddSupplier && (
+                  <Button
+                    size="icon"
+                    variant="outline"
+                    className="shrink-0"
+                    onClick={() => setSupplierDialogOpen(true)}
+                    title="إضافة مورد جديد"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </Button>
+                )}
+              </div>
             </Field>
           </div>
         </CardBody>
