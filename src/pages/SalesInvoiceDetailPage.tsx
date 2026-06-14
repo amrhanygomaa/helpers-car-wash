@@ -173,7 +173,23 @@ export function SalesInvoiceDetailPage() {
         {inv.overpayment && inv.overpayment > 0 ? (
           <Stat label="رصيد دائن للعميل" value={formatCurrency(inv.overpayment, settings.currency)} tone="green" />
         ) : null}
-        <Stat label="الحالة" value={inv.cancelled ? "ملغاة" : inv.status === "paid" ? "مسددة" : inv.status === "partial" ? "جزئي" : "غير مسددة"} tone={inv.cancelled ? "slate" : inv.status === "paid" ? "green" : inv.status === "partial" ? "amber" : "red"} />
+        <Stat
+          label="الحالة"
+          value={
+            inv.cancelled ? "ملغاة"
+            : inv.status === "paid" && (inv.overpayment ?? 0) > 0 ? "مسددة بزيادة"
+            : inv.status === "paid" ? "مسددة"
+            : inv.status === "partial" ? "جزئي"
+            : "غير مسددة"
+          }
+          tone={
+            inv.cancelled ? "slate"
+            : inv.status === "paid" && (inv.overpayment ?? 0) > 0 ? "blue"
+            : inv.status === "paid" ? "green"
+            : inv.status === "partial" ? "amber"
+            : "red"
+          }
+        />
         <Stat label="نوع السعر" value={priceTypeLabel} />
         {inv.paymentDueDate ? (
           <Stat

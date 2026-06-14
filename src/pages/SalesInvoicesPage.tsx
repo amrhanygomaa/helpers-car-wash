@@ -223,6 +223,8 @@ export function SalesInvoicesPage() {
                     <TD>
                       {s.cancelled ? (
                         <Badge tone="slate">ملغاة</Badge>
+                      ) : s.status === "paid" && (s.overpayment ?? 0) > 0 ? (
+                        <Badge tone="blue">مسدد بزيادة</Badge>
                       ) : s.status === "paid" ? (
                         <Badge tone="green">مسدد</Badge>
                       ) : s.status === "partial" ? (
