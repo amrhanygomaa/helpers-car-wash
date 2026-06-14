@@ -54,7 +54,7 @@ export interface InvoicingContextValue {
     id: string,
     patch: { lines: InvoiceLine[]; date: string; notes?: string }
   ) => void;
-  recordPurchasePayment: (id: string, amount: number, paymentMethod?: PaymentMethod) => void;
+  recordPurchasePayment: (id: string, amount: number, paymentMethod?: PaymentMethod, notes?: string) => void;
   deletePurchaseInvoice: (id: string) => boolean;
   addSalesReturn: (
     r: Omit<SalesReturn, "id" | "createdAt" | "returnNumber">
