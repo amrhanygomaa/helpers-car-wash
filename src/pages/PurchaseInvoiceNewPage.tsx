@@ -418,6 +418,11 @@ export function PurchaseInvoiceNewPage() {
           </CardBody>
         </Card>
       </div>
+      <SupplierFormDialog
+        open={supplierDialogOpen}
+        onClose={() => setSupplierDialogOpen(false)}
+        onCreated={(created) => setSupplierId(created.id)}
+      />
       <ProductFormDialog
         open={newProductForLine !== null}
         onClose={() => setNewProductForLine(null)}
