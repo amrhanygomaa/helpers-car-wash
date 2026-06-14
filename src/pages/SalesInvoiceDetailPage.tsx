@@ -475,13 +475,14 @@ function Stat({
 }: {
   label: string;
   value: string;
-  tone?: "slate" | "green" | "amber" | "red";
+  tone?: "slate" | "green" | "amber" | "red" | "blue";
 }) {
   const colors: Record<string, string> = {
     slate: "text-slate-900",
     green: "text-emerald-700",
     amber: "text-amber-700",
     red: "text-rose-700",
+    blue: "text-blue-700",
   };
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-4">
