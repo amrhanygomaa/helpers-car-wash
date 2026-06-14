@@ -381,7 +381,11 @@ export function SalesInvoiceNewPage() {
         <CardBody>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <Field label="رقم الفاتورة" required>
-              <Input value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} />
+              <Input
+                value={invoiceNumber}
+                readOnly
+                className="bg-gray-100 cursor-not-allowed text-gray-600 font-mono"
+              />
             </Field>
             <Field label="التاريخ" required>
               <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
