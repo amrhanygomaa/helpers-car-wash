@@ -304,7 +304,15 @@ export function SalesInvoiceNewPage() {
       toast.error("أدخل المبلغ المستلم أو استخدم الرصيد الدائن");
       return;
     }
-    if (paymentType === "account" && !paymentDueDate) {
+    // Cash with partial payment → auto-convert to account and require due date
+    if (paymentType === "cash" && remainingDue > 0) {
+      setPaymentType("account");
+      if (!paymentDueDate) {
+        toast.error("المبلغ أقل من الإجمالي — تم التحويل لآجل، أضف تاريخ الاستحقاق");
+        return;
+      }
+    }
+    if ((paymentType === "account" || remainingDue > 0) && !paymentDueDate) {
       toast.error("أدخل تاريخ الاستحقاق");
       return;
     }
@@ -326,8 +334,9 @@ export function SalesInvoiceNewPage() {
       };
     });
 
-    const effectivePaymentType: SalesPaymentType = paymentType;
-    const effectiveDueDate = effectivePaymentType === "account" && paymentDueDate ? paymentDueDate : undefined;
+    // If cash payment was partial it was converted to account above
+    const effectivePaymentType: SalesPaymentType = remainingDue > 0 ? "account" : paymentType;
+    const effectiveDueDate = (effectivePaymentType === "account" || remainingDue > 0) && paymentDueDate ? paymentDueDate : undefined;
 
     const actualCashReceived = Math.min(amountReceived, invoiceNet);
     const cashOverpayment = Math.max(0, amountReceived - invoiceNet);
