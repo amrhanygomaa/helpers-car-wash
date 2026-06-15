@@ -250,7 +250,8 @@ export function InventoryPage() {
                   <TH className="text-end">الكمية</TH>
                   <TH className="text-end">الحد الأدنى</TH>
                   <TH>الصلاحية</TH>
-                  <TH>الحالة</TH>
+                  <TH>حالة الكمية</TH>
+                  <TH>حالة الصلاحية</TH>
                   {canAdjustStock ? <TH className="text-end">ضبط المخزون</TH> : null}
                 </TR>
               </THead>
@@ -276,14 +277,20 @@ export function InventoryPage() {
                         {p.hasExpiry && p.expiryDate ? formatDate(p.expiryDate) : "—"}
                       </TD>
                       <TD>
-                        <div className="flex items-center gap-1 flex-wrap">
-                          {low && <Badge tone="amber">منخفض</Badge>}
-                          {expired && <Badge tone="red">منتهي</Badge>}
-                          {soon && !expired && <Badge tone="rose">قريب ينتهي</Badge>}
-                          {!low && !expired && !soon && (
-                            <Badge tone="green">متوفر</Badge>
-                          )}
-                        </div>
+                        {p.quantity === 0
+                          ? <Badge tone="red">نفد</Badge>
+                          : low
+                          ? <Badge tone="amber">منخفض</Badge>
+                          : <Badge tone="green">متوفر</Badge>}
+                      </TD>
+                      <TD>
+                        {!p.hasExpiry || !p.expiryDate
+                          ? <span className="text-slate-400 text-xs">—</span>
+                          : expired
+                          ? <Badge tone="red">منتهي</Badge>
+                          : soon
+                          ? <Badge tone="rose">قريب ينتهي</Badge>
+                          : <Badge tone="green">سليمة</Badge>}
                       </TD>
                       {canAdjustStock ? (
                         <TD className="text-end">
