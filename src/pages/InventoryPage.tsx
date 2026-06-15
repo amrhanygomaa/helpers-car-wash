@@ -253,10 +253,10 @@ export function InventoryPage() {
             <EmptyState
               icon={<Warehouse className="w-5 h-5" />}
               title={
-                filter === "expired" ? "لا توجد منتجات منتهية الصلاحية" :
-                filter === "low" ? "لا توجد منتجات منخفضة المخزون" :
-                filter === "soon" ? "لا توجد منتجات قاربت على الانتهاء" :
-                filter === "zero" ? "لا توجد منتجات نفدت كميتها" :
+                expiryFilter === "expired" ? "لا توجد منتجات منتهية الصلاحية" :
+                expiryFilter === "soon" ? "لا توجد منتجات قاربت على الانتهاء" :
+                qtyFilter === "low" ? "لا توجد منتجات منخفضة المخزون" :
+                qtyFilter === "zero" ? "لا توجد منتجات نفدت كميتها" :
                 "لا توجد منتجات"
               }
             />
