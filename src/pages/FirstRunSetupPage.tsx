@@ -48,6 +48,9 @@ function makeEmployeeDefaultPermissions() {
   return p;
 }
 
+// How long the welcome splash stays before the dashboard opens.
+const WELCOME_MS = 2600;
+
 const STEPS = [
   {
     icon: UserPlus,
@@ -187,7 +190,7 @@ export function FirstRunSetupPage() {
     // Play the welcome animation first, then open the session (which navigates
     // away and unmounts this page). Purely visual — no data/auth logic here.
     setShowWelcome(true);
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+    await new Promise((resolve) => setTimeout(resolve, WELCOME_MS));
 
     const ok = await createOwner(username.trim(), password);
     if (!ok) {
@@ -236,24 +239,35 @@ export function FirstRunSetupPage() {
   return (
     <div className="min-h-screen grid md:grid-cols-2 bg-slate-50" dir="rtl">
       {showWelcome && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gradient-to-br from-brand-700 to-brand-900 text-white overflow-hidden">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gradient-to-br from-brand-700 via-brand-800 to-brand-900 text-white overflow-hidden">
           <style
             dangerouslySetInnerHTML={{
               __html: `
-              @keyframes hwFadeUp { from { opacity: 0; transform: translateY(18px) scale(.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
+              @keyframes hwFadeUp { from { opacity: 0; transform: translateY(20px) scale(.96); } to { opacity: 1; transform: translateY(0) scale(1); } }
+              @keyframes hwLogo { 0% { opacity: 0; transform: scale(.7) rotate(-6deg); } 100% { opacity: 1; transform: scale(1) rotate(0); } }
               @keyframes hwPop { 0% { transform: scale(0); } 60% { transform: scale(1.18); } 100% { transform: scale(1); } }
-              @keyframes hwGlow { 0%,100% { opacity:.35; transform: scale(1); } 50% { opacity:.6; transform: scale(1.08); } }
-              .hw-welcome { animation: hwFadeUp .7s cubic-bezier(.16,.84,.44,1) both; }
-              .hw-check { animation: hwPop .6s .2s cubic-bezier(.16,.84,.44,1) both; }
-              .hw-glow { animation: hwGlow 2.4s ease-in-out infinite; }
+              @keyframes hwRing { 0% { opacity: .55; transform: scale(.7); } 100% { opacity: 0; transform: scale(1.9); } }
+              @keyframes hwGlowA { 0%,100% { opacity:.30; transform: translate(0,0) scale(1); } 50% { opacity:.55; transform: translate(20px,-16px) scale(1.12); } }
+              @keyframes hwGlowB { 0%,100% { opacity:.22; transform: translate(0,0) scale(1); } 50% { opacity:.40; transform: translate(-24px,18px) scale(1.15); } }
+              @keyframes hwBar { from { width: 0%; } to { width: 100%; } }
+              .hw-logo  { animation: hwLogo .7s cubic-bezier(.16,.84,.44,1) both; }
+              .hw-check { animation: hwPop .55s .35s cubic-bezier(.34,1.56,.64,1) both; }
+              .hw-ring  { animation: hwRing 1.4s .5s ease-out infinite; }
+              .hw-t1    { animation: hwFadeUp .6s .55s cubic-bezier(.16,.84,.44,1) both; }
+              .hw-t2    { animation: hwFadeUp .6s .72s cubic-bezier(.16,.84,.44,1) both; }
+              .hw-t3    { animation: hwFadeUp .6s .9s cubic-bezier(.16,.84,.44,1) both; }
+              .hw-glowA { animation: hwGlowA 3.2s ease-in-out infinite; }
+              .hw-glowB { animation: hwGlowB 3.6s ease-in-out infinite; }
+              .hw-bar   { animation: hwBar linear .3s both; }
             `,
             }}
           />
-          {/* soft glow */}
-          <div className="hw-glow absolute w-[480px] h-[480px] rounded-full bg-white/10 blur-3xl" />
+          {/* ambient depth glows */}
+          <div className="hw-glowA absolute -top-24 -right-16 w-[420px] h-[420px] rounded-full bg-white/10 blur-3xl" />
+          <div className="hw-glowB absolute -bottom-28 -left-20 w-[460px] h-[460px] rounded-full bg-sky-300/10 blur-3xl" />
 
-          <div className="hw-welcome relative flex flex-col items-center gap-6 text-center px-8">
-            <div className="w-24 h-24 rounded-3xl bg-white/10 border border-white/20 grid place-items-center overflow-hidden text-3xl font-bold">
+          <div className="relative flex flex-col items-center gap-6 text-center px-8 w-full max-w-sm">
+            <div className="hw-logo w-24 h-24 rounded-3xl bg-white/10 border border-white/20 grid place-items-center overflow-hidden text-3xl font-bold shadow-xl">
               {logoImage ? (
                 <img src={logoImage} alt="Logo" className="w-full h-full object-contain p-1.5" />
               ) : (
@@ -261,20 +275,32 @@ export function FirstRunSetupPage() {
               )}
             </div>
 
-            <div className="hw-check w-16 h-16 rounded-full bg-white grid place-items-center shadow-lg">
-              <Check className="w-9 h-9 text-brand-700" strokeWidth={3} />
+            <div className="relative grid place-items-center">
+              <span className="hw-ring absolute w-16 h-16 rounded-full border-2 border-white/60" />
+              <div className="hw-check w-16 h-16 rounded-full bg-white grid place-items-center shadow-lg">
+                <Check className="w-9 h-9 text-brand-700" strokeWidth={3} />
+              </div>
             </div>
 
-            <div className="space-y-1">
-              <div className="text-3xl font-bold">مرحباً بك 👋</div>
+            <div className="space-y-1.5">
+              <div className="hw-t1 text-3xl font-bold tracking-tight">مرحباً بك 👋</div>
               {companyNameAr.trim() && (
-                <div className="text-xl text-white/90">{companyNameAr.trim()}</div>
+                <div className="hw-t2 text-xl text-white/90">{companyNameAr.trim()}</div>
               )}
+              <div className="hw-t3 text-xs text-white/60">
+                {companyName.trim() || "Helpers Technologies"}
+              </div>
             </div>
 
-            <div className="flex items-center gap-2 text-sm text-white/70">
-              <span className="w-1.5 h-1.5 rounded-full bg-white/70 animate-pulse" />
-              جارٍ تجهيز نظامك...
+            {/* progress bar synced to the splash duration */}
+            <div className="hw-t3 w-full mt-2 space-y-2">
+              <div className="h-1.5 w-full rounded-full bg-white/15 overflow-hidden">
+                <div
+                  className="hw-bar h-full rounded-full bg-white"
+                  style={{ animationDuration: `${WELCOME_MS}ms` }}
+                />
+              </div>
+              <div className="text-[11px] text-white/70">جارٍ تجهيز نظامك...</div>
             </div>
           </div>
         </div>

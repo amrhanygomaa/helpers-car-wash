@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import { useLocation } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
 import { LockScreen } from "./LockScreen";
@@ -14,6 +15,8 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const { isLocked, lockSession } = useAuth();
   const { settings } = useSettings();
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The copyright footer is shown only on the Settings page.
+  const showFooter = useLocation().pathname === "/settings";
 
   useEffect(() => {
     lsSet("sidebarCollapsed", sidebarCollapsed);
@@ -54,6 +57,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
         </div>
         <main className="flex-1 min-h-0 overflow-y-auto p-5 space-y-5">{children}</main>
 
+        {showFooter && (
         <footer className="no-print shrink-0 py-6 px-5 border-t border-slate-200 bg-white">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-slate-500">
             <div className="flex items-center gap-2">
@@ -71,6 +75,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
             </div>
           </div>
         </footer>
+        )}
       </div>
     </div>
   );
