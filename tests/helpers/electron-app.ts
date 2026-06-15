@@ -16,16 +16,21 @@ export async function launchElectron(): Promise<ElectronHandle> {
   fs.mkdirSync(tmpDir, { recursive: true });
   const dbPath = path.join(tmpDir, "helpers-inventory.secure.sqlite");
 
+  // Build env WITHOUT ELECTRON_RENDERER_URL so main.cjs runs in production mode
+  // (isDev = Boolean(ELECTRON_RENDERER_URL)) and loads the built dist/. Setting
+  // the key to `undefined` is not enough — Node stringifies it to "undefined",
+  // which is truthy and flips the app into dev mode, crashing the launch.
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    NODE_ENV: "test",
+    HW_E2E: "1",
+    HW_E2E_DB_PATH: dbPath,
+  };
+  delete env.ELECTRON_RENDERER_URL;
+
   const app = await electron.launch({
     args: [path.resolve("electron/main.cjs")],
-    env: {
-      ...process.env,
-      NODE_ENV: "test",
-      HW_E2E: "1",
-      HW_E2E_DB_PATH: dbPath,
-      // Suppress the renderer URL so Electron loads the built dist/
-      ELECTRON_RENDERER_URL: undefined as unknown as string,
-    },
+    env,
   });
 
   const window = await app.firstWindow();

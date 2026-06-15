@@ -1,21 +1,106 @@
 import { useState, type FormEvent } from "react";
-import { ShieldCheck, UserPlus, FolderOpen, Database, FileText } from "lucide-react";
+import {
+  UserPlus,
+  Building2,
+  Wallet,
+  FolderOpen,
+  Database,
+  FileText,
+  Image as ImageIcon,
+  Trash2,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Users,
+} from "lucide-react";
 import { useAuth } from "../store/AuthContext";
 import { useSettings } from "../store/SettingsContext";
+import { useUsers } from "../store/UsersContext";
 import { Button } from "../components/ui/Button";
-import { Field, Input } from "../components/ui/Input";
+import { Field, Input, Select } from "../components/ui/Input";
 import { useToast } from "../components/ui/Toast";
+import { hashPassword } from "../lib/auth";
+import { createPermissions } from "../lib/permissions";
+
+// A sensible salesperson starter set for the first employee — the owner can
+// refine it any time from صفحة المستخدمين.
+const EMPLOYEE_DEFAULT_PERMISSIONS = (() => {
+  const p = createPermissions(false);
+  p.products.view = true;
+  p.inventory.view = true;
+  p.salesInvoices.view = true;
+  p.salesInvoices.add = true;
+  p.salesInvoices.receive = true;
+  p.customers.view = true;
+  p.customers.add = true;
+  p.returns.view = true;
+  p.returns.add = true;
+  p.alerts.view = true;
+  p.cashbox.view = true;
+  p.reports.view = true;
+  return p;
+})();
+
+const STEPS = [
+  {
+    icon: UserPlus,
+    title: "حساب المدير",
+    desc: "أنشئ حساب المالك الذي يدير النظام والمستخدمين والصلاحيات.",
+  },
+  {
+    icon: Building2,
+    title: "بيانات الشركة",
+    desc: "اسم شركتك وشعارها كما سيظهران في الفواتير وأعلى التطبيق.",
+  },
+  {
+    icon: Wallet,
+    title: "الإعدادات المالية",
+    desc: "الرصيد الافتتاحي للخزينة وقواعد التنبيهات الأساسية.",
+  },
+  {
+    icon: FolderOpen,
+    title: "مجلدات الحفظ",
+    desc: "أماكن حفظ النُّسخ الاحتياطية والفواتير لحماية بياناتك.",
+  },
+  {
+    icon: Users,
+    title: "إضافة موظف",
+    desc: "أضف أول موظف الآن، أو تخطَّ هذه الخطوة وأضفه لاحقاً.",
+  },
+] as const;
 
 export function FirstRunSetupPage() {
   const { createOwner } = useAuth();
   const { settings, updateSettings } = useSettings();
+  const { addUser } = useUsers();
   const toast = useToast();
+
+  const [step, setStep] = useState(0);
+  const [submitting, setSubmitting] = useState(false);
+
+  // Step 1 — admin account
   const [username, setUsername] = useState("admin");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+
+  // Step 2 — company
+  const [companyNameAr, setCompanyNameAr] = useState("");
+  const [companyName, setCompanyName] = useState("");
+  const [logoImage, setLogoImage] = useState("");
+
+  // Step 3 — financial
+  const [openingBalance, setOpeningBalance] = useState(0);
+  const [paymentTermDays, setPaymentTermDays] = useState(7);
+  const [lowStockThreshold, setLowStockThreshold] = useState(10);
+
+  // Step 4 — folders
   const [backupPath, setBackupPath] = useState("");
   const [invoicesSavePath, setInvoicesSavePath] = useState("");
-  const [submitting, setSubmitting] = useState(false);
+
+  // Step 5 — first employee (optional)
+  const [employeeName, setEmployeeName] = useState("");
+  const [employeeUsername, setEmployeeUsername] = useState("");
+  const [employeePassword, setEmployeePassword] = useState("");
 
   async function pickBackupFolder() {
     const dir = await window.desktopAPI?.backup?.selectDirectory();
@@ -26,142 +111,462 @@ export function FirstRunSetupPage() {
     if (dir) setInvoicesSavePath(dir);
   }
 
-  async function onSubmit(e: FormEvent) {
-    e.preventDefault();
-    if (!username.trim() || password.length < 6) {
-      toast.error("بيانات غير مكتملة", "كلمة المرور يجب ألا تقل عن 6 أحرف");
+  // Steps 0–3 are required. Step 4 (employee) is validated separately because
+  // it is optional and can be skipped.
+  function validateStep(s: number): string | null {
+    if (s === 0) {
+      if (!username.trim()) return "اسم الدخول مطلوب";
+      if (password.length < 6) return "كلمة المرور يجب ألا تقل عن 6 أحرف";
+      if (password !== confirmPassword) return "كلمتا المرور غير متطابقتين";
+    }
+    if (s === 1) {
+      if (!companyNameAr.trim()) return "اسم الشركة بالعربية مطلوب";
+    }
+    if (s === 3) {
+      if (!backupPath.trim()) return "اختر مجلد النسخ الاحتياطي التلقائي";
+      if (!invoicesSavePath.trim()) return "اختر مجلد حفظ الفواتير (PDF)";
+    }
+    return null;
+  }
+
+  function validateEmployee(): string | null {
+    if (!employeeName.trim()) return "اسم الموظف مطلوب";
+    if (!employeeUsername.trim()) return "اسم دخول الموظف مطلوب";
+    if (employeeUsername.trim() === username.trim())
+      return "اسم دخول الموظف مطابق لاسم دخول المدير";
+    if (employeePassword.length < 6) return "كلمة مرور الموظف 6 أحرف على الأقل";
+    return null;
+  }
+
+  const isLast = step === STEPS.length - 1;
+
+  function goNext() {
+    const err = validateStep(step);
+    if (err) {
+      toast.error("بيانات ناقصة", err);
       return;
     }
-    if (password !== confirmPassword) {
-      toast.error("كلمتا المرور غير متطابقتين");
-      return;
+    setStep((s) => Math.min(STEPS.length - 1, s + 1));
+  }
+  function goBack() {
+    setStep((s) => Math.max(0, s - 1));
+  }
+
+  async function finishSetup(includeEmployee: boolean) {
+    // Validate the required steps (0–3) and jump back to the first faulty one.
+    for (let i = 0; i < STEPS.length - 1; i++) {
+      const err = validateStep(i);
+      if (err) {
+        setStep(i);
+        toast.error("بيانات ناقصة", err);
+        return;
+      }
     }
-    if (!backupPath.trim()) {
-      toast.error("مطلوب", "اختر مجلد النسخ الاحتياطي التلقائي");
-      return;
-    }
-    if (!invoicesSavePath.trim()) {
-      toast.error("مطلوب", "اختر مجلد حفظ الفواتير (PDF)");
-      return;
+    if (includeEmployee) {
+      const empErr = validateEmployee();
+      if (empErr) {
+        setStep(STEPS.length - 1);
+        toast.error("بيانات الموظف ناقصة", empErr);
+        return;
+      }
     }
 
     setSubmitting(true);
     const ok = await createOwner(username.trim(), password);
-    if (ok) {
-      // Persist now — createOwner has set the owner session, so storage writes
-      // are authorized. The owner can change these later from الإعدادات.
-      updateSettings({ backupPath: backupPath.trim(), invoicesSavePath: invoicesSavePath.trim() });
-      toast.success("تم إنشاء المدير", "تم فتح النظام بالحساب الجديد");
-    } else {
+    if (!ok) {
       setSubmitting(false);
       toast.error("فشل إنشاء المدير", "تأكد أن الحساب غير موجود بالفعل");
+      return;
     }
+    // createOwner set the owner session, so storage writes are now authorized.
+    // The owner can change any of this later from الإعدادات.
+    const derivedLogoText =
+      companyNameAr.trim().slice(0, 2).toUpperCase() || settings.logoText;
+    updateSettings({
+      companyNameAr: companyNameAr.trim(),
+      companyName: companyName.trim(),
+      logoImage,
+      logoText: derivedLogoText,
+      openingBalance: Math.max(0, openingBalance),
+      paymentTermDays,
+      lowStockThreshold: Math.max(0, lowStockThreshold),
+      backupPath: backupPath.trim(),
+      invoicesSavePath: invoicesSavePath.trim(),
+    });
+
+    if (includeEmployee) {
+      addUser({
+        name: employeeName.trim(),
+        username: employeeUsername.trim(),
+        passwordHash: await hashPassword(employeePassword),
+        role: "employee",
+        permissions: EMPLOYEE_DEFAULT_PERMISSIONS,
+      });
+    }
+    toast.success("تم إنشاء المدير", "تم فتح النظام بالحساب الجديد");
   }
+
+  function onFormSubmit(e: FormEvent) {
+    e.preventDefault();
+    // On the last (employee) step, submitting means "add the employee".
+    if (isLast) void finishSetup(true);
+    else goNext();
+  }
+
+  const ActiveIcon = STEPS[step].icon;
 
   return (
     <div className="min-h-screen grid md:grid-cols-2 bg-slate-50" dir="rtl">
+      {/* Left gradient panel with the vertical stepper */}
       <div className="hidden md:flex relative bg-gradient-to-br from-brand-700 to-brand-900 text-white p-10 flex-col justify-between">
         <div className="flex items-center gap-3">
           <div className="w-11 h-11 rounded-xl bg-white/10 grid place-items-center font-bold overflow-hidden">
-            {settings.logoImage ? (
-              <img src={settings.logoImage} alt="Logo" className="w-full h-full object-cover" />
+            {logoImage ? (
+              <img src={logoImage} alt="Logo" className="w-full h-full object-cover" />
             ) : (
               settings.logoText
             )}
           </div>
           <div>
-            <div className="font-semibold">{settings.companyNameAr}</div>
-            <div className="text-xs text-white/70">{settings.companyName}</div>
+            <div className="font-semibold">{companyNameAr || "إعداد النظام"}</div>
+            <div className="text-xs text-white/70">
+              {companyName || ""}
+            </div>
           </div>
         </div>
-        <div className="space-y-4 max-w-md">
-          <ShieldCheck className="w-12 h-12 text-white/85" />
-          <h1 className="text-3xl font-bold leading-tight">إعداد المدير لأول مرة</h1>
-          <p className="text-white/80 text-sm leading-relaxed">
-            لا يوجد حساب افتراضي داخل النسخة. هذا الحساب سيكون مالك النظام وصاحب
-            صلاحيات المستخدمين والإعدادات.
-          </p>
+
+        <div className="max-w-md w-full">
+          <h1 className="text-2xl font-bold leading-tight mb-6">الإعداد الأولي للنظام</h1>
+          <ol className="space-y-2">
+            {STEPS.map((s, i) => {
+              const Icon = s.icon;
+              const done = i < step;
+              const active = i === step;
+              return (
+                <li
+                  key={s.title}
+                  className={`flex items-start gap-3 p-3 rounded-xl transition-colors ${
+                    active ? "bg-white/10" : "opacity-60"
+                  }`}
+                >
+                  <div
+                    className={`w-9 h-9 shrink-0 rounded-full grid place-items-center border-2 ${
+                      done
+                        ? "bg-white text-brand-800 border-white"
+                        : active
+                        ? "border-white text-white"
+                        : "border-white/40 text-white/70"
+                    }`}
+                  >
+                    {done ? <Check className="w-4 h-4" /> : <Icon className="w-4 h-4" />}
+                  </div>
+                  <div>
+                    <div className="text-sm font-semibold leading-7">{s.title}</div>
+                    <div className="text-[11px] text-white/70 leading-snug">{s.desc}</div>
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
         </div>
+
         <div className="text-xs text-white/60">Helpers Technologies © 2026</div>
       </div>
 
+      {/* Right form panel — one step at a time */}
       <div className="flex flex-col items-center justify-center p-6 min-h-screen">
         <form
-          onSubmit={onSubmit}
-          className="w-full max-w-md bg-white border border-slate-200 rounded-2xl shadow-card p-6 space-y-5"
+          onSubmit={onFormSubmit}
+          className="w-full max-w-md bg-white border border-slate-200 rounded-2xl shadow-card p-6"
         >
-          <div className="flex items-center gap-2 text-brand-700">
-            <UserPlus className="w-5 h-5" />
-            <div className="text-sm font-medium">حساب المدير</div>
+          {/* progress bar */}
+          <div className="flex items-center gap-2 mb-2">
+            {STEPS.map((_, i) => (
+              <div
+                key={i}
+                className={`h-1.5 flex-1 rounded-full transition-colors ${
+                  i <= step ? "bg-brand-600" : "bg-slate-200"
+                }`}
+              />
+            ))}
           </div>
-          <div>
-            <h2 className="text-2xl font-semibold text-slate-900">إنشاء حساب المالك</h2>
-            <p className="text-sm text-slate-500 mt-1">
-              الحساب سيتم حفظه محلياً بكلمة مرور مشفرة.
-            </p>
+          <div className="text-[11px] text-slate-400 mb-5">
+            الخطوة {step + 1} من {STEPS.length}
           </div>
 
-          <Field label="اسم الدخول" required>
-            <Input value={username} onChange={(e) => setUsername(e.target.value)} />
-          </Field>
-          <Field label="كلمة المرور" required>
-            <Input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-          </Field>
-          <Field label="تأكيد كلمة المرور" required>
-            <Input
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-            />
-          </Field>
+          {/* step header */}
+          <div className="flex items-center gap-2 text-brand-700 mb-1">
+            <ActiveIcon className="w-5 h-5" />
+            <div className="text-sm font-medium">{STEPS[step].title}</div>
+          </div>
+          <p className="text-sm text-slate-500 mb-5 leading-relaxed">{STEPS[step].desc}</p>
 
-          <div className="pt-3 border-t border-slate-100 space-y-4">
-            <div className="text-xs text-slate-500 leading-relaxed">
-              لحماية بياناتك، حدِّد مجلدين مطلوبين لأول مرة (يمكن تغييرهما لاحقاً من الإعدادات).
-            </div>
+          {/* step content */}
+          <div className="space-y-4 min-h-[280px]">
+            {step === 0 && (
+              <>
+                <Field label="اسم الدخول" required>
+                  <Input value={username} onChange={(e) => setUsername(e.target.value)} />
+                </Field>
+                <Field label="كلمة المرور" required hint="6 أحرف على الأقل">
+                  <Input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
+                </Field>
+                <Field label="تأكيد كلمة المرور" required>
+                  <Input
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                  />
+                </Field>
+              </>
+            )}
 
-            <Field label="مجلد النسخ الاحتياطي التلقائي" required>
-              <div className="flex gap-2">
-                <Input
-                  value={backupPath}
-                  readOnly
-                  placeholder="اختر مجلداً (محلي / خارجي / شبكة)..."
-                  className="bg-slate-50 font-mono text-xs"
-                />
-                <Button type="button" variant="outline" onClick={pickBackupFolder}>
-                  <FolderOpen className="w-4 h-4" />
+            {step === 1 && (
+              <>
+                <div className="flex items-center gap-4">
+                  <div
+                    className={`w-20 h-20 rounded-2xl border-4 border-white shadow-lg overflow-hidden flex items-center justify-center text-2xl ${
+                      logoImage
+                        ? "bg-white"
+                        : "bg-gradient-to-br from-brand-600 to-brand-800 text-white font-bold"
+                    }`}
+                  >
+                    {logoImage ? (
+                      <img src={logoImage} alt="Logo" className="w-full h-full object-contain" />
+                    ) : (
+                      companyNameAr.trim().slice(0, 2).toUpperCase() || "؟"
+                    )}
+                  </div>
+                  <div className="flex-1 space-y-2">
+                    <div className="text-sm font-bold text-slate-900">
+                      شعار الشركة{" "}
+                      <span className="text-slate-400 font-normal">(اختياري)</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="relative">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="absolute inset-0 opacity-0 cursor-pointer"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              const reader = new FileReader();
+                              reader.onloadend = () =>
+                                setLogoImage(reader.result as string);
+                              reader.readAsDataURL(file);
+                            }
+                          }}
+                        />
+                        <Button type="button" variant="outline" size="sm" className="gap-2">
+                          <ImageIcon className="w-4 h-4" /> رفع صورة
+                        </Button>
+                      </div>
+                      {logoImage && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="text-red-600 gap-1"
+                          onClick={() => setLogoImage("")}
+                        >
+                          <Trash2 className="w-4 h-4" /> حذف
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <Field label="اسم الشركة بالعربية" required>
+                  <Input
+                    value={companyNameAr}
+                    onChange={(e) => setCompanyNameAr(e.target.value)}
+                    placeholder="مثال: شركة النور للتجارة"
+                  />
+                </Field>
+                <Field
+                  label="اسم الشركة بالإنجليزية"
+                  hint="اختياري — يظهر أسفل الاسم العربي في الفواتير"
+                >
+                  <Input
+                    value={companyName}
+                    onChange={(e) => setCompanyName(e.target.value)}
+                    placeholder="Optional — e.g. Al Noor Trading"
+                    dir="ltr"
+                  />
+                </Field>
+              </>
+            )}
+
+            {step === 2 && (
+              <>
+                <Field
+                  label="الرصيد الافتتاحي للخزينة"
+                  hint="رصيد النقدية الموجود فعلياً عند بدء استخدام النظام"
+                >
+                  <div className="relative">
+                    <Input
+                      type="number"
+                      min={0}
+                      value={openingBalance}
+                      onChange={(e) => setOpeningBalance(Number(e.target.value))}
+                      className="pl-12"
+                    />
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-400">
+                      {settings.currency}
+                    </span>
+                  </div>
+                </Field>
+                <Field
+                  label="الحد الأدنى الافتراضي للمخزون"
+                  hint="عند وصول كمية أي منتج لهذا الحد يظهر تنبيه نقص"
+                >
+                  <Input
+                    type="number"
+                    min={0}
+                    value={lowStockThreshold}
+                    onChange={(e) => setLowStockThreshold(Number(e.target.value))}
+                  />
+                </Field>
+                <Field
+                  label="مدة تنبيه تأخر السداد"
+                  hint="المدة التي يُعتبر بعدها المورد متأخراً في السداد فتظهر تنبيهاته"
+                >
+                  <Select
+                    value={String(paymentTermDays)}
+                    onChange={(e) => setPaymentTermDays(Number(e.target.value))}
+                  >
+                    <option value="7">أسبوع (7 أيام)</option>
+                    <option value="14">أسبوعين (14 يوم)</option>
+                    <option value="30">شهر (30 يوم)</option>
+                    <option value="60">شهرين (60 يوم)</option>
+                    <option value="90">3 شهور (90 يوم)</option>
+                  </Select>
+                </Field>
+              </>
+            )}
+
+            {step === 3 && (
+              <>
+                <div className="text-xs text-slate-500 leading-relaxed">
+                  لحماية بياناتك، حدِّد مجلدين مطلوبين (يمكن تغييرهما لاحقاً من الإعدادات).
+                </div>
+                <Field label="مجلد النسخ الاحتياطي التلقائي" required>
+                  <div className="flex gap-2">
+                    <Input
+                      value={backupPath}
+                      readOnly
+                      placeholder="اختر مجلداً (محلي / خارجي / شبكة)..."
+                      className="bg-slate-50 font-mono text-xs"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      aria-label="اختر مجلد النسخ الاحتياطي"
+                      onClick={pickBackupFolder}
+                    >
+                      <FolderOpen className="w-4 h-4" />
+                    </Button>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-[11px] text-slate-400 mt-1">
+                    <Database className="w-3 h-3" /> تُحفظ نسخة كاملة من البيانات تلقائياً في هذا المجلد.
+                  </div>
+                </Field>
+
+                <Field label="مجلد حفظ الفواتير (PDF)" required>
+                  <div className="flex gap-2">
+                    <Input
+                      value={invoicesSavePath}
+                      readOnly
+                      placeholder="اختر مجلداً..."
+                      className="bg-slate-50 font-mono text-xs"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      aria-label="اختر مجلد حفظ الفواتير"
+                      onClick={pickInvoicesFolder}
+                    >
+                      <FolderOpen className="w-4 h-4" />
+                    </Button>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-[11px] text-slate-400 mt-1">
+                    <FileText className="w-3 h-3" /> الوجهة الافتراضية لحفظ الفواتير المطبوعة كـ PDF.
+                  </div>
+                </Field>
+              </>
+            )}
+
+            {step === 4 && (
+              <>
+                <div className="text-xs text-slate-500 leading-relaxed">
+                  خطوة اختيارية. أضف أول موظف الآن، أو اضغط «تخطّي الآن» وأضِفه
+                  لاحقاً من صفحة المستخدمين.
+                </div>
+                <Field label="اسم الموظف">
+                  <Input
+                    value={employeeName}
+                    onChange={(e) => setEmployeeName(e.target.value)}
+                    placeholder="مثال: محمد علي"
+                  />
+                </Field>
+                <Field label="اسم دخول الموظف">
+                  <Input
+                    value={employeeUsername}
+                    onChange={(e) => setEmployeeUsername(e.target.value)}
+                    placeholder="employee"
+                  />
+                </Field>
+                <Field
+                  label="كلمة مرور الموظف"
+                  hint="6 أحرف على الأقل — يبدأ بصلاحيات مندوب مبيعات، عدّلها لاحقاً من صفحة المستخدمين"
+                >
+                  <Input
+                    type="password"
+                    value={employeePassword}
+                    onChange={(e) => setEmployeePassword(e.target.value)}
+                  />
+                </Field>
+              </>
+            )}
+          </div>
+
+          {/* navigation */}
+          <div className="flex items-center justify-between gap-3 mt-6 pt-4 border-t border-slate-100">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={goBack}
+              disabled={submitting}
+              className={step === 0 ? "invisible" : "gap-1"}
+            >
+              <ChevronRight className="w-4 h-4" /> السابق
+            </Button>
+
+            {isLast ? (
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void finishSetup(false)}
+                  disabled={submitting}
+                >
+                  تخطّي الآن
+                </Button>
+                <Button type="submit" size="lg" disabled={submitting}>
+                  {submitting ? "جاري الإنشاء..." : "إضافة الموظف وفتح النظام"}
                 </Button>
               </div>
-              <div className="flex items-center gap-1.5 text-[11px] text-slate-400 mt-1">
-                <Database className="w-3 h-3" /> تُحفظ نسخة كاملة من البيانات تلقائياً في هذا المجلد.
-              </div>
-            </Field>
-
-            <Field label="مجلد حفظ الفواتير (PDF)" required>
-              <div className="flex gap-2">
-                <Input
-                  value={invoicesSavePath}
-                  readOnly
-                  placeholder="اختر مجلداً..."
-                  className="bg-slate-50 font-mono text-xs"
-                />
-                <Button type="button" variant="outline" onClick={pickInvoicesFolder}>
-                  <FolderOpen className="w-4 h-4" />
-                </Button>
-              </div>
-              <div className="flex items-center gap-1.5 text-[11px] text-slate-400 mt-1">
-                <FileText className="w-3 h-3" /> الوجهة الافتراضية لحفظ الفواتير المطبوعة كـ PDF.
-              </div>
-            </Field>
+            ) : (
+              <Button type="submit" size="lg" className="gap-1">
+                التالي <ChevronLeft className="w-4 h-4" />
+              </Button>
+            )}
           </div>
-
-          <Button type="submit" size="lg" className="w-full" disabled={submitting}>
-            {submitting ? "جاري الإنشاء..." : "إنشاء المدير وفتح النظام"}
-          </Button>
         </form>
       </div>
     </div>

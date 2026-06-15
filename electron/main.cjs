@@ -1755,6 +1755,8 @@ function registerIpc() {
   });
 
   ipcMain.handle("dialog:select-directory", async (event) => {
+    // E2E mode cannot drive a native dialog; return a real writable dir instead.
+    if (HW_E2E) return os.tmpdir();
     const ownerWindow = BrowserWindow.fromWebContents(event.sender);
     const result = await dialog.showOpenDialog(ownerWindow, {
       properties: ["openDirectory"],
@@ -1765,6 +1767,7 @@ function registerIpc() {
   });
 
   ipcMain.handle("backup:select-directory", async (event) => {
+    if (HW_E2E) return os.tmpdir();
     const ownerWindow = BrowserWindow.fromWebContents(event.sender);
     const result = await dialog.showOpenDialog(ownerWindow, {
       properties: ["openDirectory", "createDirectory"],
