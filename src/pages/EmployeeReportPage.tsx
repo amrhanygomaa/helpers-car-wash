@@ -1,33 +1,33 @@
 import { useMemo, useState, type ReactNode } from "react";
-import { ArrowRight, Target, UserRound } from "lucide-react";
+import { ArrowRight, Target, TrendingUp, UserRound } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { PageHeader } from "../components/layout/AppLayout";
 import { Card, CardBody, CardHeader } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
+import { Badge } from "../components/ui/Badge";
 import { Field } from "../components/ui/Input";
 import { EmptyState } from "../components/ui/EmptyState";
 import { useUsers } from "../store/UsersContext";
 import { useReporting } from "../store/ReportingContext";
 import { useSettings } from "../store/SettingsContext";
 import { formatCurrency } from "../lib/format";
+import { localISODate, MONTH_NAMES_AR } from "../lib/utils";
 
-function currentQuarter() {
-  const now = new Date();
-  const q = Math.floor(now.getMonth() / 3) + 1;
-  return `${now.getFullYear()}-Q${q}`;
+function currentMonth(): string {
+  return localISODate().slice(0, 7);
 }
 
-function buildQuarterOptions(): { value: string; label: string }[] {
+function buildMonthOptions(): { value: string; label: string }[] {
   const options: { value: string; label: string }[] = [];
   const now = new Date();
-  let year = now.getFullYear();
-  let q = Math.floor(now.getMonth() / 3) + 1;
-  for (let i = 0; i < 8; i++) {
-    options.push({ value: `${year}-Q${q}`, label: `الربع ${q} — ${year}` });
-    q--;
-    if (q === 0) { q = 4; year--; }
+  // Last 11 months + current + next 2 = 14 options total
+  for (let i = -11; i <= 2; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+    const yyyymm = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    const label = `${MONTH_NAMES_AR[d.getMonth()]} ${d.getFullYear()}`;
+    options.push({ value: yyyymm, label });
   }
-  return options;
+  return options.reverse();
 }
 
 export function EmployeeReportPage() {
@@ -35,8 +35,8 @@ export function EmployeeReportPage() {
   const { employeeSalesStats } = useReporting();
   const { settings } = useSettings();
   const navigate = useNavigate();
-  const [quarter, setQuarter] = useState(currentQuarter);
-  const quarterOptions = useMemo(() => buildQuarterOptions(), []);
+  const [month, setMonth] = useState(currentMonth);
+  const monthOptions = useMemo(() => buildMonthOptions(), []);
 
   const employees = useMemo(
     () => users.filter((user) => user.role === "employee"),
@@ -47,7 +47,7 @@ export function EmployeeReportPage() {
     <>
       <PageHeader
         title="تقرير الموظفين"
-        description="متابعة المحصَّل والعمولات الربعية لكل موظف"
+        description="متابعة المحصَّل والعمولات الشهرية لكل موظف"
         actions={
           <Button variant="outline" onClick={() => navigate("/reports")}>
             <ArrowRight className="w-4 h-4" /> رجوع للتقارير
@@ -57,13 +57,13 @@ export function EmployeeReportPage() {
 
       <Card>
         <CardBody>
-          <Field label="الربع">
+          <Field label="الشهر">
             <select
-              value={quarter}
-              onChange={(e) => setQuarter(e.target.value)}
+              value={month}
+              onChange={(e) => setMonth(e.target.value)}
               className="w-52 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-500"
             >
-              {quarterOptions.map((opt) => (
+              {monthOptions.map((opt) => (
                 <option key={opt.value} value={opt.value}>
                   {opt.label}
                 </option>
@@ -86,7 +86,12 @@ export function EmployeeReportPage() {
       ) : (
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
           {employees.map((employee) => {
-            const stats = employeeSalesStats(employee.id, quarter);
+            const stats = employeeSalesStats(employee.id, month);
+            const targetPct = stats.target > 0
+              ? Math.min(100, Math.round((stats.totalCollected / stats.target) * 100))
+              : null;
+            const achieved = stats.target > 0 && stats.totalCollected >= stats.target;
+
             return (
               <Card key={employee.id}>
                 <CardHeader
@@ -96,20 +101,25 @@ export function EmployeeReportPage() {
                       <span>{employee.name || employee.username}</span>
                     </div>
                   }
+                  actions={
+                    <span className="text-xs text-slate-400">{stats.monthLabel}</span>
+                  }
                 />
-                <CardBody>
+                <CardBody className="space-y-3">
                   <div className="divide-y divide-slate-100 border-y border-slate-100">
                     <ReportRow
-                      label="المحصَّل في الربع"
+                      label="المحصَّل في الشهر"
                       value={formatCurrency(stats.totalCollected, settings.currency)}
+                      tone="slate"
                     />
                     <ReportRow
                       label="الراتب"
                       value={formatCurrency(stats.salary, settings.currency)}
                     />
                     <ReportRow
-                      label={`العمولة (${employee.salesCommissionPct ?? 0}%)`}
+                      label={`العمولة (${stats.commissionPct}%)`}
                       value={formatCurrency(stats.commissionEarned, settings.currency)}
+                      tone="amber"
                     />
                     <ReportRow
                       label="الإجمالي"
@@ -118,6 +128,40 @@ export function EmployeeReportPage() {
                       strong
                     />
                   </div>
+
+                  {/* Target progress */}
+                  {stats.target > 0 ? (
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-slate-500 flex items-center gap-1">
+                          <Target className="w-3 h-3" />
+                          التارجت: {formatCurrency(stats.target, settings.currency)}
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          {achieved ? (
+                            <Badge tone="green">
+                              <TrendingUp className="w-3 h-3 inline ml-0.5" />
+                              محقق
+                              {stats.totalCollected > stats.target && ` +${formatCurrency(stats.totalCollected - stats.target, settings.currency)}`}
+                            </Badge>
+                          ) : (
+                            <Badge tone="amber">
+                              متبقي {formatCurrency(stats.target - stats.totalCollected, settings.currency)}
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                      <div className="w-full bg-slate-100 rounded-full h-2">
+                        <div
+                          className={`h-2 rounded-full transition-all ${achieved ? "bg-emerald-500" : "bg-amber-400"}`}
+                          style={{ width: `${targetPct ?? 0}%` }}
+                        />
+                      </div>
+                      <div className="text-xs text-slate-400 text-end">{targetPct ?? 0}%</div>
+                    </div>
+                  ) : (
+                    <div className="text-xs text-slate-400 text-center py-1">لا يوجد تارجت لهذا الشهر</div>
+                  )}
                 </CardBody>
               </Card>
             );

@@ -225,12 +225,14 @@ interface AppActions {
     commissionType: CommissionType;
     commissionValue: number;
   }[];
-  employeeSalesStats: (userId: ID, quarter: string) => {
+  employeeSalesStats: (userId: ID, month: string) => {
     totalCollected: number;
     commissionEarned: number;
+    commissionPct: number;
+    target: number;
     salary: number;
     totalEarnings: number;
-    quarterLabel: string;
+    monthLabel: string;
   };
 
   // Backup & Import
@@ -2230,36 +2232,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [suppliers, purchaseInvoices, purchaseReturns]);
 
   const employeeSalesStats: AppActions["employeeSalesStats"] = useCallback(
-    (userId, quarter) => {
+    (userId, month) => {
       const employee = users.find((u) => u.id === userId);
-      const [yearStr, qStr] = quarter.split("-Q");
+      const [yearStr, monStr] = month.split("-");
       const year = parseInt(yearStr, 10);
-      const q = parseInt(qStr, 10);
-      // BUG-04: build boundaries from the LOCAL calendar — toISOString() shifted
-      // them to UTC, dropping Dec 31 receipts from Q4 on UTC+ machines.
-      const quarterStart = localISODate(new Date(year, (q - 1) * 3, 1));
-      const quarterEnd = localISODate(new Date(year, q * 3, 0));
+      const mon = parseInt(monStr, 10);
+      // BUG-04: build boundaries from the LOCAL calendar
+      const monthStart = localISODate(new Date(year, mon - 1, 1));
+      const monthEnd = localISODate(new Date(year, mon, 0));
 
-      // OBS-02: the single shared commission base — ReportsPage uses the same fn.
       const totalCollected = employeeCollectedCash(
         salesInvoices,
         salesReturns,
         cashEntries,
         userId,
-        quarterStart,
-        quarterEnd
+        monthStart,
+        monthEnd,
       );
 
-      const commissionPct = employee?.salesCommissionPct ?? 0;
+      const monthConfig = employee?.monthlyConfigs?.[month];
+      const commissionPct = monthConfig?.commissionPct ?? employee?.salesCommissionPct ?? 0;
+      const target = monthConfig?.target ?? employee?.monthlySalesTarget ?? 0;
       const commissionEarned = (totalCollected * commissionPct) / 100;
       const salary = employee?.monthlySalary ?? 0;
 
+      const MONTH_NAMES = ["يناير","فبراير","مارس","أبريل","مايو","يونيو","يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر"];
       return {
         totalCollected,
         commissionEarned,
+        commissionPct,
+        target,
         salary,
         totalEarnings: salary + commissionEarned,
-        quarterLabel: `الربع ${q} — ${year}`,
+        monthLabel: `${MONTH_NAMES[mon - 1]} ${year}`,
       };
     },
     [users, salesInvoices, salesReturns, cashEntries]

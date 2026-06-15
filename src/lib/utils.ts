@@ -47,3 +47,24 @@ export function inRange(dateStr: string, from?: string, to?: string): boolean {
   if (to && d > to) return false;
   return true;
 }
+
+/** Returns all YYYY-MM keys from the month containing `from` to the month containing `to`. */
+export function getMonthsInRange(from: string, to: string): string[] {
+  const months: string[] = [];
+  const start = new Date(from.slice(0, 7) + "-01");
+  const end = new Date(to.slice(0, 7) + "-01");
+  for (const d = new Date(start); d <= end; d.setMonth(d.getMonth() + 1)) {
+    months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+  }
+  return months;
+}
+
+export const MONTH_NAMES_AR = [
+  "يناير","فبراير","مارس","أبريل","مايو","يونيو",
+  "يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر",
+];
+
+export function monthLabel(yyyymm: string): string {
+  const [y, m] = yyyymm.split("-").map(Number);
+  return `${MONTH_NAMES_AR[m - 1]} ${y}`;
+}

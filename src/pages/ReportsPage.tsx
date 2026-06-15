@@ -41,7 +41,7 @@ import { useAuth } from "../store/AuthContext";
 import { useSettings } from "../store/SettingsContext";
 import { useToast } from "../components/ui/Toast";
 import { formatCurrency, formatDate } from "../lib/format";
-import { daysUntil, inRange, localISODate, todayISO } from "../lib/utils";
+import { daysUntil, getMonthsInRange, inRange, localISODate, todayISO } from "../lib/utils";
 import { employeeCollectedCash } from "../store/_pure";
 
 type PrintMode =
@@ -211,41 +211,56 @@ export function ReportsPage() {
   );
 
   const employeeBonusRows = useMemo(() => {
+    const months = getMonthsInRange(from, to);
     return users
       .filter((user) => user.role === "employee")
       .map((employee) => {
         const invoices = salesInRange.filter((invoice) => invoice.createdByUserId === employee.id);
         const employeeTotalSales = invoices.reduce((sum, invoice) => sum + invoice.total, 0);
-        const commissionPct = employee.salesCommissionPct ?? 0;
-        // OBS-02: the commission base is what the employee actually COLLECTED
-        // in the period — same definition as EmployeeReportPage (shared pure fn).
-        // The sales target, by contrast, stays measured on sales made.
-        const collected = employeeCollectedCash(
-          salesInvoices,
-          salesReturns,
-          cashEntries,
-          employee.id,
-          from,
-          to
-        );
-        const bonus = (collected * commissionPct) / 100;
+
+        // Calculate commission month-by-month to respect per-month rates
+        let bonus = 0;
+        let totalTarget = 0;
+        const hasMonthlyConfigs = employee.monthlyConfigs && Object.keys(employee.monthlyConfigs).length > 0;
+        const collected = employeeCollectedCash(salesInvoices, salesReturns, cashEntries, employee.id, from, to);
+
+        if (hasMonthlyConfigs) {
+          months.forEach((m) => {
+            const [yr, mn] = m.split("-").map(Number);
+            const mStart = localISODate(new Date(yr, mn - 1, 1));
+            const mEnd = localISODate(new Date(yr, mn, 0));
+            const mFrom = mStart < from ? from : mStart;
+            const mTo = mEnd > to ? to : mEnd;
+            const cfg = employee.monthlyConfigs?.[m];
+            const mPct = cfg?.commissionPct ?? employee.salesCommissionPct ?? 0;
+            const mTarget = cfg?.target ?? employee.monthlySalesTarget ?? 0;
+            const mCollected = employeeCollectedCash(salesInvoices, salesReturns, cashEntries, employee.id, mFrom, mTo);
+            bonus += (mCollected * mPct) / 100;
+            totalTarget += mTarget;
+          });
+        } else {
+          const commissionPct = employee.salesCommissionPct ?? 0;
+          bonus = (collected * commissionPct) / 100;
+          totalTarget = (employee.monthlySalesTarget ?? 0) * months.length;
+        }
+
         const salary = employee.monthlySalary ?? 0;
-        const target = employee.monthlySalesTarget ?? 0;
-        const remainingTarget = target > 0 ? Math.max(0, target - employeeTotalSales) : 0;
-        const exceededTarget = target > 0 ? Math.max(0, employeeTotalSales - target) : 0;
+        const effectivePct = collected > 0 ? (bonus / collected) * 100 : (employee.salesCommissionPct ?? 0);
+        const remainingTarget = totalTarget > 0 ? Math.max(0, totalTarget - employeeTotalSales) : 0;
+        const exceededTarget = totalTarget > 0 ? Math.max(0, employeeTotalSales - totalTarget) : 0;
 
         return {
           employee,
           invoiceCount: invoices.length,
           totalSales: employeeTotalSales,
           collected,
-          commissionPct,
+          commissionPct: effectivePct,
           bonus,
           salary,
-          target,
+          target: totalTarget,
           remainingTarget,
           exceededTarget,
-          achievedTarget: target > 0 && employeeTotalSales >= target,
+          achievedTarget: totalTarget > 0 && employeeTotalSales >= totalTarget,
           totalEarnings: salary + bonus,
         };
       })

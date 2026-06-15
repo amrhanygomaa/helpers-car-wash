@@ -52,6 +52,11 @@ export interface UserPermissions {
   reports: { view: boolean };
 }
 
+export interface MonthlyEmployeeConfig {
+  target?: number;
+  commissionPct?: number;
+}
+
 export interface AppUser {
   id: ID;
   name: string;
@@ -62,6 +67,7 @@ export interface AppUser {
   monthlySalary?: number;
   salesCommissionPct?: number;
   monthlySalesTarget?: number;
+  monthlyConfigs?: Record<string, MonthlyEmployeeConfig>;
   createdAt: string;
 }
 

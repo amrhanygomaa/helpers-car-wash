@@ -17,13 +17,15 @@ export interface ReportingContextValue {
   }[];
   employeeSalesStats: (
     userId: ID,
-    quarter: string
+    month: string
   ) => {
     totalCollected: number;
     commissionEarned: number;
+    commissionPct: number;
+    target: number;
     salary: number;
     totalEarnings: number;
-    quarterLabel: string;
+    monthLabel: string;
   };
   exportToExcel: (
     dataType:
