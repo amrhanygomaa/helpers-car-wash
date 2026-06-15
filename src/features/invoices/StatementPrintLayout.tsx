@@ -30,7 +30,9 @@ export function StatementPrintLayout({ kind, partyName, partyCode, partyPhone, r
   const totalDaen = rows.reduce((s, r) => s + r.daen, 0);
 
   useEffect(() => {
+    const prev = document.title;
     document.title = `${title} — ${partyName}`;
+    return () => { document.title = prev; };
   }, [title, partyName]);
 
   function downloadXlsx() {

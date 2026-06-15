@@ -31,7 +31,9 @@ export function InvoicePrintLayout(props: Props) {
   const { settings } = useSettings();
 
   useEffect(() => {
+    const prev = document.title;
     document.title = `${props.kind === "sales" ? "فاتورة مبيعات" : "فاتورة مشتريات"} ${props.invoiceNumber}`;
+    return () => { document.title = prev; };
   }, [props.invoiceNumber, props.kind]);
 
   const isSales = props.kind === "sales";

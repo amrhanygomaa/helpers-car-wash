@@ -1005,7 +1005,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         (s) => s.status === "draft" && s.items.some((i) => i.productId === id)
       );
     if (used) return false;
+    const name = products.find((p) => p.id === id)?.name ?? id;
     setProducts((list) => list.filter((p) => p.id !== id));
+    logAudit("product_deleted", name);
     return true;
   };
 
@@ -1084,7 +1086,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const hasInvoices = purchaseInvoices.some((inv) => inv.supplierId === id);
     const hasProducts = products.some((p) => p.supplierId === id);
     if (hasInvoices || hasProducts) return false;
+    const name = suppliers.find((s) => s.id === id)?.name ?? id;
     setSuppliers((list) => list.filter((s) => s.id !== id));
+    logAudit("supplier_deleted", name);
     return true;
   };
 
@@ -1156,7 +1160,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const deleteCustomer: AppActions["deleteCustomer"] = (id) => {
     const hasInvoices = salesInvoices.some((inv) => inv.customerId === id);
     if (hasInvoices) return false;
+    const name = customers.find((c) => c.id === id)?.name ?? id;
     setCustomers((list) => list.filter((c) => c.id !== id));
+    logAudit("customer_deleted", name);
     return true;
   };
 
@@ -1201,6 +1207,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       createdAt: new Date().toISOString(),
     };
     setPurchaseInvoices((list) => [full, ...list]);
+    logAudit("invoice_purchase_created", `${full.invoiceNumber} — ${full.supplierName}`, `الإجمالي: ${full.total}`);
 
     // stock increments
     setProducts((list) =>
@@ -1303,6 +1310,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           : i
       )
     );
+    if (inv) logAudit("invoice_purchase_updated", `${inv.invoiceNumber} — ${inv.supplierName}`, `تعديل الفاتورة`);
   };
 
   const recordPurchasePayment: AppActions["recordPurchasePayment"] = (
@@ -1347,6 +1355,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         paymentMethod,
       };
       setCashEntries((list) => [ce, ...list]);
+      logAudit("invoice_purchase_updated", `${inv.invoiceNumber} — ${inv.supplierName}`, `دفعة: ${amount}`);
     }
   };
   const deletePurchaseInvoice: AppActions["deletePurchaseInvoice"] = (id) => {
@@ -1398,6 +1407,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       createdAt: new Date().toISOString(),
     };
     setSalesInvoices((list) => [full, ...list]);
+    logAudit("invoice_sale_created", `${full.invoiceNumber} — ${full.customerName}`, `الإجمالي: ${full.total}`);
 
     // stock decrements
     setProducts((list) =>
@@ -1487,6 +1497,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         paymentMethod,
       };
       setCashEntries((list) => [ce, ...list]);
+      logAudit("invoice_sale_updated", `${inv.invoiceNumber} — ${inv.customerName}`, `دفعة: ${amount}`);
     }
   };
   const updateSalesInvoice: AppActions["updateSalesInvoice"] = (id, patch) => {
@@ -1574,6 +1585,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           : s
       )
     );
+    logAudit("invoice_sale_updated", `${inv.invoiceNumber} — ${inv.customerName}`, `تعديل الفاتورة`);
   };
 
   const cancelSalesInvoice: AppActions["cancelSalesInvoice"] = (id, refundMode) => {
@@ -1747,6 +1759,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       createdAt: new Date().toISOString(),
     };
     setSalesReturns((l) => [full, ...l]);
+    logAudit("return_sale_created", `${num} — ${r.customerName}`, `الإجمالي: ${r.total}`);
 
     // Update stock (increase)
     setProducts((list) =>
@@ -1818,6 +1831,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       createdAt: new Date().toISOString(),
     };
     setPurchaseReturns((l) => [full, ...l]);
+    logAudit("return_purchase_created", `${num} — ${r.supplierName}`, `الإجمالي: ${r.total}`);
 
     // Update stock (decrease)
     setProducts((list) =>
@@ -1981,6 +1995,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       paymentMethod: entry.paymentMethod,
     };
     setCashEntries((list) => [full, ...list]);
+    if (!entry.referenceId && entry.type === "adjustment") {
+      const action = entry.amount >= 0 ? "cash_manual_add" : "cash_manual_remove";
+      logAudit(action, entry.description ?? "", `المبلغ: ${Math.abs(entry.amount)}`);
+    }
     return full;
   };
 
