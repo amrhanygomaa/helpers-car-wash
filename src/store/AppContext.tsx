@@ -1475,11 +1475,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const cappedAmount = Math.min(amount, inv.remaining);
         const excess = amount - cappedAmount;
         const received = inv.amountReceived + cappedAmount;
+        // Decrement the OUTSTANDING balance, not total − received. A sales return
+        // keeps inv.total at the original amount but lowers inv.remaining to the
+        // net owed; computing from total here would re-add the returned amount
+        // (paying the remaining would wrongly leave the return still due).
+        const newRemaining = Math.max(0, inv.remaining - cappedAmount);
         return {
           ...inv,
           amountReceived: received,
-          remaining: Math.max(0, inv.total - received),
-          status: computeStatus(inv.total, received),
+          remaining: newRemaining,
+          status: newRemaining <= 0 ? "paid" : "partial",
           overpayment: excess > 0 ? (inv.overpayment ?? 0) + excess : inv.overpayment,
           paymentLog: [...(inv.paymentLog ?? []), entry],
         };

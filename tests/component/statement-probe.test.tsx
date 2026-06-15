@@ -78,8 +78,8 @@ describe("PROBE-K — supplier statement balance", () => {
       <Routes><Route path="/suppliers/:id/statement" element={<SupplierStatementPrintPage />} /></Routes>,
       { initialEntries: ["/suppliers/SUP1/statement"] },
     );
-    // paid in full → الرصيد النهائي must be zero
-    expect(screen.getByText("لا يوجد رصيد")).toBeInTheDocument();
+    // paid in full → الرصيد النهائي must be zero (redesigned layout shows "صفر")
+    expect(screen.getAllByText("صفر").length).toBeGreaterThan(0);
   });
 });
 
@@ -143,8 +143,9 @@ describe("PROBE-L — customer statement matches store balance on capped cash re
       <Routes><Route path="/customers/:id/statement" element={<CustomerStatementPrintPage />} /></Routes>,
       { initialEntries: ["/customers/CUS1/statement"] },
     );
-    // B owes nothing (settled by credit) and 50 credit remains → final دائن 50
-    const expected = `دائن: ${formatCurrency(50, "ج.م")}`;
-    expect(screen.getAllByText(expected).length).toBeGreaterThan(0);
+    // B owes nothing (settled by credit) and 50 credit remains → final balance is
+    // a credit of 50 (redesigned layout shows the amount + "لصالح العميل")
+    expect(screen.getByText("لصالح العميل")).toBeInTheDocument();
+    expect(screen.getAllByText(formatCurrency(50, "ج.م")).length).toBeGreaterThan(0);
   });
 });

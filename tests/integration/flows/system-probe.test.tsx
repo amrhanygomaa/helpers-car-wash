@@ -197,10 +197,10 @@ describe("PROBE-D — referential integrity for quotations", () => {
   });
 });
 
-// ── P07: employee quarterly stats date boundaries ─────────────────────────────
+// ── P07: employee monthly stats date boundaries ───────────────────────────────
 
-describe("PROBE-E — employeeSalesStats quarter boundaries (TZ-sensitive)", () => {
-  it("P07 [BUG-04 fixed]: a receipt collected on Dec 31 is counted inside Q4 of the same year", () => {
+describe("PROBE-E — employeeSalesStats month boundaries (TZ-sensitive)", () => {
+  it("P07 [BUG-04 fixed]: a receipt collected on Dec 31 is counted inside December of the same year", () => {
     const { result } = mountStore();
     let userId = "";
     act(() => {
@@ -223,8 +223,65 @@ describe("PROBE-E — employeeSalesStats quarter boundaries (TZ-sensitive)", () 
         createdByUserId: userId,
       });
     });
-    const stats = result.current.employeeSalesStats(userId, "2026-Q4");
+    const stats = result.current.employeeSalesStats(userId, "2026-12");
     expect(stats.totalCollected).toBe(1000);
+  });
+});
+
+// ── P07b: paying the balance after a return must settle to zero ───────────────
+
+describe("PROBE-RET — pay after return reaches zero (not the returned amount)", () => {
+  it("sales: 1000 invoice, paid 600, return 250, then pay 150 → remaining 0, paid", () => {
+    const { result } = mountStore();
+    let pid = "";
+    act(() => { pid = result.current.addProduct(baseProduct({ name: "ريت-بيع", quantity: 1000 })).id; });
+    let invId = "";
+    act(() => {
+      invId = result.current.addSalesInvoice({
+        invoiceNumber: "INV-RET-S", date: "2026-06-01",
+        customerId: "C-RET", customerName: "عميل",
+        lines: [makeLine(pid, 100, 10)], total: 1000, amountReceived: 600,
+        paymentType: "account", priceType: "wholesale",
+      }).id;
+    });
+    act(() => {
+      result.current.addSalesReturn({
+        originalInvoiceId: invId, originalInvoiceNumber: "INV-RET-S",
+        customerId: "C-RET", customerName: "عميل", date: "2026-06-02",
+        lines: [makeLine(pid, 25, 10)], total: 250, refundCash: false,
+      });
+    });
+    expect(result.current.salesInvoices.find((s) => s.id === invId)!.remaining).toBe(150);
+    act(() => { result.current.recordSalesReceipt(invId, 150); });
+    const inv = result.current.salesInvoices.find((s) => s.id === invId)!;
+    expect(inv.remaining).toBe(0);
+    expect(inv.status).toBe("paid");
+  });
+
+  it("purchase: 1000 invoice, paid 600, return 250, then pay 150 → remaining 0, paid", () => {
+    const { result } = mountStore();
+    let pid = "";
+    act(() => { pid = result.current.addProduct(baseProduct({ name: "ريت-شرا", quantity: 1000 })).id; });
+    let invId = "";
+    act(() => {
+      invId = result.current.addPurchaseInvoice({
+        invoiceNumber: "PO-RET", date: "2026-06-01",
+        supplierId: "S-RET", supplierName: "مورد",
+        lines: [makeLine(pid, 100, 10)], total: 1000, amountPaid: 600,
+      }).id;
+    });
+    act(() => {
+      result.current.addPurchaseReturn({
+        originalInvoiceId: invId, originalInvoiceNumber: "PO-RET",
+        supplierId: "S-RET", supplierName: "مورد", date: "2026-06-02",
+        lines: [makeLine(pid, 25, 10)], total: 250,
+      });
+    });
+    expect(result.current.purchaseInvoices.find((p) => p.id === invId)!.remaining).toBe(150);
+    act(() => { result.current.recordPurchasePayment(invId, 150); });
+    const inv = result.current.purchaseInvoices.find((p) => p.id === invId)!;
+    expect(inv.remaining).toBe(0);
+    expect(inv.status).toBe("paid");
   });
 });
 
