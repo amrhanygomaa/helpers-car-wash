@@ -57,7 +57,7 @@
       "enableCookieEncryption": true,
       "enableNodeOptionsEnvironmentVariable": false,
       "enableNodeCliInspectArguments": false,
-      "enableEmbeddedAsarIntegrityValidation": true,
+      "enableEmbeddedAsarIntegrityValidation": false,
       "onlyLoadAppFromAsar": true,
       "grantFileProtocolExtraPrivileges": true
     },
@@ -75,6 +75,7 @@
       "artifactName": "${productName}-${version}-Setup.${ext}",
       "signAndEditExecutable": true,
       "signtoolOptions": {
+        "sign": "scripts/sign-win.cjs",
         "certificateSha1": "E950B2D3C22831B0EDE52E0F69D7C0C422BCBE02",
         "signingHashAlgorithms": [
           "sha256"
