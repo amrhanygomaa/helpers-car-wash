@@ -102,15 +102,12 @@ export function QuotationsPage() {
                   <TH>صالح حتى</TH>
                   <TH className="text-end">الإجمالي</TH>
                   <TH>الحالة</TH>
+                  <TH className="text-end">إجراءات</TH>
                 </TR>
               </THead>
               <TBody>
                 {filtered.map((q) => (
-                  <TR
-                    key={q.id}
-                    className="cursor-pointer hover:bg-slate-50"
-                    onClick={() => navigate(`/quotations/${q.id}`)}
-                  >
+                  <TR key={q.id}>
                     <TD className="font-mono text-xs text-slate-600">{q.quotationNumber}</TD>
                     <TD>{formatDate(q.date)}</TD>
                     <TD className="font-medium text-slate-900">{q.customerName}</TD>
@@ -118,8 +115,38 @@ export function QuotationsPage() {
                     <TD className="text-end font-semibold">
                       {formatCurrency(q.total, settings.currency)}
                     </TD>
-                    <TD>
-                      <StatusBadge status={q.status} />
+                    <TD><StatusBadge status={q.status} /></TD>
+                    <TD className="text-end">
+                      <div className="inline-flex items-center gap-1">
+                        <Button size="icon" variant="ghost" title="عرض" onClick={() => navigate(`/quotations/${q.id}`)}>
+                          <Eye className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          size="icon" variant="ghost" title="طباعة"
+                          onClick={async () => {
+                            const result = await printAppRoute(`/quotations/${q.id}/print`);
+                            if (!result.ok && result.error !== "cancelled") {
+                              toast.error("تعذر الطباعة");
+                            }
+                          }}
+                        >
+                          <Printer className="w-4 h-4" />
+                        </Button>
+                        {canEdit && q.status === "draft" && (
+                          <Button size="icon" variant="ghost" title="تعديل" onClick={() => navigate(`/quotations/${q.id}/edit`)}>
+                            <Pencil className="w-4 h-4" />
+                          </Button>
+                        )}
+                        {canDelete && q.status === "draft" && (
+                          <Button
+                            size="icon" variant="ghost" title="حذف"
+                            className="text-rose-500 hover:text-rose-700 hover:bg-rose-50"
+                            onClick={() => setToDelete(q)}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        )}
+                      </div>
                     </TD>
                   </TR>
                 ))}
@@ -128,6 +155,20 @@ export function QuotationsPage() {
           )}
         </CardBody>
       </Card>
+      <ConfirmDialog
+        open={!!toDelete}
+        onClose={() => setToDelete(null)}
+        onConfirm={() => {
+          if (!toDelete) return;
+          deleteQuotation(toDelete.id);
+          toast.success("تم حذف عرض السعر");
+          setToDelete(null);
+        }}
+        title="حذف عرض السعر"
+        message={`هل أنت متأكد من حذف العرض ${toDelete?.quotationNumber ?? ""}؟`}
+        confirmText="حذف"
+        variant="danger"
+      />
     </>
   );
 }
