@@ -844,6 +844,7 @@ function buildInvoicePrintHtml(route) {
 
   const paymentMethodLabels = { cash: "نقدي", bank: "تحويل بنكي", vodafone: "فودافون كاش", instapay: "انستاباي", other: "أخرى" };
   const paymentLog = !isSales && Array.isArray(invoice.paymentLog) ? invoice.paymentLog : [];
+  const discount = Number(invoice.discount) || 0;
   const paymentLabel = isSales
     ? invoice.paymentType === "cash"
       ? "نقدي"
@@ -1063,6 +1064,7 @@ function buildInvoicePrintHtml(route) {
       font-size: 12px;
     }
     .return-deduction { color: #dc2626; }
+    .discount-row { color: #16a34a; }
     .paylog-section { margin-bottom: 16px; }
     .paylog-title {
       font-weight: 700;
@@ -1186,7 +1188,11 @@ function buildInvoicePrintHtml(route) {
 
     <div class="totals">
       <div class="totals-box">
-        <div class="total-row"><span>الإجمالي</span><span class="mono">${escapeHtml(formatCurrency(invoice.total, settings.currency))}</span></div>
+        ${discount > 0 ? `
+        <div class="total-row"><span>الإجمالي قبل الخصم</span><span class="mono">${escapeHtml(formatCurrency(invoice.total + discount, settings.currency))}</span></div>
+        <div class="total-row discount-row"><span>خصم</span><span class="mono">- ${escapeHtml(formatCurrency(discount, settings.currency))}</span></div>
+        <div class="total-row"><span>صافي الفاتورة</span><span class="mono">${escapeHtml(formatCurrency(invoice.total, settings.currency))}</span></div>
+        ` : `<div class="total-row"><span>الإجمالي</span><span class="mono">${escapeHtml(formatCurrency(invoice.total, settings.currency))}</span></div>`}
         ${returnsTotal > 0 ? `<div class="total-row return-deduction"><span>خصم المرتجع</span><span class="mono">- ${escapeHtml(formatCurrency(returnsTotal, settings.currency))}</span></div>` : ""}
         ${paymentLog.length > 1
           ? paymentLog.map((e, i) => `<div class="total-row"><span>دفعة ${i + 1} (${escapeHtml(paymentMethodLabels[e.paymentMethod] || e.paymentMethod)})</span><span class="mono paid-highlight">${escapeHtml(formatCurrency(e.amount, settings.currency))}</span></div>`).join("")
