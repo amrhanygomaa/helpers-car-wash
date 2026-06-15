@@ -186,6 +186,7 @@ interface AppActions {
 
   // Quotations
   addQuotation: (q: Omit<Quotation, "id" | "createdAt" | "status">) => Quotation;
+  updateQuotation: (id: string, patch: Pick<import("../types").Quotation, "date" | "validUntil" | "customerId" | "customerName" | "lines" | "total" | "discount" | "notes">) => void;
   convertQuotation: (
     quotationId: string,
     opts: {
@@ -2554,6 +2555,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       supplierCredit,
       quotations,
       addQuotation,
+      updateQuotation,
       convertQuotation,
       deleteQuotation,
       stocktakes,
