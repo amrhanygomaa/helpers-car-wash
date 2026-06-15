@@ -143,8 +143,14 @@ export function SalesInvoicesPage() {
               <option value="cash">نقدي</option>
               <option value="account">آجل</option>
             </Select>
-            <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-40" />
-            <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-40" />
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-slate-500 whitespace-nowrap">من:</span>
+              <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-40" />
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-slate-500 whitespace-nowrap">إلى:</span>
+              <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-40" />
+            </div>
             <Button
               variant="outline"
               size="sm"
