@@ -84,6 +84,7 @@ export function FirstRunSetupPage() {
 
   const [step, setStep] = useState(0);
   const [submitting, setSubmitting] = useState(false);
+  const [showWelcome, setShowWelcome] = useState(false);
 
   // Step 1 — admin account
   const [username, setUsername] = useState("admin");
@@ -183,8 +184,14 @@ export function FirstRunSetupPage() {
     }
 
     setSubmitting(true);
+    // Play the welcome animation first, then open the session (which navigates
+    // away and unmounts this page). Purely visual — no data/auth logic here.
+    setShowWelcome(true);
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+
     const ok = await createOwner(username.trim(), password);
     if (!ok) {
+      setShowWelcome(false);
       setSubmitting(false);
       toast.error("فشل إنشاء المدير", "تأكد أن الحساب غير موجود بالفعل");
       return;
@@ -228,6 +235,51 @@ export function FirstRunSetupPage() {
 
   return (
     <div className="min-h-screen grid md:grid-cols-2 bg-slate-50" dir="rtl">
+      {showWelcome && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gradient-to-br from-brand-700 to-brand-900 text-white overflow-hidden">
+          <style
+            dangerouslySetInnerHTML={{
+              __html: `
+              @keyframes hwFadeUp { from { opacity: 0; transform: translateY(18px) scale(.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
+              @keyframes hwPop { 0% { transform: scale(0); } 60% { transform: scale(1.18); } 100% { transform: scale(1); } }
+              @keyframes hwGlow { 0%,100% { opacity:.35; transform: scale(1); } 50% { opacity:.6; transform: scale(1.08); } }
+              .hw-welcome { animation: hwFadeUp .7s cubic-bezier(.16,.84,.44,1) both; }
+              .hw-check { animation: hwPop .6s .2s cubic-bezier(.16,.84,.44,1) both; }
+              .hw-glow { animation: hwGlow 2.4s ease-in-out infinite; }
+            `,
+            }}
+          />
+          {/* soft glow */}
+          <div className="hw-glow absolute w-[480px] h-[480px] rounded-full bg-white/10 blur-3xl" />
+
+          <div className="hw-welcome relative flex flex-col items-center gap-6 text-center px-8">
+            <div className="w-24 h-24 rounded-3xl bg-white/10 border border-white/20 grid place-items-center overflow-hidden text-3xl font-bold">
+              {logoImage ? (
+                <img src={logoImage} alt="Logo" className="w-full h-full object-contain p-1.5" />
+              ) : (
+                companyNameAr.trim().slice(0, 2).toUpperCase() || settings.logoText
+              )}
+            </div>
+
+            <div className="hw-check w-16 h-16 rounded-full bg-white grid place-items-center shadow-lg">
+              <Check className="w-9 h-9 text-brand-700" strokeWidth={3} />
+            </div>
+
+            <div className="space-y-1">
+              <div className="text-3xl font-bold">مرحباً بك 👋</div>
+              {companyNameAr.trim() && (
+                <div className="text-xl text-white/90">{companyNameAr.trim()}</div>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2 text-sm text-white/70">
+              <span className="w-1.5 h-1.5 rounded-full bg-white/70 animate-pulse" />
+              جارٍ تجهيز نظامك...
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Left gradient panel with the vertical stepper */}
       <div className="hidden md:flex relative bg-gradient-to-br from-brand-700 to-brand-900 text-white p-10 flex-col justify-between">
         <div className="flex items-center gap-3">
@@ -636,13 +688,14 @@ export function FirstRunSetupPage() {
                 <Button
                   type="button"
                   variant="outline"
+                  className="whitespace-nowrap"
                   onClick={() => void finishSetup(false)}
                   disabled={submitting}
                 >
                   تخطّي الآن
                 </Button>
-                <Button type="submit" disabled={submitting}>
-                  {submitting ? "جاري الإنشاء..." : "إضافة الموظف وفتح النظام"}
+                <Button type="submit" className="whitespace-nowrap" disabled={submitting}>
+                  {submitting ? "جارٍ التجهيز..." : "إضافة الموظف"}
                 </Button>
               </div>
             ) : (
