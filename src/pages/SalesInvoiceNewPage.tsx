@@ -328,6 +328,9 @@ export function SalesInvoiceNewPage() {
     const effectivePaymentType: SalesPaymentType = paymentType;
     const effectiveDueDate = effectivePaymentType === "account" && paymentDueDate ? paymentDueDate : undefined;
 
+    const actualCashReceived = Math.min(amountReceived, invoiceNet);
+    const cashOverpayment = Math.max(0, amountReceived - invoiceNet);
+
     const inv = addSalesInvoice({
       invoiceNumber,
       date,
@@ -338,8 +341,8 @@ export function SalesInvoiceNewPage() {
       lines: invLines,
       total: invoiceNet,
       discount: discount > 0 ? discount : undefined,
-      amountReceived: receivedForInvoice,
-      overpayment: customerChange > 0 ? customerChange : undefined,
+      amountReceived: actualCashReceived,
+      overpayment: cashOverpayment > 0 ? cashOverpayment : undefined,
       paymentType: effectivePaymentType,
       paymentMethod,
       paymentMethodLabel: paymentMethod === "other" && paymentMethodLabel.trim() ? paymentMethodLabel.trim() : undefined,
@@ -347,6 +350,11 @@ export function SalesInvoiceNewPage() {
       paymentDueDate: effectiveDueDate,
       notes: notes.trim() || undefined,
     });
+
+    if (creditApplied > 0) {
+      applyCustomerCredit(customerId, inv.id, creditApplied);
+    }
+
     isDirtyRef.current = false;
     clearDraft();
     toast.success("تم حفظ الفاتورة", `رقم ${inv.invoiceNumber}`);
