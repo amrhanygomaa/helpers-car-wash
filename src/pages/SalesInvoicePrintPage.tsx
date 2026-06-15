@@ -48,6 +48,7 @@ export function SalesInvoicePrintPage() {
       paymentDueDate={inv.paymentDueDate}
       customerBalance={totalBalance}
       customerName={inv.customerName}
+      paymentLog={inv.paymentLog}
     />
   );
 }

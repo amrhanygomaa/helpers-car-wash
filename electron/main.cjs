@@ -843,7 +843,7 @@ function buildInvoicePrintHtml(route) {
   const returnsTotal = invoiceReturns.reduce((a, r) => a + (r.total || 0), 0);
 
   const paymentMethodLabels = { cash: "نقدي", bank: "تحويل بنكي", vodafone: "فودافون كاش", instapay: "انستاباي", other: "أخرى" };
-  const paymentLog = !isSales && Array.isArray(invoice.paymentLog) ? invoice.paymentLog : [];
+  const paymentLog = Array.isArray(invoice.paymentLog) ? invoice.paymentLog : [];
   const discount = Number(invoice.discount) || 0;
   const paymentLabel = isSales
     ? invoice.paymentType === "cash"
