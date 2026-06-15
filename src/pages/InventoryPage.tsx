@@ -39,9 +39,8 @@ export function InventoryPage() {
   const [q, setQ] = useState("");
   const [category, setCategory] = useState("");
   const [supplier, setSupplier] = useState("");
-  const [filter, setFilter] = useState<
-    "all" | "low" | "soon" | "expired" | "zero"
-  >("all");
+  const [qtyFilter, setQtyFilter] = useState<"all" | "low" | "zero">("all");
+  const [expiryFilter, setExpiryFilter] = useState<"all" | "soon" | "expired">("all");
 
   const [adjustTarget, setAdjustTarget] = useState<Product | null>(null);
   const [adjType, setAdjType] = useState<"in" | "out">("in");
@@ -79,22 +78,22 @@ export function InventoryPage() {
     }
     if (category) list = list.filter((p) => p.category === category);
     if (supplier) list = list.filter((p) => p.supplierId === supplier);
-    if (filter === "low") list = list.filter((p) => p.quantity <= p.minStock);
-    if (filter === "soon")
+    if (qtyFilter === "low") list = list.filter((p) => p.quantity <= p.minStock);
+    if (qtyFilter === "zero") list = list.filter((p) => p.quantity === 0);
+    if (expiryFilter === "soon")
       list = list.filter((p) => {
         if (!p.hasExpiry || !p.expiryDate) return false;
         const du = daysUntil(p.expiryDate);
         return du !== null && du >= 0 && du <= 14;
       });
-    if (filter === "expired")
+    if (expiryFilter === "expired")
       list = list.filter((p) => {
         if (!p.hasExpiry || !p.expiryDate) return false;
         const du = daysUntil(p.expiryDate);
         return du !== null && du < 0;
       });
-    if (filter === "zero") list = list.filter((p) => p.quantity === 0);
     return list;
-  }, [products, q, category, supplier, filter]);
+  }, [products, q, category, supplier, qtyFilter, expiryFilter]);
 
   function submitAdjust() {
     if (!adjustTarget) return;
@@ -206,26 +205,47 @@ export function InventoryPage() {
                 </option>
               ))}
             </Select>
-            <div className="inline-flex items-center gap-1 bg-slate-100 p-1 rounded-lg">
-              {[
-                { key: "all", label: "الكل" },
-                { key: "low", label: "منخفض" },
-                { key: "soon", label: "قارب ينتهي" },
-                { key: "expired", label: "منتهي" },
-                { key: "zero", label: "نفد الكمية" },
-              ].map((b) => (
-                <button
-                  key={b.key}
-                  onClick={() => setFilter(b.key as typeof filter)}
-                  className={`px-3 h-8 text-xs rounded-md ${
-                    filter === b.key
-                      ? "bg-white text-brand-700 shadow-sm"
-                      : "text-slate-600"
-                  }`}
-                >
-                  {b.label}
-                </button>
-              ))}
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="inline-flex items-center gap-1 bg-slate-100 p-1 rounded-lg">
+                <span className="px-2 text-xs text-slate-400 select-none">الكمية:</span>
+                {([
+                  { key: "all", label: "الكل" },
+                  { key: "low", label: "منخفض" },
+                  { key: "zero", label: "نفد" },
+                ] as const).map((b) => (
+                  <button
+                    key={b.key}
+                    onClick={() => setQtyFilter(b.key)}
+                    className={`px-3 h-8 text-xs rounded-md ${
+                      qtyFilter === b.key
+                        ? "bg-white text-brand-700 shadow-sm"
+                        : "text-slate-600"
+                    }`}
+                  >
+                    {b.label}
+                  </button>
+                ))}
+              </div>
+              <div className="inline-flex items-center gap-1 bg-slate-100 p-1 rounded-lg">
+                <span className="px-2 text-xs text-slate-400 select-none">الصلاحية:</span>
+                {([
+                  { key: "all", label: "الكل" },
+                  { key: "soon", label: "قارب ينتهي" },
+                  { key: "expired", label: "منتهي" },
+                ] as const).map((b) => (
+                  <button
+                    key={b.key}
+                    onClick={() => setExpiryFilter(b.key)}
+                    className={`px-3 h-8 text-xs rounded-md ${
+                      expiryFilter === b.key
+                        ? "bg-white text-brand-700 shadow-sm"
+                        : "text-slate-600"
+                    }`}
+                  >
+                    {b.label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
