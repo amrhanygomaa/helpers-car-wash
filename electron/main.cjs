@@ -134,6 +134,11 @@ const licenseSchema = z.object({
   subscriptionExpiresAt: z.string().nullable(),
   warrantyStartDate: z.string().nullable(),
   warrantyExpiresAt: z.string().nullable(),
+  // Optional feature packaging. When present they are part of the signed payload
+  // (must be included in the generator's canonical string before signing).
+  // Absent on serials issued before packaging ⇒ all features allowed.
+  plan: z.string().optional(),
+  features: z.array(z.string()).optional(),
   issuedAt: z.string().min(1),
   signature: z.string().min(32),
 });

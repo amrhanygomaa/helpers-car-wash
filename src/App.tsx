@@ -84,7 +84,7 @@ export default function App() {
       <Route
         path="/products"
         element={
-          <ProtectedShell permission="products">
+          <ProtectedShell permission="products" feature="products">
             <ProductsPage />
           </ProtectedShell>
         }
@@ -92,7 +92,7 @@ export default function App() {
       <Route
         path="/inventory"
         element={
-          <ProtectedShell permission="inventory">
+          <ProtectedShell permission="inventory" feature="inventory">
             <InventoryPage />
           </ProtectedShell>
         }
@@ -100,7 +100,7 @@ export default function App() {
       <Route
         path="/suppliers"
         element={
-          <ProtectedShell permission="suppliers">
+          <ProtectedShell permission="suppliers" feature="suppliers">
             <SuppliersPage />
           </ProtectedShell>
         }
@@ -108,7 +108,7 @@ export default function App() {
       <Route
         path="/customers"
         element={
-          <ProtectedShell permission="customers">
+          <ProtectedShell permission="customers" feature="customers">
             <CustomersPage />
           </ProtectedShell>
         }
@@ -116,7 +116,7 @@ export default function App() {
       <Route
         path="/purchases"
         element={
-          <ProtectedShell permission="purchaseInvoices">
+          <ProtectedShell permission="purchaseInvoices" feature="purchaseInvoices">
             <PurchaseInvoicesPage />
           </ProtectedShell>
         }
@@ -124,7 +124,7 @@ export default function App() {
       <Route
         path="/purchases/new"
         element={
-          <ProtectedShell permission="purchaseInvoices" permissionAction="add">
+          <ProtectedShell permission="purchaseInvoices" permissionAction="add" feature="purchaseInvoices">
             <PurchaseInvoiceNewPage />
           </ProtectedShell>
         }
@@ -132,7 +132,7 @@ export default function App() {
       <Route
         path="/purchases/:id"
         element={
-          <ProtectedShell permission="purchaseInvoices">
+          <ProtectedShell permission="purchaseInvoices" feature="purchaseInvoices">
             <PurchaseInvoiceDetailPage />
           </ProtectedShell>
         }
@@ -140,7 +140,7 @@ export default function App() {
       <Route
         path="/purchases/:id/edit"
         element={
-          <ProtectedShell permission="purchaseInvoices" permissionAction="edit">
+          <ProtectedShell permission="purchaseInvoices" permissionAction="edit" feature="purchaseInvoices">
             <PurchaseInvoiceEditPage />
           </ProtectedShell>
         }
@@ -148,7 +148,7 @@ export default function App() {
       <Route
         path="/sales"
         element={
-          <ProtectedShell permission="salesInvoices">
+          <ProtectedShell permission="salesInvoices" feature="salesInvoices">
             <SalesInvoicesPage />
           </ProtectedShell>
         }
@@ -156,7 +156,7 @@ export default function App() {
       <Route
         path="/sales/new"
         element={
-          <ProtectedShell permission="salesInvoices" permissionAction="add">
+          <ProtectedShell permission="salesInvoices" permissionAction="add" feature="salesInvoices">
             <SalesInvoiceNewPage />
           </ProtectedShell>
         }
@@ -164,7 +164,7 @@ export default function App() {
       <Route
         path="/sales/:id"
         element={
-          <ProtectedShell permission="salesInvoices">
+          <ProtectedShell permission="salesInvoices" feature="salesInvoices">
             <SalesInvoiceDetailPage />
           </ProtectedShell>
         }
@@ -172,7 +172,7 @@ export default function App() {
       <Route
         path="/sales/:id/edit"
         element={
-          <ProtectedShell permission="salesInvoices" permissionAction="edit">
+          <ProtectedShell permission="salesInvoices" permissionAction="edit" feature="salesInvoices">
             <SalesInvoiceEditPage />
           </ProtectedShell>
         }
@@ -188,7 +188,7 @@ export default function App() {
       <Route
         path="/stocktakes"
         element={
-          <ProtectedShell permission="inventory">
+          <ProtectedShell permission="inventory" feature="stocktakes">
             <StocktakesPage />
           </ProtectedShell>
         }
@@ -196,7 +196,7 @@ export default function App() {
       <Route
         path="/stocktakes/:id"
         element={
-          <ProtectedShell permission="inventory">
+          <ProtectedShell permission="inventory" feature="stocktakes">
             <StocktakeDetailPage />
           </ProtectedShell>
         }
@@ -204,7 +204,7 @@ export default function App() {
       <Route
         path="/quotations"
         element={
-          <ProtectedShell permission="salesInvoices">
+          <ProtectedShell permission="salesInvoices" feature="quotations">
             <QuotationsPage />
           </ProtectedShell>
         }
@@ -212,7 +212,7 @@ export default function App() {
       <Route
         path="/quotations/new"
         element={
-          <ProtectedShell permission="salesInvoices" permissionAction="add">
+          <ProtectedShell permission="salesInvoices" permissionAction="add" feature="quotations">
             <QuotationNewPage />
           </ProtectedShell>
         }
@@ -220,7 +220,7 @@ export default function App() {
       <Route
         path="/quotations/:id/edit"
         element={
-          <ProtectedShell permission="salesInvoices" permissionAction="edit">
+          <ProtectedShell permission="salesInvoices" permissionAction="edit" feature="quotations">
             <QuotationEditPage />
           </ProtectedShell>
         }
@@ -228,7 +228,7 @@ export default function App() {
       <Route
         path="/quotations/:id"
         element={
-          <ProtectedShell permission="salesInvoices">
+          <ProtectedShell permission="salesInvoices" feature="quotations">
             <QuotationDetailPage />
           </ProtectedShell>
         }
@@ -236,7 +236,7 @@ export default function App() {
       <Route
         path="/returns"
         element={
-          <ProtectedShell permission="returns">
+          <ProtectedShell permission="returns" feature="returns">
             <ReturnsPage />
           </ProtectedShell>
         }
@@ -244,7 +244,7 @@ export default function App() {
       <Route
         path="/alerts"
         element={
-          <ProtectedShell permission="alerts">
+          <ProtectedShell permission="alerts" feature="alerts">
             <AlertsPage />
           </ProtectedShell>
         }
@@ -252,7 +252,7 @@ export default function App() {
       <Route
         path="/drivers"
         element={
-          <ProtectedShell permission="drivers">
+          <ProtectedShell permission="drivers" feature="drivers">
             <DriversPage />
           </ProtectedShell>
         }
@@ -260,7 +260,7 @@ export default function App() {
       <Route
         path="/cashbox"
         element={
-          <ProtectedShell permission="cashbox">
+          <ProtectedShell permission="cashbox" feature="cashbox">
             <CashboxPage />
           </ProtectedShell>
         }
@@ -268,7 +268,7 @@ export default function App() {
       <Route
         path="/dues"
         element={
-          <ProtectedShell permission="reports">
+          <ProtectedShell permission="reports" feature="dues">
             <DuesPage />
           </ProtectedShell>
         }
@@ -276,7 +276,7 @@ export default function App() {
       <Route
         path="/reports"
         element={
-          <ProtectedShell permission="reports">
+          <ProtectedShell permission="reports" feature="reports">
             <ReportsPage />
           </ProtectedShell>
         }
@@ -284,7 +284,7 @@ export default function App() {
       <Route
         path="/reports/employees"
         element={
-          <ProtectedShell ownerOnly>
+          <ProtectedShell ownerOnly feature="employeesReport">
             <EmployeeReportPage />
           </ProtectedShell>
         }

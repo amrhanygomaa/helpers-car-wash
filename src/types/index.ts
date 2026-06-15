@@ -26,6 +26,14 @@ export interface LicensePayload {
   subscriptionExpiresAt: string | null;
   warrantyStartDate: string | null;
   warrantyExpiresAt: string | null;
+  /** Optional package label (informational), e.g. "basic" | "pro". */
+  plan?: string;
+  /**
+   * Optional whitelist of enabled feature keys (the package the client bought).
+   * Signed into the serial, so it is tamper-proof. Absent/empty ⇒ all features
+   * allowed (back-compat with serials issued before feature packaging).
+   */
+  features?: string[];
   issuedAt: string;
   signature: string;
 }
@@ -351,6 +359,12 @@ export interface Settings {
   warrantyMonths: number;
   /** Minutes of inactivity before session locks. 0 = disabled. */
   idleLockMinutes: number;
+  /**
+   * Owner-controlled per-module visibility. Keys are FeatureKey (see
+   * lib/features.ts). Missing key ⇒ that module's default state. This is the
+   * "hide" layer; the license still caps what can be enabled.
+   */
+  features?: Record<string, boolean>;
 }
 
 export interface ActivityItem {

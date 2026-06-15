@@ -6,7 +6,8 @@ import { Field, Input, Select, Textarea } from "../components/ui/Input";
 import { useApp } from "../store/AppContext";
 import { useToast } from "../components/ui/Toast";
 import { lsGet } from "../lib/storage";
-import { Save, Printer, Download, Upload, Database, FileSpreadsheet, ShieldCheck, Clock, Image as ImageIcon, Trash2, FolderOpen } from "lucide-react";
+import { FEATURES, FEATURE_MAP, isAllowedByLicense, type FeatureKey } from "../lib/features";
+import { Save, Printer, Download, Upload, Database, FileSpreadsheet, ShieldCheck, Clock, Image as ImageIcon, Trash2, FolderOpen, Boxes, Lock } from "lucide-react";
 
 export function SettingsPage() {
   const { settings, updateSettings, exportBackup, importBackup, backupToPath, exportToExcel, licenseStatus } = useApp();
@@ -42,6 +43,11 @@ export function SettingsPage() {
     };
     toast.error("فشل النسخ الاحتياطي", messages[result.error ?? ""] ?? "حدث خطأ غير متوقع");
   }
+
+  const license = licenseStatus?.license ?? null;
+  const featureChecked = (key: FeatureKey) => form.features?.[key] ?? FEATURE_MAP[key].defaultEnabled;
+  const toggleFeature = (key: FeatureKey, value: boolean) =>
+    setForm({ ...form, features: { ...(form.features ?? {}), [key]: value } });
 
   function getRemainingDays(startDate: string, months: number) {
     if (!startDate || months <= 0) return 0;
@@ -216,6 +222,59 @@ export function SettingsPage() {
                 <option value="60">ساعة كاملة</option>
               </Select>
             </Field>
+          </CardBody>
+        </Card>
+
+        <Card className="lg:col-span-2">
+          <CardHeader
+            title={
+              <div className="flex items-center gap-2">
+                <Boxes className="w-4 h-4 text-brand-600" />
+                <span>المميزات والوحدات</span>
+              </div>
+            }
+            subtitle="تحكّم في الوحدات الظاهرة للعميل — الوحدات المقفولة في الباقة لا يمكن تفعيلها"
+          />
+          <CardBody>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              {FEATURES.map((f) => {
+                const allowed = isAllowedByLicense(f.key, license);
+                const checked = allowed && featureChecked(f.key);
+                return (
+                  <label
+                    key={f.key}
+                    className={`flex items-start gap-3 rounded-lg border p-3 transition-colors ${
+                      allowed
+                        ? "border-slate-200 hover:bg-slate-50 cursor-pointer"
+                        : "border-slate-100 bg-slate-50/60 cursor-not-allowed"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      className="mt-0.5"
+                      checked={checked}
+                      disabled={!allowed}
+                      onChange={(e) => toggleFeature(f.key, e.target.checked)}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 text-sm font-semibold text-slate-800">
+                        {f.label}
+                        {!allowed && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-100 rounded px-1.5 py-0.5">
+                            <Lock className="w-3 h-3" /> غير متاح في الباقة
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs text-slate-500 mt-0.5">{f.description}</div>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+            <div className="mt-3 text-xs text-slate-500">
+              إخفاء وحدة هنا يزيلها من القائمة الجانبية ويمنع الوصول إليها. الباقة المرتبطة بالسيريال
+              تحدّد الوحدات المتاحة أصلاً، ولا يمكن تجاوزها من هنا.
+            </div>
           </CardBody>
         </Card>
 

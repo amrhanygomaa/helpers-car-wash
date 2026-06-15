@@ -30,12 +30,15 @@ import { useAuth } from "../../store/AuthContext";
 import { useSettings } from "../../store/SettingsContext";
 import type { AppUser, UserPermissions } from "../../types";
 import { hasPermission } from "../../lib/permissions";
+import { useFeatures } from "../../lib/useFeatures";
+import type { FeatureKey } from "../../lib/features";
 
 type NavItem = {
   to: string;
   label: string;
   icon: ComponentType<{ className?: string }>;
   permission?: keyof UserPermissions;
+  feature?: FeatureKey;
   ownerOnly?: boolean;
   employeeOnly?: boolean;
 };
@@ -55,39 +58,39 @@ const GROUPS: NavGroup[] = [
     id: "invoices",
     label: "الفواتير",
     items: [
-      { to: "/sales", label: "فواتير المبيعات", icon: Receipt, permission: "salesInvoices" },
-      { to: "/purchases", label: "فواتير المشتريات", icon: ShoppingBag, permission: "purchaseInvoices" },
-      { to: "/quotations", label: "عروض الأسعار", icon: FileText, permission: "salesInvoices" },
-      { to: "/returns", label: "المرتجعات", icon: ArrowLeftRight, permission: "returns" },
+      { to: "/sales", label: "فواتير المبيعات", icon: Receipt, permission: "salesInvoices", feature: "salesInvoices" },
+      { to: "/purchases", label: "فواتير المشتريات", icon: ShoppingBag, permission: "purchaseInvoices", feature: "purchaseInvoices" },
+      { to: "/quotations", label: "عروض الأسعار", icon: FileText, permission: "salesInvoices", feature: "quotations" },
+      { to: "/returns", label: "المرتجعات", icon: ArrowLeftRight, permission: "returns", feature: "returns" },
     ],
   },
   {
     id: "inventory",
     label: "المخزون",
     items: [
-      { to: "/products", label: "المنتجات", icon: Package, permission: "products" },
-      { to: "/inventory", label: "المخزون", icon: Warehouse, permission: "inventory" },
-      { to: "/stocktakes", label: "الجرد الدوري", icon: ClipboardList, permission: "inventory" },
-      { to: "/alerts", label: "التنبيهات", icon: Bell, permission: "alerts" },
+      { to: "/products", label: "المنتجات", icon: Package, permission: "products", feature: "products" },
+      { to: "/inventory", label: "المخزون", icon: Warehouse, permission: "inventory", feature: "inventory" },
+      { to: "/stocktakes", label: "الجرد الدوري", icon: ClipboardList, permission: "inventory", feature: "stocktakes" },
+      { to: "/alerts", label: "التنبيهات", icon: Bell, permission: "alerts", feature: "alerts" },
     ],
   },
   {
     id: "parties",
     label: "العملاء والموردون",
     items: [
-      { to: "/customers", label: "العملاء", icon: Users, permission: "customers" },
-      { to: "/suppliers", label: "الموردين", icon: Factory, permission: "suppliers" },
-      { to: "/drivers", label: "السائقين", icon: Truck, permission: "drivers" },
+      { to: "/customers", label: "العملاء", icon: Users, permission: "customers", feature: "customers" },
+      { to: "/suppliers", label: "الموردين", icon: Factory, permission: "suppliers", feature: "suppliers" },
+      { to: "/drivers", label: "السائقين", icon: Truck, permission: "drivers", feature: "drivers" },
     ],
   },
   {
     id: "finance",
     label: "المالية والتقارير",
     items: [
-      { to: "/cashbox", label: "الخزينة", icon: Wallet, permission: "cashbox" },
-      { to: "/dues", label: "المستحقات", icon: HandCoins, permission: "reports" },
-      { to: "/reports", label: "التقارير", icon: BarChart3, permission: "reports" },
-      { to: "/reports/employees", label: "تقرير الموظفين", icon: Users, ownerOnly: true },
+      { to: "/cashbox", label: "الخزينة", icon: Wallet, permission: "cashbox", feature: "cashbox" },
+      { to: "/dues", label: "المستحقات", icon: HandCoins, permission: "reports", feature: "dues" },
+      { to: "/reports", label: "التقارير", icon: BarChart3, permission: "reports", feature: "reports" },
+      { to: "/reports/employees", label: "تقرير الموظفين", icon: Users, ownerOnly: true, feature: "employeesReport" },
     ],
   },
   {
@@ -106,8 +109,13 @@ const BOTTOM_ITEMS: NavItem[] = [
   { to: "/my-profile", label: "ملفي الشخصي", icon: UserRound, employeeOnly: true },
 ];
 
-function canSee(item: NavItem, user: AppUser | null): boolean {
+function canSee(
+  item: NavItem,
+  user: AppUser | null,
+  isFeatureOn: (key: FeatureKey) => boolean
+): boolean {
   if (!user) return false;
+  if (item.feature && !isFeatureOn(item.feature)) return false;
   if (user.role === "owner") return !item.employeeOnly;
   if (item.ownerOnly) return false;
   if (item.employeeOnly && user.role !== "employee") return false;
@@ -123,6 +131,7 @@ function itemMatchesPath(item: NavItem, pathname: string): boolean {
 export function Sidebar({ collapsed }: { collapsed: boolean }) {
   const { logout, currentUser } = useAuth();
   const { settings } = useSettings();
+  const { isEnabled } = useFeatures();
   const { pathname } = useLocation();
 
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() =>
@@ -142,12 +151,12 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]);
 
-  const topItems = TOP_ITEMS.filter((i) => canSee(i, currentUser));
+  const topItems = TOP_ITEMS.filter((i) => canSee(i, currentUser, isEnabled));
   const groups = GROUPS.map((g) => ({
     ...g,
-    items: g.items.filter((i) => canSee(i, currentUser)),
+    items: g.items.filter((i) => canSee(i, currentUser, isEnabled)),
   })).filter((g) => g.items.length > 0);
-  const bottomItems = BOTTOM_ITEMS.filter((i) => canSee(i, currentUser));
+  const bottomItems = BOTTOM_ITEMS.filter((i) => canSee(i, currentUser, isEnabled));
 
   const renderItem = (item: NavItem, indented = false) => {
     const Icon = item.icon;

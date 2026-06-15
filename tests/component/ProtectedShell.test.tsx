@@ -35,6 +35,15 @@ vi.mock("../../src/store/AuthContext", () => ({
   useAuth: () => mockUseAuth(),
 }));
 
+// ProtectedShell resolves module availability through useFeatures (license +
+// settings). These tests focus on auth/permission logic, so default every
+// feature to enabled; individual tests override to exercise feature gating.
+const mockUseFeatures = vi.fn();
+
+vi.mock("../../src/lib/useFeatures", () => ({
+  useFeatures: () => mockUseFeatures(),
+}));
+
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
 const OWNER: AppUser = {
@@ -93,6 +102,7 @@ function renderProtected(
 describe("ProtectedShell — TC-COMP-PSHELL", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    mockUseFeatures.mockReturnValue({ isEnabled: () => true, isAllowed: () => true });
   });
 
   afterEach(() => {
@@ -147,5 +157,13 @@ describe("ProtectedShell — TC-COMP-PSHELL", () => {
     mockUseAuth.mockReturnValue(authenticatedAs(employee()));
     renderProtected({});
     expect(screen.getByTestId("protected-content")).toBeInTheDocument();
+  });
+
+  it("TC-COMP-PSHELL-008 — route is redirected to / when its feature is disabled, even for the owner", () => {
+    mockUseAuth.mockReturnValue(authenticatedAs(OWNER));
+    mockUseFeatures.mockReturnValue({ isEnabled: () => false, isAllowed: () => false });
+    renderProtected({ feature: "quotations" });
+    expect(screen.getByTestId("dashboard")).toBeInTheDocument();
+    expect(screen.queryByTestId("protected-content")).not.toBeInTheDocument();
   });
 });

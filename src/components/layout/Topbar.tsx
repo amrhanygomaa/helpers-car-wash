@@ -7,6 +7,7 @@ import { useInvoicing } from "../../store/InvoicingContext";
 import { useMemo, useState } from "react";
 import { formatDate } from "../../lib/format";
 import { hasPermission } from "../../lib/permissions";
+import { useFeatures } from "../../lib/useFeatures";
 
 // order matters: more specific paths must precede their prefixes (startsWith match)
 const TITLES: Record<string, string> = {
@@ -46,6 +47,7 @@ export function Topbar({
   const { settings } = useSettings();
   const { products, customers, suppliers } = useCatalog();
   const { purchaseInvoices, salesInvoices } = useInvoicing();
+  const { isEnabled } = useFeatures();
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
 
@@ -66,7 +68,7 @@ export function Topbar({
   const canSearchSuppliers = hasPermission(currentUser, "suppliers");
   const canSearchSales = hasPermission(currentUser, "salesInvoices");
   const canSearchPurchases = hasPermission(currentUser, "purchaseInvoices");
-  const canViewAlerts = hasPermission(currentUser, "alerts");
+  const canViewAlerts = hasPermission(currentUser, "alerts") && isEnabled("alerts");
   const accountName = currentUser?.name || auth.username || "مدير";
 
   const title = useMemo(() => {
