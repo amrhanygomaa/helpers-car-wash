@@ -12,6 +12,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Users,
+  Shield,
 } from "lucide-react";
 import { useAuth } from "../store/AuthContext";
 import { useSettings } from "../store/SettingsContext";
@@ -20,11 +21,17 @@ import { Button } from "../components/ui/Button";
 import { Field, Input, Select } from "../components/ui/Input";
 import { useToast } from "../components/ui/Toast";
 import { hashPassword } from "../lib/auth";
-import { createPermissions } from "../lib/permissions";
+import {
+  createPermissions,
+  setPermission,
+  setPermissionGroup,
+  areAllPermissionsEnabled,
+  PERMISSION_GROUPS,
+} from "../lib/permissions";
 
-// A sensible salesperson starter set for the first employee — the owner can
-// refine it any time from صفحة المستخدمين.
-const EMPLOYEE_DEFAULT_PERMISSIONS = (() => {
+// A sensible salesperson starter set the owner can refine in the wizard or
+// later from صفحة المستخدمين.
+function makeEmployeeDefaultPermissions() {
   const p = createPermissions(false);
   p.products.view = true;
   p.inventory.view = true;
@@ -39,7 +46,7 @@ const EMPLOYEE_DEFAULT_PERMISSIONS = (() => {
   p.cashbox.view = true;
   p.reports.view = true;
   return p;
-})();
+}
 
 const STEPS = [
   {
@@ -101,6 +108,10 @@ export function FirstRunSetupPage() {
   const [employeeName, setEmployeeName] = useState("");
   const [employeeUsername, setEmployeeUsername] = useState("");
   const [employeePassword, setEmployeePassword] = useState("");
+  const [employeePermissions, setEmployeePermissions] = useState(
+    makeEmployeeDefaultPermissions
+  );
+  const allEmployeePermissionsSelected = areAllPermissionsEnabled(employeePermissions);
 
   async function pickBackupFolder() {
     const dir = await window.desktopAPI?.backup?.selectDirectory();
@@ -200,7 +211,7 @@ export function FirstRunSetupPage() {
         username: employeeUsername.trim(),
         passwordHash: await hashPassword(employeePassword),
         role: "employee",
-        permissions: EMPLOYEE_DEFAULT_PERMISSIONS,
+        permissions: employeePermissions,
       });
     }
     toast.success("تم إنشاء المدير", "تم فتح النظام بالحساب الجديد");
@@ -521,16 +532,89 @@ export function FirstRunSetupPage() {
                     placeholder="employee"
                   />
                 </Field>
-                <Field
-                  label="كلمة مرور الموظف"
-                  hint="6 أحرف على الأقل — يبدأ بصلاحيات مندوب مبيعات، عدّلها لاحقاً من صفحة المستخدمين"
-                >
+                <Field label="كلمة مرور الموظف" hint="6 أحرف على الأقل">
                   <Input
                     type="password"
                     value={employeePassword}
                     onChange={(e) => setEmployeePassword(e.target.value)}
                   />
                 </Field>
+
+                <div className="space-y-2 pt-1">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-1.5 text-xs font-medium text-slate-600">
+                      <Shield className="w-4 h-4 text-brand-600" /> صلاحيات الموظف
+                    </div>
+                    <label className="inline-flex items-center gap-1.5 text-xs text-slate-600">
+                      <input
+                        type="checkbox"
+                        checked={allEmployeePermissionsSelected}
+                        onChange={(e) =>
+                          setEmployeePermissions(createPermissions(e.target.checked))
+                        }
+                      />
+                      اختيار الكل
+                    </label>
+                  </div>
+
+                  <div className="max-h-56 overflow-y-auto rounded-lg border border-slate-200 divide-y divide-slate-100">
+                    {PERMISSION_GROUPS.map((group) => {
+                      const groupSelected = areAllPermissionsEnabled(
+                        employeePermissions,
+                        group.key
+                      );
+                      const groupPermissions = employeePermissions[group.key] as Record<
+                        string,
+                        boolean
+                      >;
+                      return (
+                        <div key={group.key} className="p-2.5 space-y-2">
+                          <label className="flex items-center justify-between gap-2">
+                            <span className="text-xs font-medium text-slate-800">
+                              {group.label}
+                            </span>
+                            <input
+                              type="checkbox"
+                              checked={groupSelected}
+                              onChange={(e) =>
+                                setEmployeePermissions((current) =>
+                                  setPermissionGroup(current, group.key, e.target.checked)
+                                )
+                              }
+                            />
+                          </label>
+                          <div className="grid grid-cols-2 gap-1.5 text-[11px]">
+                            {group.actions.map((action) => (
+                              <label
+                                key={action.key}
+                                className="flex items-center gap-1.5 text-slate-600"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={Boolean(groupPermissions[action.key])}
+                                  onChange={(e) =>
+                                    setEmployeePermissions((current) =>
+                                      setPermission(
+                                        current,
+                                        group.key,
+                                        action.key,
+                                        e.target.checked
+                                      )
+                                    )
+                                  }
+                                />
+                                {action.label}
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="text-[11px] text-slate-400">
+                    يمكنك تعديل الصلاحيات لاحقاً من صفحة المستخدمين.
+                  </div>
+                </div>
               </>
             )}
           </div>
@@ -557,12 +641,12 @@ export function FirstRunSetupPage() {
                 >
                   تخطّي الآن
                 </Button>
-                <Button type="submit" size="lg" disabled={submitting}>
+                <Button type="submit" disabled={submitting}>
                   {submitting ? "جاري الإنشاء..." : "إضافة الموظف وفتح النظام"}
                 </Button>
               </div>
             ) : (
-              <Button type="submit" size="lg" className="gap-1">
+              <Button type="submit" className="gap-1">
                 التالي <ChevronLeft className="w-4 h-4" />
               </Button>
             )}
