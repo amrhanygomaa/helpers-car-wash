@@ -166,6 +166,7 @@ interface AppActions {
   recordSalesReceipt: (id: string, amount: number, paymentMethod?: import("../types").PaymentMethod, notes?: string) => void;
   cancelSalesInvoice: (id: string, refundMode?: "cash" | "credit") => void;
   deleteSalesInvoice: (id: string) => boolean;
+  applyCustomerCredit: (customerId: string, invoiceId: string, amount: number) => void;
   settleAllDues: (customerId: ID) => number;
   settleSupplierDues: (supplierId: string) => number;
 
