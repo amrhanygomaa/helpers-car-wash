@@ -15,6 +15,7 @@ import type {
 export interface InvoicingContextValue {
   quotations: Quotation[];
   addQuotation: (q: Omit<Quotation, "id" | "createdAt" | "status">) => Quotation;
+  updateQuotation: (id: string, patch: Pick<Quotation, "date" | "validUntil" | "customerId" | "customerName" | "lines" | "total" | "discount" | "notes">) => void;
   convertQuotation: (
     quotationId: string,
     opts: {
