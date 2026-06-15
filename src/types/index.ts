@@ -183,6 +183,7 @@ export interface SalesInvoice {
   status: PaymentStatus;
   notes?: string;
   cancelled?: boolean;
+  paymentLog?: PaymentLogEntry[];
   createdByUserId?: ID;
   createdAt: string;
 }

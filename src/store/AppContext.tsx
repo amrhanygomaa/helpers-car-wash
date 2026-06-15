@@ -163,7 +163,7 @@ interface AppActions {
     id: string,
     patch: Omit<SalesInvoice, "id" | "createdAt" | "customerId" | "customerName" | "status" | "remaining">
   ) => void;
-  recordSalesReceipt: (id: string, amount: number, paymentMethod?: import("../types").PaymentMethod) => void;
+  recordSalesReceipt: (id: string, amount: number, paymentMethod?: import("../types").PaymentMethod, notes?: string) => void;
   cancelSalesInvoice: (id: string, refundMode?: "cash" | "credit") => void;
   deleteSalesInvoice: (id: string) => boolean;
   settleAllDues: (customerId: ID) => number;

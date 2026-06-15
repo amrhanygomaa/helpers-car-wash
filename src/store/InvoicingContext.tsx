@@ -42,7 +42,7 @@ export interface InvoicingContextValue {
     id: string,
     patch: Omit<SalesInvoice, "id" | "createdAt" | "customerId" | "customerName" | "status" | "remaining">
   ) => void;
-  recordSalesReceipt: (id: string, amount: number, paymentMethod?: PaymentMethod) => void;
+  recordSalesReceipt: (id: string, amount: number, paymentMethod?: PaymentMethod, notes?: string) => void;
   cancelSalesInvoice: (id: string, refundMode?: "cash" | "credit") => void;
   deleteSalesInvoice: (id: string) => boolean;
   settleAllDues: (customerId: ID) => number;
