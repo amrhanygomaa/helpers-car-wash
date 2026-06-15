@@ -642,8 +642,9 @@ function createWindow() {
       allowRunningInsecureContent: false,
     },
   });
+  const _wcId = win.webContents.id; // capture before destruction
   win.webContents.on("destroyed", () => {
-    rendererSessions.delete(win.webContents.id);
+    rendererSessions.delete(_wcId);
   });
 
   // Backup-on-close: give the renderer a chance to write a backup to the
@@ -663,6 +664,7 @@ function createWindow() {
     };
     ipcMain.once("app:close-backup-done", finish);
     try {
+      if (win.webContents.isDestroyed()) { finish(); return; }
       win.webContents.send("app:run-close-backup");
     } catch {
       finish();

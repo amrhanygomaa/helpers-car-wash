@@ -73,7 +73,13 @@
         "nsis"
       ],
       "artifactName": "${productName}-${version}-Setup.${ext}",
-      "signAndEditExecutable": false
+      "signAndEditExecutable": true,
+      "signtoolOptions": {
+        "certificateSha1": "E950B2D3C22831B0EDE52E0F69D7C0C422BCBE02",
+        "signingHashAlgorithms": [
+          "sha256"
+        ]
+      }
     },
     "nsis": {
       "oneClick": false,

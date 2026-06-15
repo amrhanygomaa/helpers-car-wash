@@ -6,6 +6,8 @@ Professional offline desktop system for warehouse, inventory, sales, purchasing,
 
 The application is built for Windows desktop deployment using Electron, React, TypeScript, Vite, and an encrypted local SQLite database.
 
+**Current version: v2.0.0** — first stable production release.
+
 ## Product Overview
 
 `Helpers warehouse system` is a proprietary desktop application developed by Helpers Technologies for small and medium businesses that need an offline-first warehouse and sales workflow.
@@ -16,15 +18,15 @@ Core capabilities:
 | --- | --- |
 | Products and stock | Product catalog, stock levels, expiry tracking, and stock movements |
 | Sales and purchasing | Sales invoices, purchase invoices, A4 printing, and PDF export |
-| Customers and suppliers | Contact data, balances, and transaction history |
+| Customers and suppliers | Contact data, balances, account statements, and transaction history |
 | Cashbox | Incoming and outgoing payments with daily operational tracking |
-| Returns | Sales and purchase returns with automatic stock updates |
-| Reports | Business reports and CSV export |
-| Drivers | Driver records linked to sales operations |
-| Supplier bonuses | Tiered supplier commission/bonus workflows |
-| Alerts | Low stock and near-expiry alerts |
+| Returns | Sales and purchase returns with automatic stock and balance updates |
+| Reports | Business reports, employee commission reports, and Excel export |
+| Alerts | Low stock, near-expiry, and overdue supplier payment alerts |
 | Users and roles | Owner/admin setup, employee accounts, and permission-based access |
-| Backups | Manual and automatic backup/restore workflows |
+| Audit log | Full operation history with user, timestamp, and affected data |
+| Backups | On-close and manual backup/restore with configurable destination folder |
+| Feature gating | Per-client module enable/disable controlled by signed license and owner settings |
 
 ## Security Model
 
@@ -52,7 +54,7 @@ Production license material is intentionally not committed. Each local developme
 ## Requirements
 
 - Windows 10/11 64-bit for the packaged desktop app
-- Node.js 20 or newer
+- Node.js 22 or newer
 - npm 10 or newer
 
 ## Local Setup
@@ -96,10 +98,30 @@ The installer is generated under `release/` using the `productName` and `version
 Current artifact name:
 
 ```text
-release/Helpers warehouse system-1.0.1-Setup.exe
+release/Helpers warehouse system-2.0.0-Setup.exe
 ```
 
 Release artifacts, signing certificates, private keys, and client USB packages are not committed to this repository.
+
+### License Studio
+
+Generate and manage client licenses using the companion tool:
+
+```bash
+# Interactive GUI license generator
+npm run license:studio
+
+# CLI — generate a single license
+npm run license:generate -- --machine <HTW-...> --client "Client Name" --expiry 2027-12-31
+
+# CLI — generate with feature package
+npm run license:generate -- --machine <HTW-...> --client "Client Name" --plan pro --features sales,purchases,inventory,customers,suppliers,cashbox,employees,reports,alerts,audit,categories,units,users
+
+# Initialize a new Ed25519 keypair (run once)
+npm run license:init
+```
+
+The license studio lives at `../helpers-warehouse-system-activate/`.
 
 ## Code Signing
 
@@ -114,6 +136,31 @@ Keep these files outside the repository:
 | Client USB package ZIP | Installer package prepared for field installation |
 
 Never commit `.pfx`, `.cer`, private keys, generated releases, or customer-specific license data.
+
+## Testing
+
+```bash
+# Full test suite (498 tests)
+npm run test
+
+# Watch mode
+npm run test:watch
+
+# Coverage report
+npm run test:coverage
+
+# E2E (Playwright — requires built Electron app)
+npm run test:e2e
+```
+
+**Current status:** 498/498 unit + component + integration ✅ | 5/5 E2E ✅
+
+Test categories:
+
+- `tests/unit/` — pure functions in `src/store/_pure.ts` and `src/lib/`
+- `tests/component/` — React pages rendered in JSDOM
+- `tests/integration/` — full data-flow probes using the real store
+- `tests/e2e/` — full Electron process via Playwright
 
 ## Validation
 
