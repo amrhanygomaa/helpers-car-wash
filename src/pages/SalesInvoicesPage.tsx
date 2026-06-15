@@ -61,7 +61,8 @@ export function SalesInvoicesPage() {
       );
     }
     if (customerId) list = list.filter((s) => s.customerId === customerId);
-    if (status) list = list.filter((s) => s.status === status);
+    if (status === "overpaid") list = list.filter((s) => s.status === "paid" && (s.overpayment ?? 0) > 0);
+    else if (status) list = list.filter((s) => s.status === status);
     if (payment) list = list.filter((s) => s.paymentType === payment);
     list = list.filter((s) => inRange(s.date, from, to));
     return [...list].sort((a, b) => (a.date < b.date ? 1 : -1));
@@ -130,9 +131,10 @@ export function SalesInvoicesPage() {
                 </option>
               ))}
             </Select>
-            <Select value={status} onChange={(e) => setStatus(e.target.value)} className="w-36">
+            <Select value={status} onChange={(e) => setStatus(e.target.value)} className="w-40">
               <option value="">كل الحالات</option>
               <option value="paid">مسدد</option>
+              <option value="overpaid">مسدد بزيادة</option>
               <option value="partial">جزئي</option>
               <option value="unpaid">غير مسدد</option>
             </Select>

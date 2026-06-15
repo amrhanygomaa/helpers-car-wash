@@ -41,6 +41,7 @@ interface DraftState {
   driverId: string;
   paymentType: SalesPaymentType;
   paymentMethod: PaymentMethod;
+  paymentMethodLabel: string;
   priceType: SalesPriceType;
   paymentDueDate: string;
   discount: number;
@@ -95,6 +96,8 @@ export function SalesInvoiceNewPage() {
   const [driverId, setDriverId] = useState(() => loadDraft()?.driverId ?? "");
   const [paymentType, setPaymentType] = useState<SalesPaymentType>(() => loadDraft()?.paymentType ?? "cash");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(() => loadDraft()?.paymentMethod ?? "cash");
+  const [paymentMethodLabel, setPaymentMethodLabel] = useState(() => loadDraft()?.paymentMethodLabel ?? "");
+  const [useCredit, setUseCredit] = useState(false);
   const [priceType, setPriceType] = useState<SalesPriceType>(() => loadDraft()?.priceType ?? "wholesale");
   const [paymentDueDate, setPaymentDueDate] = useState(() => loadDraft()?.paymentDueDate ?? "");
   const [discount, setDiscount] = useState<number>(() => loadDraft()?.discount ?? 0);
@@ -114,7 +117,7 @@ export function SalesInvoiceNewPage() {
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      saveDraft({ invoiceNumber, date, customerId, driverId, paymentType, paymentMethod, priceType, paymentDueDate, discount, amountReceived, notes, lines });
+      saveDraft({ invoiceNumber, date, customerId, driverId, paymentType, paymentMethod, paymentMethodLabel, priceType, paymentDueDate, discount, amountReceived, notes, lines });
     }, 150);
     return () => window.clearTimeout(timer);
   }, [invoiceNumber, date, customerId, driverId, paymentType, priceType, paymentDueDate, discount, amountReceived, notes, lines]);
@@ -128,6 +131,8 @@ export function SalesInvoiceNewPage() {
     setDriverId("");
     setPaymentType("cash");
     setPaymentMethod("cash");
+    setPaymentMethodLabel("");
+    setUseCredit(false);
     setPriceType("wholesale");
     setPaymentDueDate("");
     setAmountReceived(0);
@@ -140,23 +145,26 @@ export function SalesInvoiceNewPage() {
     [lines]
   );
   const invoiceNet = Math.max(0, gross - (discount || 0));
-  const receivedForInvoice = Math.min(amountReceived, invoiceNet);
-  const remainingDue = Math.max(0, invoiceNet - amountReceived);
-  const customerChange = Math.max(0, amountReceived - invoiceNet);
+  const creditAvailable = customerId ? customerCredit(customerId) : 0;
+  const creditApplied = useCredit ? Math.min(creditAvailable, invoiceNet) : 0;
+  const totalEffective = amountReceived + creditApplied;
+  const receivedForInvoice = Math.min(totalEffective, invoiceNet);
+  const remainingDue = Math.max(0, invoiceNet - totalEffective);
+  const customerChange = Math.max(0, totalEffective - invoiceNet);
 
   useEffect(() => {
-    if (paymentType === "cash") setAmountReceived(invoiceNet);
-    else setAmountReceived(0);
-  }, [paymentType]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    if (paymentType === "cash") setAmountReceived(invoiceNet);
-  }, [invoiceNet]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (paymentType !== "cash") { setAmountReceived(0); return; }
+    const cr = useCredit ? Math.min(customerCredit(customerId), invoiceNet) : 0;
+    setAmountReceived(Math.max(0, invoiceNet - cr));
+  }, [paymentType, invoiceNet, useCredit, customerId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (paymentType === "cash") setPaymentDueDate("");
-    else setPaymentMethod("cash");
   }, [paymentType]);
+
+  useEffect(() => {
+    setUseCredit(false);
+  }, [customerId]);
 
   const stockWarnings = useMemo(() => {
     const map = new Map<string, number>();
@@ -608,26 +616,32 @@ export function SalesInvoiceNewPage() {
                 </label>
               </div>
             </Field>
-            {paymentType === "cash" ? (
-              <Field label="وسيلة الدفع">
-                <div className="flex flex-wrap gap-1.5">
-                  {(Object.entries(PAYMENT_METHOD_LABELS) as [PaymentMethod, string][]).map(([key, label]) => (
-                    <button
-                      key={key}
-                      type="button"
-                      onClick={() => setPaymentMethod(key)}
-                      className={`px-3 h-8 rounded-lg border text-xs font-medium transition-colors ${
-                        paymentMethod === key
-                          ? "border-brand-600 bg-brand-50 text-brand-700"
-                          : "border-slate-200 bg-white text-slate-600 hover:border-brand-300"
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </Field>
-            ) : null}
+            <Field label="وسيلة الدفع">
+              <div className="flex flex-wrap gap-1.5">
+                {(Object.entries(PAYMENT_METHOD_LABELS) as [PaymentMethod, string][]).map(([key, label]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setPaymentMethod(key)}
+                    className={`px-3 h-8 rounded-lg border text-xs font-medium transition-colors ${
+                      paymentMethod === key
+                        ? "border-brand-600 bg-brand-50 text-brand-700"
+                        : "border-slate-200 bg-white text-slate-600 hover:border-brand-300"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {paymentMethod === "other" ? (
+                <Input
+                  className="mt-2"
+                  value={paymentMethodLabel}
+                  onChange={(e) => setPaymentMethodLabel(e.target.value)}
+                  placeholder="اكتب وسيلة الدفع..."
+                />
+              ) : null}
+            </Field>
             {paymentType === "account" ? (
               <Field label="تاريخ الاستحقاق" required>
                 <Input
