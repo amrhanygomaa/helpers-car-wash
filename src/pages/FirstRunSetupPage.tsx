@@ -17,6 +17,7 @@ import {
 import { useAuth } from "../store/AuthContext";
 import { useSettings } from "../store/SettingsContext";
 import { useUsers } from "../store/UsersContext";
+import { BRANDING } from "../branding";
 import { Button } from "../components/ui/Button";
 import { Field, Input, Select } from "../components/ui/Input";
 import { useToast } from "../components/ui/Toast";
@@ -94,10 +95,10 @@ export function FirstRunSetupPage() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
-  // Step 2 — company
-  const [companyNameAr, setCompanyNameAr] = useState("");
-  const [companyName, setCompanyName] = useState("");
-  const [logoImage, setLogoImage] = useState("");
+  // Step 2 — company (pre-filled from per-client branding when present)
+  const [companyNameAr, setCompanyNameAr] = useState(BRANDING.companyNameAr);
+  const [companyName, setCompanyName] = useState(BRANDING.companyName);
+  const [logoImage, setLogoImage] = useState(BRANDING.logoImage);
 
   // Step 3 — financial
   const [openingBalance, setOpeningBalance] = useState(0);
@@ -283,7 +284,7 @@ export function FirstRunSetupPage() {
             </div>
 
             <div className="space-y-1.5">
-              <div className="hw-t1 text-3xl font-bold tracking-tight">مرحباً بك 👋</div>
+              <div className="hw-t1 text-3xl font-bold tracking-tight">مرحباً بك</div>
               {companyNameAr.trim() && (
                 <div className="hw-t2 text-xl text-white/90">{companyNameAr.trim()}</div>
               )}
