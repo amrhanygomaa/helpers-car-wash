@@ -81,7 +81,7 @@ export function SalesInvoiceNewPage() {
   const canAddCustomer = hasPermission(currentUser, "customers", "add");
   const products = useMemo(() => allProducts.filter((p) => !p.archived), [allProducts]);
   const customers = useMemo(() => allCustomers.filter((c) => !c.archived), [allCustomers]);
-  const { salesInvoices, addSalesInvoice } = useInvoicing();
+  const { salesInvoices, addSalesInvoice, applyCustomerCredit } = useInvoicing();
   const { settings } = useSettings();
   const { customerBalance, customerCredit } = useReporting();
   const navigate = useNavigate();
