@@ -57,10 +57,16 @@ export function AlertsPage() {
   );
   const unpaidCustomers = useMemo(() => {
     return customers
-      .map((c) => ({ c, bal: customerBalance(c.id) }))
+      .map((c) => {
+        const grossRemaining = salesInvoices
+          .filter((s) => s.customerId === c.id && !s.cancelled && s.remaining > 0)
+          .reduce((a, s) => a + s.remaining, 0);
+        const credit = Math.max(0, -customerBalance(c.id));
+        return { c, bal: grossRemaining, credit };
+      })
       .filter((x) => x.bal > 0)
       .sort((a, b) => b.bal - a.bal);
-  }, [customers, customerBalance]);
+  }, [customers, salesInvoices, customerBalance]);
   const customersWithCredit = useMemo(() => {
     return customers
       .map((c) => ({ c, credit: customerCredit(c.id) }))
@@ -327,7 +333,7 @@ export function AlertsPage() {
             {unpaidCustomers.length === 0 ? (
               <EmptyState icon={<Users className="w-5 h-5" />} title="لا توجد أرصدة متبقية" />
             ) : (
-              unpaidCustomers.slice(0, 8).map(({ c, bal }) => (
+              unpaidCustomers.slice(0, 8).map(({ c, bal, credit }) => (
                 <div key={c.id} className="flex items-center gap-3 p-3">
                   <div className="w-9 h-9 rounded-lg bg-indigo-50 text-indigo-600 grid place-items-center">
                     <Users className="w-4 h-4" />
@@ -336,6 +342,7 @@ export function AlertsPage() {
                     <div className="text-sm font-medium text-slate-900 truncate">{c.name}</div>
                     <div className="text-xs text-slate-500">{c.phone ?? "—"}</div>
                   </div>
+                  {credit > 0 && <Badge tone="green">رصيد {formatCurrency(credit, settings.currency)}</Badge>}
                   <Badge tone="amber">{formatCurrency(bal, settings.currency)}</Badge>
                   <Link to={`/customers`}>
                     <Button variant="outline" size="sm">
