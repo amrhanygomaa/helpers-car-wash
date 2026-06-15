@@ -12,8 +12,8 @@ import { useSettings } from "../store/SettingsContext";
 import { useReporting } from "../store/ReportingContext";
 import { useToast } from "../components/ui/Toast";
 import { todayISO, uid } from "../lib/utils";
-import type { InvoiceLine, Product, SalesPaymentType, SalesPriceType } from "../types";
-import { formatCurrency } from "../lib/format";
+import type { InvoiceLine, PaymentMethod, Product, SalesPaymentType, SalesPriceType } from "../types";
+import { formatCurrency, PAYMENT_METHOD_LABELS } from "../lib/format";
 import { Badge } from "../components/ui/Badge";
 import { ConfirmDialog } from "../components/ui/Dialog";
 import { DriverDialog } from "../features/drivers/DriverDialog";
@@ -40,6 +40,7 @@ interface DraftState {
   customerId: string;
   driverId: string;
   paymentType: SalesPaymentType;
+  paymentMethod: PaymentMethod;
   priceType: SalesPriceType;
   paymentDueDate: string;
   discount: number;
@@ -93,6 +94,7 @@ export function SalesInvoiceNewPage() {
   const [customerId, setCustomerId] = useState(() => loadDraft()?.customerId ?? customers[0]?.id ?? "");
   const [driverId, setDriverId] = useState(() => loadDraft()?.driverId ?? "");
   const [paymentType, setPaymentType] = useState<SalesPaymentType>(() => loadDraft()?.paymentType ?? "cash");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(() => loadDraft()?.paymentMethod ?? "cash");
   const [priceType, setPriceType] = useState<SalesPriceType>(() => loadDraft()?.priceType ?? "wholesale");
   const [paymentDueDate, setPaymentDueDate] = useState(() => loadDraft()?.paymentDueDate ?? "");
   const [discount, setDiscount] = useState<number>(() => loadDraft()?.discount ?? 0);
@@ -112,7 +114,7 @@ export function SalesInvoiceNewPage() {
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      saveDraft({ invoiceNumber, date, customerId, driverId, paymentType, priceType, paymentDueDate, discount, amountReceived, notes, lines });
+      saveDraft({ invoiceNumber, date, customerId, driverId, paymentType, paymentMethod, priceType, paymentDueDate, discount, amountReceived, notes, lines });
     }, 150);
     return () => window.clearTimeout(timer);
   }, [invoiceNumber, date, customerId, driverId, paymentType, priceType, paymentDueDate, discount, amountReceived, notes, lines]);
@@ -125,6 +127,7 @@ export function SalesInvoiceNewPage() {
     setCustomerId(customers[0]?.id ?? "");
     setDriverId("");
     setPaymentType("cash");
+    setPaymentMethod("cash");
     setPriceType("wholesale");
     setPaymentDueDate("");
     setAmountReceived(0);
@@ -152,6 +155,7 @@ export function SalesInvoiceNewPage() {
 
   useEffect(() => {
     if (paymentType === "cash") setPaymentDueDate("");
+    else setPaymentMethod("cash");
   }, [paymentType]);
 
   const stockWarnings = useMemo(() => {
@@ -329,6 +333,7 @@ export function SalesInvoiceNewPage() {
       amountReceived: receivedForInvoice,
       overpayment: customerChange > 0 ? customerChange : undefined,
       paymentType: effectivePaymentType,
+      paymentMethod: effectivePaymentType === "cash" ? paymentMethod : undefined,
       priceType,
       paymentDueDate: effectiveDueDate,
       notes: notes.trim() || undefined,

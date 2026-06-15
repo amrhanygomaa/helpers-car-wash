@@ -1429,8 +1429,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
         description: `تحصيل فاتورة مبيعات ${inv.invoiceNumber} — ${inv.customerName}`,
         referenceId: id,
         date: inv.date,
+        paymentMethod: inv.paymentMethod,
       };
       setCashEntries((list) => [ce, ...list]);
+    }
+    if (inv.amountReceived > 0) {
+      const initEntry: import("../types").PaymentLogEntry = {
+        id: uid("slog"),
+        date: inv.date,
+        amount: inv.amountReceived,
+        paymentMethod: inv.paymentMethod ?? "cash",
+      };
+      setSalesInvoices((list) =>
+        list.map((s) => s.id === id ? { ...s, paymentLog: [initEntry] } : s)
+      );
     }
     return full;
   };

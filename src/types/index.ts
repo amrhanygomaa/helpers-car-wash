@@ -178,6 +178,7 @@ export interface SalesInvoice {
   remaining: number;
   overpayment?: number;
   paymentType: SalesPaymentType;
+  paymentMethod?: PaymentMethod;
   priceType: SalesPriceType;
   paymentDueDate?: string;
   status: PaymentStatus;
