@@ -57,16 +57,10 @@ export function AlertsPage() {
   );
   const unpaidCustomers = useMemo(() => {
     return customers
-      .map((c) => {
-        const grossRemaining = salesInvoices
-          .filter((s) => s.customerId === c.id && !s.cancelled && s.remaining > 0)
-          .reduce((a, s) => a + s.remaining, 0);
-        const credit = Math.max(0, -customerBalance(c.id));
-        return { c, bal: grossRemaining, credit };
-      })
+      .map((c) => ({ c, bal: customerBalance(c.id) }))
       .filter((x) => x.bal > 0)
       .sort((a, b) => b.bal - a.bal);
-  }, [customers, salesInvoices, customerBalance]);
+  }, [customers, customerBalance]);
   const customersWithCredit = useMemo(() => {
     return customers
       .map((c) => ({ c, credit: customerCredit(c.id) }))
@@ -333,7 +327,7 @@ export function AlertsPage() {
             {unpaidCustomers.length === 0 ? (
               <EmptyState icon={<Users className="w-5 h-5" />} title="لا توجد أرصدة متبقية" />
             ) : (
-              unpaidCustomers.slice(0, 8).map(({ c, bal, credit }) => (
+              unpaidCustomers.slice(0, 8).map(({ c, bal }) => (
                 <div key={c.id} className="flex items-center gap-3 p-3">
                   <div className="w-9 h-9 rounded-lg bg-indigo-50 text-indigo-600 grid place-items-center">
                     <Users className="w-4 h-4" />
@@ -342,12 +336,7 @@ export function AlertsPage() {
                     <div className="text-sm font-medium text-slate-900 truncate">{c.name}</div>
                     <div className="text-xs text-slate-500">{c.phone ?? "—"}</div>
                   </div>
-                  <div className="flex flex-col items-end gap-1">
-                    <Badge tone="amber">{formatCurrency(bal, settings.currency)}</Badge>
-                    {credit > 0 && (
-                      <span className="text-xs text-emerald-600">رصيد دائن: {formatCurrency(credit, settings.currency)}</span>
-                    )}
-                  </div>
+                  <Badge tone="amber">{formatCurrency(bal, settings.currency)}</Badge>
                   <Link to={`/customers`}>
                     <Button variant="outline" size="sm">
                       عرض <ArrowLeft className="w-3.5 h-3.5" />
