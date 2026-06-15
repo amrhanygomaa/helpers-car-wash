@@ -215,8 +215,8 @@ export function InvoicePrintLayout(props: Props) {
             </div>
           )}
 
-          {/* ── PAYMENT LOG (purchase only) ── */}
-          {!isSales && props.paymentLog && props.paymentLog.length > 0 && (
+          {/* ── PAYMENT LOG ── */}
+          {props.paymentLog && props.paymentLog.length > 0 && (
             <div style={{ marginTop: 14 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: "#1e3a5f", marginBottom: 6, borderBottom: "1.5px solid #1e3a5f", paddingBottom: 4 }}>
                 سجل سداد الدفعات
@@ -279,7 +279,7 @@ export function InvoicePrintLayout(props: Props) {
                   />
                 </>
               )}
-              {!isSales && props.paymentLog && props.paymentLog.length > 1
+              {props.paymentLog && props.paymentLog.length > 1
                 ? props.paymentLog.map((entry, i) => (
                     <TotalRow
                       key={entry.id}
@@ -296,9 +296,9 @@ export function InvoicePrintLayout(props: Props) {
                   />
                 )
               }
-              {!isSales && props.paymentLog && props.paymentLog.length > 1 && (
+              {props.paymentLog && props.paymentLog.length > 1 && (
                 <TotalRow
-                  label="إجمالي ما تم سداده"
+                  label={isSales ? "إجمالي ما تم استلامه" : "إجمالي ما تم سداده"}
                   value={formatCurrency(props.amountPaid, settings.currency)}
                   paid
                 />

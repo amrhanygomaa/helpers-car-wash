@@ -1434,8 +1434,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
     return full;
   };
-  const recordSalesReceipt: AppActions["recordSalesReceipt"] = (id, amount, paymentMethod) => {
+  const recordSalesReceipt: AppActions["recordSalesReceipt"] = (id, amount, paymentMethod, notes) => {
     if (amount <= 0) return;
+    const entry: import("../types").PaymentLogEntry = {
+      id: uid("slog"),
+      date: todayISO(),
+      amount,
+      paymentMethod: paymentMethod ?? "cash",
+      notes: notes?.trim() || undefined,
+    };
     setSalesInvoices((list) =>
       list.map((inv) => {
         if (inv.id !== id) return inv;
@@ -1448,6 +1455,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           remaining: Math.max(0, inv.total - received),
           status: computeStatus(inv.total, received),
           overpayment: excess > 0 ? (inv.overpayment ?? 0) + excess : inv.overpayment,
+          paymentLog: [...(inv.paymentLog ?? []), entry],
         };
       })
     );

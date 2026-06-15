@@ -14,7 +14,7 @@ import { useReporting } from "../store/ReportingContext";
 import { useToast } from "../components/ui/Toast";
 import { formatCurrency, formatDate, PAYMENT_METHOD_LABELS } from "../lib/format";
 import { ConfirmDialog, Dialog } from "../components/ui/Dialog";
-import { Field, Input, Select } from "../components/ui/Input";
+import { Field, Input, Select, Textarea } from "../components/ui/Input";
 import type { PaymentMethod } from "../types";
 import { SalesReturnDialog } from "../features/returns/SalesReturnDialog";
 import { printAppRoute } from "../lib/print";
@@ -38,6 +38,7 @@ export function SalesInvoiceDetailPage() {
   const [payOpen, setPayOpen] = useState(false);
   const [payAmount, setPayAmount] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
+  const [payNotes, setPayNotes] = useState("");
   const [cancelOpen, setCancelOpen] = useState(false);
   const [delOpen, setDelOpen] = useState(false);
   const [returnOpen, setReturnOpen] = useState(false);
@@ -311,6 +312,36 @@ export function SalesInvoiceDetailPage() {
         </Card>
       ) : null}
 
+      {inv.paymentLog && inv.paymentLog.length > 0 ? (
+        <Card>
+          <CardHeader title="سجل سداد الدفعات" />
+          <CardBody>
+            <Table>
+              <THead>
+                <TR>
+                  <TH className="w-10">#</TH>
+                  <TH>التاريخ</TH>
+                  <TH>وسيلة الدفع</TH>
+                  <TH className="text-end">المبلغ</TH>
+                  <TH>ملاحظات</TH>
+                </TR>
+              </THead>
+              <TBody>
+                {inv.paymentLog.map((entry, idx) => (
+                  <TR key={entry.id}>
+                    <TD>{idx + 1}</TD>
+                    <TD>{formatDate(entry.date)}</TD>
+                    <TD>{PAYMENT_METHOD_LABELS[entry.paymentMethod] ?? entry.paymentMethod}</TD>
+                    <TD className="text-end font-semibold text-emerald-700">{formatCurrency(entry.amount, settings.currency)}</TD>
+                    <TD className="text-xs text-slate-500">{entry.notes ?? "—"}</TD>
+                  </TR>
+                ))}
+              </TBody>
+            </Table>
+          </CardBody>
+        </Card>
+      ) : null}
+
       <Dialog
         open={payOpen}
         onClose={() => setPayOpen(false)}
@@ -325,13 +356,14 @@ export function SalesInvoiceDetailPage() {
                   toast.error("المبلغ يجب أن يكون أكبر من صفر");
                   return;
                 }
-                recordSalesReceipt(inv.id, payAmount, paymentMethod);
+                recordSalesReceipt(inv.id, payAmount, paymentMethod, payNotes);
                 const msg = payAmount > inv.remaining
                   ? `تم التسجيل — رصيد دائن: ${formatCurrency(payAmount - inv.remaining, settings.currency)}`
                   : "تم تسجيل الدفعة";
                 toast.success(msg);
                 setPayOpen(false);
                 setPaymentMethod("cash");
+                setPayNotes("");
               }}
             >
               تسجيل
@@ -355,6 +387,9 @@ export function SalesInvoiceDetailPage() {
                 <option key={k} value={k}>{v}</option>
               ))}
             </Select>
+          </Field>
+          <Field label="ملاحظات (اختياري)">
+            <Textarea rows={2} value={payNotes} onChange={(e) => setPayNotes(e.target.value)} placeholder="مثل: تحويل بنكي رقم ..." />
           </Field>
         </div>
       </Dialog>
