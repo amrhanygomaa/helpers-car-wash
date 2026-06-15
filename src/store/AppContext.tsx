@@ -2585,6 +2585,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       recordSalesReceipt,
       cancelSalesInvoice,
       deleteSalesInvoice,
+      applyCustomerCredit,
       addSalesReturn,
       addPurchaseReturn,
       addCashEntry,

@@ -11,7 +11,7 @@ import { useInvoicing } from "../store/InvoicingContext";
 import { useSettings } from "../store/SettingsContext";
 import { useReporting } from "../store/ReportingContext";
 import { useToast } from "../components/ui/Toast";
-import { todayISO, uid, localISODate } from "../lib/utils";
+import { todayISO, uid } from "../lib/utils";
 import type { InvoiceLine, PaymentMethod, Product, SalesPaymentType, SalesPriceType } from "../types";
 import { formatCurrency, PAYMENT_METHOD_LABELS } from "../lib/format";
 import { Badge } from "../components/ui/Badge";
@@ -83,7 +83,7 @@ export function SalesInvoiceNewPage() {
   const customers = useMemo(() => allCustomers.filter((c) => !c.archived), [allCustomers]);
   const { salesInvoices, addSalesInvoice, applyCustomerCredit } = useInvoicing();
   const { settings } = useSettings();
-  const { customerBalance, customerCredit } = useReporting();
+  const { customerBalance } = useReporting();
   const navigate = useNavigate();
   const toast = useToast();
 
@@ -149,7 +149,6 @@ export function SalesInvoiceNewPage() {
   const creditAvailable = customerId ? Math.max(0, -customerBalance(customerId)) : 0;
   const creditApplied = useCredit ? Math.min(creditAvailable, invoiceNet) : 0;
   const totalEffective = amountReceived + creditApplied;
-  const receivedForInvoice = Math.min(totalEffective, invoiceNet);
   const remainingDue = Math.max(0, invoiceNet - totalEffective);
   const customerChange = Math.max(0, totalEffective - invoiceNet);
 
@@ -629,14 +628,7 @@ export function SalesInvoiceNewPage() {
                   <input
                     type="radio"
                     checked={paymentType === "account"}
-                    onChange={() => {
-                      setPaymentType("account");
-                      if (!paymentDueDate) {
-                        const base = new Date(date || todayISO());
-                        base.setDate(base.getDate() + (settings.paymentTermDays ?? 7));
-                        setPaymentDueDate(localISODate(base));
-                      }
-                    }}
+                    onChange={() => setPaymentType("account")}
                   />
                   آجل (حساب)
                 </label>
@@ -695,7 +687,7 @@ export function SalesInvoiceNewPage() {
                 <Button
                   type="button"
                   size="sm"
-                  variant={useCredit ? "default" : "outline"}
+                  variant={useCredit ? "primary" : "outline"}
                   onClick={() => setUseCredit((v) => !v)}
                 >
                   {useCredit ? "إلغاء استخدام الرصيد" : "استخدام الرصيد"}

@@ -37,7 +37,7 @@ export function SalesInvoiceEditPage() {
 
   const inv = salesInvoices.find((s) => s.id === id);
 
-  const [invoiceNumber, setInvoiceNumber] = useState(inv?.invoiceNumber ?? "");
+  const [invoiceNumber] = useState(inv?.invoiceNumber ?? "");
   const [date, setDate] = useState(inv?.date ?? "");
   const [driverId, setDriverId] = useState(inv?.driverId ?? "");
   const [paymentType, setPaymentType] = useState<SalesPaymentType>(inv?.paymentType ?? "cash");
