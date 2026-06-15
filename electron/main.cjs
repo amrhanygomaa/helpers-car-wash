@@ -831,9 +831,142 @@ function getInvoiceForPrint(route) {
   return { kind: "purchase", invoice };
 }
 
+function buildQuotationPrintHtml(quot, settings) {
+  const companyName = settings.arabicLabels ? settings.companyNameAr : settings.companyName;
+  const logoImage = sanitizeImageSrc(settings.logoImage);
+  const logo = logoImage
+    ? `<img src="${escapeHtml(logoImage)}" alt="Logo" />`
+    : escapeHtml(settings.logoText || "HT");
+  const discount = Number(quot.discount) || 0;
+  const subtotal = (quot.lines || []).reduce((a, l) => a + (l.subtotal || 0), 0);
+
+  const rows = (quot.lines || []).map((l, idx) => `
+    <tr>
+      <td class="center">${idx + 1}</td>
+      <td>${escapeHtml(l.productName)}</td>
+      <td class="center">${escapeHtml(l.unit)}</td>
+      <td class="center mono">${escapeHtml(String(l.quantity))}</td>
+      <td class="center mono">${escapeHtml(formatCurrency(l.price, settings.currency))}</td>
+      <td class="center mono bold">${escapeHtml(formatCurrency(l.subtotal, settings.currency))}</td>
+    </tr>`).join("");
+
+  return `<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob: file:; style-src 'unsafe-inline'; script-src 'none'; connect-src 'none'; base-uri 'none'; form-action 'none';" />
+  <title>عرض سعر ${escapeHtml(quot.quotationNumber)}</title>
+  <style>
+    @page { size: A4 portrait; margin: 10mm; }
+    * { box-sizing: border-box; }
+    body { margin:0; background:white; color:#172033; font-family:Tahoma,Arial,sans-serif; font-size:12px; direction:rtl; }
+    .print-toolbar { position:sticky; top:0; z-index:10; display:flex; align-items:center; justify-content:flex-start; gap:8px; padding:10px 14px; background:#241f62; color:white; box-shadow:0 2px 10px rgba(15,23,42,.18); }
+    .print-toolbar button { border:0; border-radius:6px; padding:8px 14px; background:white; color:#241f62; font-family:inherit; font-weight:700; cursor:pointer; }
+    .print-toolbar .secondary { background:rgba(255,255,255,.14); color:white; border:1px solid rgba(255,255,255,.32); }
+    .print-status { min-width:150px; color:rgba(255,255,255,.82); font-size:11px; }
+    .page { width:210mm; min-height:297mm; margin:0 auto; padding:12mm; }
+    .header { display:flex; align-items:flex-start; justify-content:space-between; gap:24px; border-bottom:1px solid #d6dee8; padding-bottom:16px; margin-bottom:16px; }
+    .brand { display:flex; align-items:center; gap:10px; }
+    .logo { width:56px; height:56px; border-radius:12px; background:#241f62; color:white; display:grid; place-items:center; font-weight:700; font-size:18px; overflow:hidden; }
+    .logo img { width:100%; height:100%; object-fit:cover; }
+    .company { font-size:19px; font-weight:700; }
+    .title { text-align:left; }
+    .title h1 { margin:0 0 8px; font-size:25px; color:#241f62; }
+    .muted { color:#667085; }
+    .mono { font-family:Consolas,"Courier New",monospace; direction:ltr; }
+    .bold { font-weight:700; }
+    .cards { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px; }
+    .card { border:1px solid #e2e8f0; background:#f8fafc; border-radius:8px; padding:10px; }
+    .label { color:#667085; font-size:11px; margin-bottom:5px; }
+    .value { font-weight:700; font-size:14px; }
+    table { width:100%; border-collapse:collapse; margin-bottom:16px; }
+    th { background:#eef2f7; color:#334155; font-weight:700; }
+    th, td { border:1px solid #d6dee8; padding:7px; vertical-align:top; }
+    .center { text-align:center; }
+    .totals { display:flex; justify-content:flex-start; margin-bottom:16px; }
+    .totals-box { width:280px; }
+    .total-row { display:flex; align-items:center; justify-content:space-between; padding:5px 0; border-bottom:1px solid #edf2f7; }
+    .total-row.final { border-top:1px solid #94a3b8; border-bottom:0; margin-top:4px; padding-top:8px; font-size:16px; font-weight:700; }
+    .discount-row { color:#16a34a; }
+    .notes { border-top:1px solid #e2e8f0; padding-top:9px; margin-bottom:18px; color:#475569; }
+    .footer { border-top:1px solid #e2e8f0; padding-top:12px; text-align:center; color:#667085; white-space:pre-line; margin-bottom:26px; }
+    .developer-info { margin-top:30px; padding-top:10px; border-top:1px solid #e2e8f0; text-align:center; color:#94a3b8; font-size:10px; }
+    @media print { .print-toolbar { display:none; } .page { width:100%; min-height:auto; padding:0; } }
+  </style>
+</head>
+<body>
+  <div class="print-toolbar">
+    <button type="button" id="print-now-button">طباعة</button>
+    <button type="button" id="save-pdf-button">حفظ PDF</button>
+    <button type="button" class="secondary" id="close-window-button">إغلاق</button>
+    <span id="print-status" class="print-status"></span>
+  </div>
+  <div class="page">
+    <div class="header">
+      <div class="brand">
+        <div class="logo">${logo}</div>
+        <div>
+          <div class="company">${escapeHtml(companyName)}</div>
+          <div class="muted" style="margin-top:3px">${escapeHtml(settings.companyName || "")}</div>
+        </div>
+      </div>
+      <div class="title">
+        <h1>عرض سعر</h1>
+        <div class="muted">رقم: <span class="mono bold">${escapeHtml(quot.quotationNumber)}</span></div>
+        <div class="muted">التاريخ: ${formatDate(quot.date)}</div>
+        ${quot.validUntil ? `<div class="muted">صالح حتى: ${formatDate(quot.validUntil)}</div>` : ""}
+      </div>
+    </div>
+
+    <div class="cards">
+      <div class="card">
+        <div class="label">العميل</div>
+        <div class="value">${escapeHtml(quot.customerName)}</div>
+      </div>
+      <div class="card">
+        <div class="label">الحالة</div>
+        <div class="value">${quot.status === "converted" ? "محولة لفاتورة" : "مفتوحة"}</div>
+      </div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th class="center" style="width:42px">#</th>
+          <th>الصنف</th>
+          <th class="center" style="width:80px">الوحدة</th>
+          <th class="center" style="width:80px">الكمية</th>
+          <th class="center" style="width:130px">السعر</th>
+          <th class="center" style="width:130px">الإجمالي</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows || `<tr><td colspan="6" class="center muted">لا توجد بنود</td></tr>`}
+      </tbody>
+    </table>
+
+    <div class="totals">
+      <div class="totals-box">
+        ${discount > 0 ? `
+        <div class="total-row"><span>الإجمالي قبل الخصم</span><span class="mono">${escapeHtml(formatCurrency(subtotal, settings.currency))}</span></div>
+        <div class="total-row discount-row"><span>خصم</span><span class="mono">- ${escapeHtml(formatCurrency(discount, settings.currency))}</span></div>
+        <div class="total-row final"><span>الإجمالي</span><span class="mono">${escapeHtml(formatCurrency(quot.total, settings.currency))}</span></div>
+        ` : `<div class="total-row final"><span>الإجمالي</span><span class="mono">${escapeHtml(formatCurrency(quot.total, settings.currency))}</span></div>`}
+      </div>
+    </div>
+
+    ${quot.notes ? `<div class="notes"><strong>ملاحظات: </strong>${escapeHtml(quot.notes)}</div>` : ""}
+    <div class="footer">${escapeHtml(settings.invoiceFooter || "")}</div>
+    <div class="developer-info">هيلبيرز تكنولوجي</div>
+  </div>
+</body>
+</html>`;
+}
+
 function buildInvoicePrintHtml(route) {
   const { kind, invoice } = getInvoiceForPrint(route);
   const settings = getPrintSettings();
+  if (kind === "quotation") return buildQuotationPrintHtml(invoice, settings);
   const isSales = kind === "sales";
   const title = isSales ? "فاتورة مبيعات" : "فاتورة مشتريات";
   const partyLabel = isSales ? "العميل" : "المورد";
