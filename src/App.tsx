@@ -218,6 +218,14 @@ export default function App() {
         }
       />
       <Route
+        path="/quotations/:id/edit"
+        element={
+          <ProtectedShell permission="salesInvoices" permissionAction="edit">
+            <QuotationEditPage />
+          </ProtectedShell>
+        }
+      />
+      <Route
         path="/quotations/:id"
         element={
           <ProtectedShell permission="salesInvoices">

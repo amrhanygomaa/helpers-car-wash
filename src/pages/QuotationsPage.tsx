@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { FileText, Plus, Search } from "lucide-react";
+import { Eye, FileText, Pencil, Plus, Printer, Search, Trash2 } from "lucide-react";
 import { PageHeader } from "../components/layout/AppLayout";
 import { Card, CardBody, CardHeader } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -8,19 +8,27 @@ import { Badge } from "../components/ui/Badge";
 import { Input } from "../components/ui/Input";
 import { Table, TBody, TD, TH, THead, TR } from "../components/ui/Table";
 import { EmptyState } from "../components/ui/EmptyState";
+import { ConfirmDialog } from "../components/ui/Dialog";
 import { useInvoicing } from "../store/InvoicingContext";
 import { useSettings } from "../store/SettingsContext";
+import { useToast } from "../components/ui/Toast";
 import { formatCurrency, formatDate } from "../lib/format";
 import { hasPermission } from "../lib/permissions";
 import { useAuth } from "../store/AuthContext";
+import { printAppRoute } from "../lib/print";
+import type { Quotation } from "../types";
 
 export function QuotationsPage() {
-  const { quotations } = useInvoicing();
+  const { quotations, deleteQuotation } = useInvoicing();
   const { settings } = useSettings();
   const { currentUser } = useAuth();
   const navigate = useNavigate();
+  const toast = useToast();
   const canAdd = hasPermission(currentUser, "salesInvoices", "add");
+  const canEdit = hasPermission(currentUser, "salesInvoices", "edit");
+  const canDelete = hasPermission(currentUser, "salesInvoices", "delete");
   const [search, setSearch] = useState("");
+  const [toDelete, setToDelete] = useState<Quotation | null>(null);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
