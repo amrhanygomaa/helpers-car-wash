@@ -147,22 +147,25 @@ export function settleSalesInvoiceReturn(
   let amountReceived = invoice.amountReceived;
   let overpayment = invoice.overpayment ?? 0;
 
-  // 1. The return reduces what the customer owes first.
-  const deductFromRemaining = Math.min(remaining, ret.total);
-  remaining -= deductFromRemaining;
-  const leftToApply = ret.total - deductFromRemaining;
-
-  // 2. If there's still return value left, it means it eats into what they already paid.
-  if (leftToApply > 0) {
-    const deductFromReceived = Math.min(amountReceived, leftToApply);
-    amountReceived -= deductFromReceived;
-    overpayment += leftToApply; // It turns into credit
-  }
-
-  // 3. If refundCash is requested, we refund from the available credit (overpayment)
-  if (ret.refundCash && overpayment > 0) {
-    cashRefund = Math.min(ret.total, overpayment);
-    overpayment -= cashRefund;
+  if (ret.refundCash) {
+    // Cash refund path: take from what was already paid (overpayment first, then amountReceived)
+    cashRefund = Math.min(ret.total, amountReceived + overpayment);
+    const deductFromOver = Math.min(cashRefund, overpayment);
+    overpayment -= deductFromOver;
+    amountReceived -= (cashRefund - deductFromOver);
+    // Any portion of the return not covered by a cash refund reduces the remaining debt
+    const remainderCredit = ret.total - cashRefund;
+    remaining -= Math.min(remaining, remainderCredit);
+  } else {
+    // No cash refund: apply return to reduce remaining balance first, then eat into paid amount
+    const deductFromRemaining = Math.min(remaining, ret.total);
+    remaining -= deductFromRemaining;
+    const leftToApply = ret.total - deductFromRemaining;
+    if (leftToApply > 0) {
+      const deductFromReceived = Math.min(amountReceived, leftToApply);
+      amountReceived -= deductFromReceived;
+      overpayment += deductFromReceived;
+    }
   }
 
   return {
