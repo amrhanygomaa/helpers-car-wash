@@ -159,9 +159,15 @@ export function SalesInvoiceDetailPage() {
       ) : null}
 
       <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-        <Stat label="الإجمالي" value={formatCurrency(inv.total, settings.currency)} />
+        <Stat
+          label={inv.discount && inv.discount > 0 ? "الإجمالي قبل الخصم" : "الإجمالي"}
+          value={formatCurrency(inv.discount && inv.discount > 0 ? inv.total + inv.discount : inv.total, settings.currency)}
+        />
         {inv.discount && inv.discount > 0 ? (
           <Stat label="الخصم" value={`- ${formatCurrency(inv.discount, settings.currency)}`} tone="green" />
+        ) : null}
+        {inv.discount && inv.discount > 0 ? (
+          <Stat label="الإجمالي بعد الخصم" value={formatCurrency(inv.total, settings.currency)} />
         ) : null}
         {totalReturns > 0 && (
           <Stat label="المرتجعات" value={`- ${formatCurrency(totalReturns, settings.currency)}`} tone="red" />
