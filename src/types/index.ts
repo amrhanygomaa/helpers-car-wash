@@ -360,6 +360,13 @@ export interface Settings {
   /** Minutes of inactivity before session locks. 0 = disabled. */
   idleLockMinutes: number;
   /**
+   * Grace period (days) for payment-due alerts: the default due-date offset for
+   * new account sales invoices and the supplier-overdue cutoff in alerts.
+   */
+  paymentTermDays: number;
+  /** Take an automatic backup to the configured folder when the app closes. */
+  backupOnClose: boolean;
+  /**
    * Owner-controlled per-module visibility. Keys are FeatureKey (see
    * lib/features.ts). Missing key ⇒ that module's default state. This is the
    * "hide" layer; the license still caps what can be enabled.

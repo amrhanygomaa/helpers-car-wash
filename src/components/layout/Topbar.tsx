@@ -58,10 +58,10 @@ export function Topbar({
       return new Date(inv.paymentDueDate) < new Date();
     }).length;
     const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - 30);
+    cutoff.setDate(cutoff.getDate() - (settings.paymentTermDays ?? 7));
     const overdueSuppliers = purchaseInvoices.filter((p) => p.remaining > 0 && new Date(p.date) < cutoff).length;
     return outOfStock + overdueAccounts + overdueSuppliers;
-  }, [products, salesInvoices, purchaseInvoices]);
+  }, [products, salesInvoices, purchaseInvoices, settings.paymentTermDays]);
 
   const canSearchProducts = hasPermission(currentUser, "products");
   const canSearchCustomers = hasPermission(currentUser, "customers");

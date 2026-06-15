@@ -87,6 +87,10 @@ declare global {
         ) => Promise<{ ok: boolean; path?: string; error?: string }>;
         selectDirectory: () => Promise<string | null>;
       };
+      app: {
+        onRunCloseBackup: (cb: () => void) => () => void;
+        closeBackupDone: () => void;
+      };
     };
   }
 }

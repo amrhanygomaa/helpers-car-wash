@@ -11,7 +11,7 @@ import { useInvoicing } from "../store/InvoicingContext";
 import { useSettings } from "../store/SettingsContext";
 import { useReporting } from "../store/ReportingContext";
 import { useToast } from "../components/ui/Toast";
-import { todayISO, uid } from "../lib/utils";
+import { todayISO, uid, localISODate } from "../lib/utils";
 import type { InvoiceLine, PaymentMethod, Product, SalesPaymentType, SalesPriceType } from "../types";
 import { formatCurrency, PAYMENT_METHOD_LABELS } from "../lib/format";
 import { Badge } from "../components/ui/Badge";
@@ -629,7 +629,14 @@ export function SalesInvoiceNewPage() {
                   <input
                     type="radio"
                     checked={paymentType === "account"}
-                    onChange={() => setPaymentType("account")}
+                    onChange={() => {
+                      setPaymentType("account");
+                      if (!paymentDueDate) {
+                        const base = new Date(date || todayISO());
+                        base.setDate(base.getDate() + (settings.paymentTermDays ?? 7));
+                        setPaymentDueDate(localISODate(base));
+                      }
+                    }}
                   />
                   آجل (حساب)
                 </label>

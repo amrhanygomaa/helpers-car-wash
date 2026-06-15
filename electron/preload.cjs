@@ -60,4 +60,15 @@ contextBridge.exposeInMainWorld("desktopAPI", {
       ipcRenderer.invoke("backup:write-file", { dir, fileName, content }),
     selectDirectory: () => ipcRenderer.invoke("backup:select-directory"),
   },
+  app: {
+    // Main asks the renderer to take a backup right before the window closes.
+    // Returns an unsubscribe function.
+    onRunCloseBackup: (cb) => {
+      const handler = () => cb();
+      ipcRenderer.on("app:run-close-backup", handler);
+      return () => ipcRenderer.removeListener("app:run-close-backup", handler);
+    },
+    // Renderer signals it finished (or skipped) the close-time backup.
+    closeBackupDone: () => ipcRenderer.send("app:close-backup-done"),
+  },
 });

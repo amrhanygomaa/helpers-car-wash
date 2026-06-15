@@ -2352,6 +2352,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
     backupToPath,
   ]);
 
+  // Backup-on-close: when the main process is about to close the window it
+  // pings us; take a backup to the configured folder (owner + path required),
+  // then tell main it can finish closing.
+  useEffect(() => {
+    const appApi = window.desktopAPI?.app;
+    if (!isDesktop || !appApi?.onRunCloseBackup) return;
+    const off = appApi.onRunCloseBackup(async () => {
+      try {
+        if (settings.backupOnClose && settings.backupPath?.trim() && currentUser?.role === "owner") {
+          await backupToPath();
+        }
+      } catch {
+        /* never block the quit on a backup failure */
+      } finally {
+        appApi.closeBackupDone();
+      }
+    });
+    return off;
+  }, [isDesktop, settings.backupOnClose, settings.backupPath, currentUser, backupToPath]);
+
   const importBackup: AppActions["importBackup"] = useCallback(async (file) => {
     try {
       const text = await file.text();

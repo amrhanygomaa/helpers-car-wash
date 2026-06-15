@@ -646,6 +646,31 @@ function createWindow() {
     rendererSessions.delete(win.webContents.id);
   });
 
+  // Backup-on-close: give the renderer a chance to write a backup to the
+  // configured folder before the window goes away. A timeout guarantees the
+  // app never hangs on quit even if the renderer is unresponsive.
+  let closeBackupStarted = false;
+  win.on("close", (e) => {
+    if (closeBackupStarted) return; // second close → let it through
+    e.preventDefault();
+    closeBackupStarted = true;
+    let finished = false;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      ipcMain.removeListener("app:close-backup-done", finish);
+      if (!win.isDestroyed()) win.destroy();
+    };
+    ipcMain.once("app:close-backup-done", finish);
+    try {
+      win.webContents.send("app:run-close-backup");
+    } catch {
+      finish();
+      return;
+    }
+    setTimeout(finish, 6000);
+  });
+
   // SECURITY: Block all navigation away from the app
   win.webContents.on("will-navigate", (event, navigationUrl) => {
     let parsed;

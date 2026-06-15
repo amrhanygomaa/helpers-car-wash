@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { ShieldCheck, UserPlus } from "lucide-react";
+import { ShieldCheck, UserPlus, FolderOpen, Database, FileText } from "lucide-react";
 import { useAuth } from "../store/AuthContext";
 import { useSettings } from "../store/SettingsContext";
 import { Button } from "../components/ui/Button";
@@ -8,12 +8,23 @@ import { useToast } from "../components/ui/Toast";
 
 export function FirstRunSetupPage() {
   const { createOwner } = useAuth();
-  const { settings } = useSettings();
+  const { settings, updateSettings } = useSettings();
   const toast = useToast();
   const [username, setUsername] = useState("admin");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [backupPath, setBackupPath] = useState("");
+  const [invoicesSavePath, setInvoicesSavePath] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  async function pickBackupFolder() {
+    const dir = await window.desktopAPI?.backup?.selectDirectory();
+    if (dir) setBackupPath(dir);
+  }
+  async function pickInvoicesFolder() {
+    const dir = await window.desktopAPI?.setup?.selectDirectory();
+    if (dir) setInvoicesSavePath(dir);
+  }
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -25,13 +36,24 @@ export function FirstRunSetupPage() {
       toast.error("كلمتا المرور غير متطابقتين");
       return;
     }
+    if (!backupPath.trim()) {
+      toast.error("مطلوب", "اختر مجلد النسخ الاحتياطي التلقائي");
+      return;
+    }
+    if (!invoicesSavePath.trim()) {
+      toast.error("مطلوب", "اختر مجلد حفظ الفواتير (PDF)");
+      return;
+    }
 
     setSubmitting(true);
     const ok = await createOwner(username.trim(), password);
-    setSubmitting(false);
     if (ok) {
+      // Persist now — createOwner has set the owner session, so storage writes
+      // are authorized. The owner can change these later from الإعدادات.
+      updateSettings({ backupPath: backupPath.trim(), invoicesSavePath: invoicesSavePath.trim() });
       toast.success("تم إنشاء المدير", "تم فتح النظام بالحساب الجديد");
     } else {
+      setSubmitting(false);
       toast.error("فشل إنشاء المدير", "تأكد أن الحساب غير موجود بالفعل");
     }
   }
@@ -96,6 +118,46 @@ export function FirstRunSetupPage() {
               onChange={(e) => setConfirmPassword(e.target.value)}
             />
           </Field>
+
+          <div className="pt-3 border-t border-slate-100 space-y-4">
+            <div className="text-xs text-slate-500 leading-relaxed">
+              لحماية بياناتك، حدِّد مجلدين مطلوبين لأول مرة (يمكن تغييرهما لاحقاً من الإعدادات).
+            </div>
+
+            <Field label="مجلد النسخ الاحتياطي التلقائي" required>
+              <div className="flex gap-2">
+                <Input
+                  value={backupPath}
+                  readOnly
+                  placeholder="اختر مجلداً (محلي / خارجي / شبكة)..."
+                  className="bg-slate-50 font-mono text-xs"
+                />
+                <Button type="button" variant="outline" onClick={pickBackupFolder}>
+                  <FolderOpen className="w-4 h-4" />
+                </Button>
+              </div>
+              <div className="flex items-center gap-1.5 text-[11px] text-slate-400 mt-1">
+                <Database className="w-3 h-3" /> تُحفظ نسخة كاملة من البيانات تلقائياً في هذا المجلد.
+              </div>
+            </Field>
+
+            <Field label="مجلد حفظ الفواتير (PDF)" required>
+              <div className="flex gap-2">
+                <Input
+                  value={invoicesSavePath}
+                  readOnly
+                  placeholder="اختر مجلداً..."
+                  className="bg-slate-50 font-mono text-xs"
+                />
+                <Button type="button" variant="outline" onClick={pickInvoicesFolder}>
+                  <FolderOpen className="w-4 h-4" />
+                </Button>
+              </div>
+              <div className="flex items-center gap-1.5 text-[11px] text-slate-400 mt-1">
+                <FileText className="w-3 h-3" /> الوجهة الافتراضية لحفظ الفواتير المطبوعة كـ PDF.
+              </div>
+            </Field>
+          </div>
 
           <Button type="submit" size="lg" className="w-full" disabled={submitting}>
             {submitting ? "جاري الإنشاء..." : "إنشاء المدير وفتح النظام"}

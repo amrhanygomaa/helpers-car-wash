@@ -74,8 +74,24 @@ export function isAllowedByLicense(key: FeatureKey, license?: LicensePayload | n
 }
 
 /**
+ * Effective module state before the owner's hide-toggle is applied.
+ *
+ * - If the serial carries an explicit package (`features` list), that list
+ *   *drives* enablement: a module in the package is ON (so a client who paid
+ *   for Quotations sees it without extra steps), one outside it is OFF.
+ * - Otherwise (old/unpackaged serials) fall back to each module's built-in
+ *   default — which is why Quotations/Stocktakes stay hidden until toggled.
+ */
+export function defaultFeatureState(key: FeatureKey, license?: LicensePayload | null): boolean {
+  const licFeatures = license?.features;
+  if (licFeatures && licFeatures.length > 0) return licFeatures.includes(key);
+  return FEATURE_MAP[key].defaultEnabled;
+}
+
+/**
  * Effective module state = allowed by the license (hard cap) AND enabled by the
- * owner's settings (preference, defaulting per {@link FeatureDef.defaultEnabled}).
+ * owner's settings (preference). When the owner hasn't set an explicit toggle it
+ * falls back to {@link defaultFeatureState}.
  */
 export function isFeatureEnabled(
   key: FeatureKey,
@@ -85,5 +101,5 @@ export function isFeatureEnabled(
   if (!isAllowedByLicense(key, license)) return false;
   const override = settings?.features?.[key];
   if (override !== undefined) return override;
-  return FEATURE_MAP[key].defaultEnabled;
+  return defaultFeatureState(key, license);
 }

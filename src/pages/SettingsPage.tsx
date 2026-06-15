@@ -6,7 +6,7 @@ import { Field, Input, Select, Textarea } from "../components/ui/Input";
 import { useApp } from "../store/AppContext";
 import { useToast } from "../components/ui/Toast";
 import { lsGet } from "../lib/storage";
-import { FEATURES, FEATURE_MAP, isAllowedByLicense, type FeatureKey } from "../lib/features";
+import { FEATURES, defaultFeatureState, isAllowedByLicense, type FeatureKey } from "../lib/features";
 import { Save, Printer, Download, Upload, Database, FileSpreadsheet, ShieldCheck, Clock, Image as ImageIcon, Trash2, FolderOpen, Boxes, Lock } from "lucide-react";
 
 export function SettingsPage() {
@@ -45,7 +45,7 @@ export function SettingsPage() {
   }
 
   const license = licenseStatus?.license ?? null;
-  const featureChecked = (key: FeatureKey) => form.features?.[key] ?? FEATURE_MAP[key].defaultEnabled;
+  const featureChecked = (key: FeatureKey) => form.features?.[key] ?? defaultFeatureState(key, license);
   const toggleFeature = (key: FeatureKey, value: boolean) =>
     setForm({ ...form, features: { ...(form.features ?? {}), [key]: value } });
 
@@ -189,15 +189,20 @@ export function SettingsPage() {
                 }
               />
             </Field>
-            <Field label="الرصيد الافتتاحي للخزينة">
-              <Input
-                type="number"
-                step="0.01"
-                value={form.openingBalance}
-                onChange={(e) =>
-                  setForm({ ...form, openingBalance: Number(e.target.value) })
-                }
-              />
+            <Field
+              label="مدة استحقاق السداد / تنبيه المتأخرات"
+              hint="تُستخدم كتاريخ استحقاق افتراضي لفواتير الآجل، وكمدة يُعتبر بعدها مورد متأخراً في التنبيهات"
+            >
+              <Select
+                value={String(form.paymentTermDays ?? 7)}
+                onChange={(e) => setForm({ ...form, paymentTermDays: Number(e.target.value) })}
+              >
+                <option value="7">أسبوع (7 أيام)</option>
+                <option value="14">أسبوعين (14 يوم)</option>
+                <option value="30">شهر (30 يوم)</option>
+                <option value="60">شهرين (60 يوم)</option>
+                <option value="90">ثلاثة أشهر (90 يوم)</option>
+              </Select>
             </Field>
             <Field label="واجهة عربية">
               <label className="flex items-center gap-2 h-9 text-sm">
@@ -350,6 +355,16 @@ export function SettingsPage() {
                 <option value="weekly">أسبوعي</option>
                 <option value="monthly">شهري</option>
               </Select>
+            </Field>
+            <Field label="نسخة احتياطية عند إغلاق البرنامج" hint="يحفظ نسخة كاملة تلقائياً في المجلد المحدد قبل إغلاق التطبيق">
+              <label className="flex items-center gap-2 h-9 text-sm">
+                <input
+                  type="checkbox"
+                  checked={form.backupOnClose ?? true}
+                  onChange={(e) => setForm({ ...form, backupOnClose: e.target.checked })}
+                />
+                نعم، احفظ نسخة عند الإغلاق
+              </label>
             </Field>
             <div className="bg-blue-50 border border-blue-100 rounded-lg p-3">
               <div className="text-xs text-blue-700 font-bold mb-1">آخر نسخة احتياطية:</div>

@@ -102,9 +102,10 @@ export function AlertsPage() {
     ({ diffDays }) => diffDays < 0
   ).length;
 
+  const overdueDays = settings.paymentTermDays ?? 7;
   const overdueSupplierInvoices = useMemo(() => {
     const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - 30);
+    cutoff.setDate(cutoff.getDate() - overdueDays);
     cutoff.setHours(0, 0, 0, 0);
     return purchaseInvoices
       .filter((p) => {
@@ -113,7 +114,7 @@ export function AlertsPage() {
         return !Number.isNaN(d.getTime()) && d < cutoff;
       })
       .sort((a, b) => a.date.localeCompare(b.date));
-  }, [purchaseInvoices]);
+  }, [purchaseInvoices, overdueDays]);
 
   void suppliers;
   void supplierBalance;
@@ -131,7 +132,7 @@ export function AlertsPage() {
         <Stat icon={<CalendarClock className="w-4 h-4" />} label="قريب انتهاء الصلاحية" value={expiringSoon.length} tone="rose" />
         <Stat icon={<CalendarX className="w-4 h-4" />} label="منتهي الصلاحية" value={expired.length} tone="red" />
         <Stat icon={<Receipt className="w-4 h-4" />} label="فواتير آجل متأخرة" value={overdueAccountCount} tone="red" />
-        <Stat icon={<Factory className="w-4 h-4" />} label="موردين متأخرون +30 يوم" value={overdueSupplierInvoices.length} tone="red" />
+        <Stat icon={<Factory className="w-4 h-4" />} label={`موردين متأخرون +${overdueDays} يوم`} value={overdueSupplierInvoices.length} tone="red" />
         <Stat icon={<Users className="w-4 h-4" />} label="عملاء مديونون" value={unpaidCustomers.length} tone="indigo" />
         <Stat icon={<Coins className="w-4 h-4" />} label="رصيد دائن للعملاء" value={customersWithCredit.length} tone="blue" />
       </div>
@@ -358,7 +359,7 @@ export function AlertsPage() {
         <Card className="lg:col-span-2">
           <CardHeader
             title="فواتير موردين غير مسددة"
-            subtitle={overdueSupplierInvoices.length > 0 ? `${overdueSupplierInvoices.length} متأخرة أكثر من 30 يوم` : undefined}
+            subtitle={overdueSupplierInvoices.length > 0 ? `${overdueSupplierInvoices.length} متأخرة أكثر من ${overdueDays} يوم` : undefined}
           />
           <CardBody className="divide-y divide-slate-100 p-0">
             {purchaseInvoices.filter(p=>p.remaining>0).length === 0 ? (
