@@ -57,10 +57,16 @@ export function AlertsPage() {
   );
   const unpaidCustomers = useMemo(() => {
     return customers
-      .map((c) => ({ c, bal: customerBalance(c.id) }))
+      .map((c) => {
+        const grossRemaining = salesInvoices
+          .filter((s) => s.customerId === c.id && !s.cancelled && s.remaining > 0)
+          .reduce((a, s) => a + s.remaining, 0);
+        const credit = Math.max(0, -customerBalance(c.id));
+        return { c, bal: grossRemaining, credit };
+      })
       .filter((x) => x.bal > 0)
       .sort((a, b) => b.bal - a.bal);
-  }, [customers, customerBalance]);
+  }, [customers, salesInvoices, customerBalance]);
   const customersWithCredit = useMemo(() => {
     return customers
       .map((c) => ({ c, credit: customerCredit(c.id) }))
