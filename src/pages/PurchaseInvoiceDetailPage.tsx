@@ -56,6 +56,9 @@ export function PurchaseInvoiceDetailPage() {
 
   const supplier = suppliers.find((s) => s.id === inv.supplierId);
   const linkedReturns = purchaseReturns.filter((r) => r.originalInvoiceId === inv.id);
+  // inv.total holds the NET (after returns). Reconstruct the original order total.
+  const returnsTotal = linkedReturns.reduce((sum, r) => sum + r.total, 0);
+  const originalTotal = inv.total + returnsTotal;
   const canCreateReturn = canAddReturn && inv.lines.some((line) => line.quantity > 0);
 
   return (
@@ -107,7 +110,14 @@ export function PurchaseInvoiceDetailPage() {
       />
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-        <Stat label="الإجمالي" value={formatCurrency(inv.total, settings.currency)} />
+        {returnsTotal > 0 ? (
+          <>
+            <Stat label="إجمالي الفاتورة" value={formatCurrency(originalTotal, settings.currency)} />
+            <Stat label="الإجمالي بعد المرتجعات" value={formatCurrency(inv.total, settings.currency)} tone="amber" />
+          </>
+        ) : (
+          <Stat label="الإجمالي" value={formatCurrency(inv.total, settings.currency)} />
+        )}
         <Stat label="المدفوع" value={formatCurrency(inv.amountPaid, settings.currency)} tone="green" />
         <Stat label="المتبقي" value={formatCurrency(inv.remaining, settings.currency)} tone={inv.remaining > 0 ? "amber" : "slate"} />
         {inv.overpayment && inv.overpayment > 0 ? (
