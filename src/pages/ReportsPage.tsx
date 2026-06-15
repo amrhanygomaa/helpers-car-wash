@@ -482,7 +482,8 @@ export function ReportsPage() {
           <TabsTrigger value="sales">تقرير المبيعات</TabsTrigger>
           <TabsTrigger value="purchases">تقرير المشتريات</TabsTrigger>
           <TabsTrigger value="stock">تقرير المخزون</TabsTrigger>
-          <TabsTrigger value="lowstock">منخفض/منتهي</TabsTrigger>
+          <TabsTrigger value="lowstock">نفذ المخزون</TabsTrigger>
+          <TabsTrigger value="expiredstock">منتهي الصلاحية</TabsTrigger>
           <TabsTrigger value="customers">أرصدة العملاء</TabsTrigger>
           <TabsTrigger value="suppliers">أرصدة الموردين</TabsTrigger>
           <TabsTrigger value="supplierDues">فلوس علينا للموردين</TabsTrigger>
@@ -693,46 +694,99 @@ export function ReportsPage() {
 
         <TabsContent value="lowstock">
           <Card>
-            <CardHeader title="منتجات منخفضة أو منتهية" />
+            <CardHeader title="نفذ المخزون" subtitle="منتجات وصلت أو تجاوزت الحد الأدنى للمخزون" />
             <CardBody>
-              <Table>
-                <THead>
-                  <TR>
-                    <TH>المنتج</TH>
-                    <TH className="text-end">الكمية</TH>
-                    <TH className="text-end">الحد الأدنى</TH>
-                    <TH>الصلاحية</TH>
-                    <TH>الحالة</TH>
-                  </TR>
-                </THead>
-                <TBody>
-                  {products
-                    .filter((p) => {
-                      const du = daysUntil(p.expiryDate);
-                      return p.quantity <= p.minStock || (p.hasExpiry && du !== null && du <= 14);
-                    })
-                    .map((p) => {
-                      const du = daysUntil(p.expiryDate);
-                      return (
+              {products.filter((p) => p.quantity <= p.minStock).length === 0 ? (
+                <div className="text-sm text-slate-500 text-center py-6">لا توجد منتجات منخفضة المخزون</div>
+              ) : (
+                <Table>
+                  <THead>
+                    <TR>
+                      <TH>المنتج</TH>
+                      <TH>الفئة</TH>
+                      <TH className="text-end">الكمية الحالية</TH>
+                      <TH className="text-end">الحد الأدنى</TH>
+                      <TH>الحالة</TH>
+                    </TR>
+                  </THead>
+                  <TBody>
+                    {products
+                      .filter((p) => p.quantity <= p.minStock)
+                      .sort((a, b) => a.quantity - b.quantity)
+                      .map((p) => (
                         <TR key={p.id}>
-                          <TD className="font-medium">{p.name}</TD>
-                          <TD className="text-end">{p.quantity}</TD>
-                          <TD className="text-end">{p.minStock}</TD>
-                          <TD className="text-slate-600 text-xs">
-                            {p.hasExpiry && p.expiryDate ? formatDate(p.expiryDate) : "—"}
+                          <TD className="font-medium text-slate-900">{p.name}</TD>
+                          <TD className="text-slate-500 text-xs">{p.category}</TD>
+                          <TD className="text-end font-mono font-semibold text-rose-700">
+                            {p.quantity} {p.unit}
                           </TD>
+                          <TD className="text-end text-slate-500">{p.minStock} {p.unit}</TD>
                           <TD>
-                            {p.quantity <= p.minStock && <Badge tone="amber">منخفض</Badge>}
-                            {p.hasExpiry && du !== null && du < 0 && <Badge tone="red">منتهي</Badge>}
-                            {p.hasExpiry && du !== null && du >= 0 && du <= 14 && (
-                              <Badge tone="rose">قارب ينتهي</Badge>
-                            )}
+                            {p.quantity === 0
+                              ? <Badge tone="red">نفذ تماماً</Badge>
+                              : <Badge tone="amber">منخفض</Badge>}
                           </TD>
                         </TR>
-                      );
-                    })}
-                </TBody>
-              </Table>
+                      ))}
+                  </TBody>
+                </Table>
+              )}
+            </CardBody>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="expiredstock">
+          <Card>
+            <CardHeader title="منتهي الصلاحية" subtitle="منتجات منتهية الصلاحية أو تنتهي خلال 14 يوم" />
+            <CardBody>
+              {products.filter((p) => {
+                if (!p.hasExpiry || !p.expiryDate) return false;
+                const du = daysUntil(p.expiryDate);
+                return du !== null && du <= 14;
+              }).length === 0 ? (
+                <div className="text-sm text-slate-500 text-center py-6">لا توجد منتجات منتهية أو قاربت على الانتهاء</div>
+              ) : (
+                <Table>
+                  <THead>
+                    <TR>
+                      <TH>المنتج</TH>
+                      <TH>الفئة</TH>
+                      <TH className="text-end">الكمية</TH>
+                      <TH>تاريخ الانتهاء</TH>
+                      <TH>الحالة</TH>
+                    </TR>
+                  </THead>
+                  <TBody>
+                    {products
+                      .filter((p) => {
+                        if (!p.hasExpiry || !p.expiryDate) return false;
+                        const du = daysUntil(p.expiryDate);
+                        return du !== null && du <= 14;
+                      })
+                      .sort((a, b) => (a.expiryDate ?? "").localeCompare(b.expiryDate ?? ""))
+                      .map((p) => {
+                        const du = daysUntil(p.expiryDate);
+                        return (
+                          <TR key={p.id}>
+                            <TD className="font-medium text-slate-900">{p.name}</TD>
+                            <TD className="text-slate-500 text-xs">{p.category}</TD>
+                            <TD className="text-end font-mono">{p.quantity} {p.unit}</TD>
+                            <TD className="text-xs font-medium">
+                              {p.expiryDate ? formatDate(p.expiryDate) : "—"}
+                            </TD>
+                            <TD>
+                              {du !== null && du < 0
+                                ? <Badge tone="red">منتهي منذ {Math.abs(du)} يوم</Badge>
+                                : du !== null && du === 0
+                                ? <Badge tone="red">ينتهي اليوم</Badge>
+                                : <Badge tone="rose">يتبقى {du} يوم</Badge>}
+                            </TD>
+                          </TR>
+                        );
+                      })}
+                  </TBody>
+                </Table>
+              )}
             </CardBody>
           </Card>
         </TabsContent>
