@@ -2677,7 +2677,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Same intentional pattern as catalogValue: memoize on data arrays only.
   const invoicingValue = useMemo(
     () => ({
-      quotations, addQuotation, convertQuotation, deleteQuotation,
+      quotations, addQuotation, updateQuotation, convertQuotation, deleteQuotation,
       salesInvoices, purchaseInvoices, salesReturns, purchaseReturns, cashEntries, stockMovements,
       addSalesInvoice, updateSalesInvoice, recordSalesReceipt, cancelSalesInvoice,
       deleteSalesInvoice, applyCustomerCredit, settleAllDues, settleSupplierDues,
