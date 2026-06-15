@@ -299,8 +299,8 @@ export function SalesInvoiceNewPage() {
       toast.error("المبلغ المستلم غير صحيح");
       return;
     }
-    if (paymentType === "cash" && amountReceived <= 0) {
-      toast.error("أدخل المبلغ المستلم");
+    if (paymentType === "cash" && totalEffective <= 0 && invoiceNet > 0) {
+      toast.error("أدخل المبلغ المستلم أو استخدم الرصيد الدائن");
       return;
     }
     if (paymentType === "account" && !paymentDueDate) {
