@@ -1906,6 +1906,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return full;
   };
 
+  const updateQuotation: AppActions["updateQuotation"] = (id, patch) => {
+    setQuotations((list) =>
+      list.map((q) => (q.id === id && q.status === "draft" ? { ...q, ...patch } : q))
+    );
+  };
+
   const deleteQuotation: AppActions["deleteQuotation"] = (id) => {
     setQuotations((list) => list.filter((q) => q.id !== id));
   };
