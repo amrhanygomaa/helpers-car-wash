@@ -322,7 +322,7 @@ export function AlertsPage() {
         </Card>
 
         <Card>
-          <CardHeader title="عملاء لديهم رصيد" subtitle={`عدد: ${unpaidCustomers.length}`} />
+          <CardHeader title="عملاء عليهم فلوس" subtitle={`عدد: ${unpaidCustomers.length}`} />
           <CardBody className="divide-y divide-slate-100 p-0">
             {unpaidCustomers.length === 0 ? (
               <EmptyState icon={<Users className="w-5 h-5" />} title="لا توجد أرصدة متبقية" />
