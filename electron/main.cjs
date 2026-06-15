@@ -700,7 +700,7 @@ function normalizePrintRoute(route) {
   if (!cleanRoute.startsWith("/")) {
     throw new Error("Invalid print route");
   }
-  if (!/^\/(sales|purchases)\/[^/]+\/print$/.test(cleanRoute)) {
+  if (!/^\/(sales|purchases|quotations)\/[^/]+\/print$/.test(cleanRoute)) {
     throw new Error("Unsupported print route");
   }
   return cleanRoute;
@@ -761,12 +761,12 @@ function ensurePdfExtension(filePath) {
 
 function getInvoicePrintMeta(route) {
   const { kind, invoice } = getInvoiceForPrint(route);
-  const title = kind === "sales" ? "فاتورة مبيعات" : "فاتورة مشتريات";
-  const invoiceNumber = invoice.invoiceNumber || invoice.id || "invoice";
+  const title = kind === "sales" ? "فاتورة مبيعات" : kind === "quotation" ? "عرض سعر" : "فاتورة مشتريات";
+  const docNumber = invoice.invoiceNumber || invoice.quotationNumber || invoice.id || "doc";
   const datePart = invoice.date ? `-${invoice.date}` : "";
   return {
-    windowTitle: `${title} ${invoiceNumber}`,
-    fileBaseName: sanitizeFileName(`${title}-${invoiceNumber}${datePart}`),
+    windowTitle: `${title} ${docNumber}`,
+    fileBaseName: sanitizeFileName(`${title}-${docNumber}${datePart}`),
   };
 }
 
@@ -805,7 +805,7 @@ function getPrintSettings() {
 
 function getInvoiceForPrint(route) {
   const cleanRoute = normalizePrintRoute(route);
-  const match = cleanRoute.match(/^\/(sales|purchases)\/([^/]+)\/print$/);
+  const match = cleanRoute.match(/^\/(sales|purchases|quotations)\/([^/]+)\/print$/);
   if (!match) {
     throw new Error("Unsupported print route");
   }
@@ -817,6 +817,12 @@ function getInvoiceForPrint(route) {
     const invoice = Array.isArray(invoices) ? invoices.find((item) => item.id === id) : null;
     if (!invoice) throw new Error("sales_invoice_not_found");
     return { kind: "sales", invoice };
+  }
+  if (section === "quotations") {
+    const quotations = readJsonKey(`${STORE_PREFIX}quotations`, []);
+    const invoice = Array.isArray(quotations) ? quotations.find((item) => item.id === id) : null;
+    if (!invoice) throw new Error("quotation_not_found");
+    return { kind: "quotation", invoice };
   }
 
   const invoices = readJsonKey(`${STORE_PREFIX}purchaseInvoices`, []);
