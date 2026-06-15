@@ -341,7 +341,8 @@ export function SalesInvoiceNewPage() {
       amountReceived: receivedForInvoice,
       overpayment: customerChange > 0 ? customerChange : undefined,
       paymentType: effectivePaymentType,
-      paymentMethod: effectivePaymentType === "cash" ? paymentMethod : undefined,
+      paymentMethod,
+      paymentMethodLabel: paymentMethod === "other" && paymentMethodLabel.trim() ? paymentMethodLabel.trim() : undefined,
       priceType,
       paymentDueDate: effectiveDueDate,
       notes: notes.trim() || undefined,
@@ -652,25 +653,30 @@ export function SalesInvoiceNewPage() {
                 />
               </Field>
             ) : null}
-            {(() => {
-              const credit = customerId ? customerCredit(customerId) : 0;
-              if (credit <= 0) return null;
-              return (
-                <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 flex items-center justify-between gap-2 text-sm">
-                  <span className="text-emerald-700 font-medium">
-                    رصيد دائن متاح: {formatCurrency(credit, settings.currency)}
+            {creditAvailable > 0 ? (
+              <div className={`rounded-lg border px-3 py-2 flex items-center justify-between gap-2 text-sm ${
+                useCredit ? "border-brand-300 bg-brand-50" : "border-emerald-200 bg-emerald-50"
+              }`}>
+                <div>
+                  <span className={`font-medium ${useCredit ? "text-brand-700" : "text-emerald-700"}`}>
+                    رصيد دائن متاح: {formatCurrency(creditAvailable, settings.currency)}
                   </span>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setAmountReceived(Math.min(invoiceNet, credit))}
-                  >
-                    استخدام الرصيد
-                  </Button>
+                  {useCredit ? (
+                    <span className="block text-xs text-brand-600 mt-0.5">
+                      سيُخصم {formatCurrency(creditApplied, settings.currency)} من الفاتورة
+                    </span>
+                  ) : null}
                 </div>
-              );
-            })()}
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={useCredit ? "default" : "outline"}
+                  onClick={() => setUseCredit((v) => !v)}
+                >
+                  {useCredit ? "إلغاء استخدام الرصيد" : "استخدام الرصيد"}
+                </Button>
+              </div>
+            ) : null}
             <Field label="المبلغ المستلم" required>
               <Input
                 type="number"
@@ -714,10 +720,10 @@ export function SalesInvoiceNewPage() {
             {discount > 0 && (
               <Row label="صافي الفاتورة" value={formatCurrency(invoiceNet, settings.currency)} bold />
             )}
-            <Row
-              label="المبلغ المدفوع"
-              value={formatCurrency(amountReceived, settings.currency)}
-            />
+            <Row label="المبلغ المستلم" value={formatCurrency(amountReceived, settings.currency)} />
+            {creditApplied > 0 ? (
+              <Row label="رصيد دائن مستخدم" value={`- ${formatCurrency(creditApplied, settings.currency)}`} tone="green" />
+            ) : null}
             <div className="border-t border-slate-200 pt-2">
               {customerChange > 0 ? (
                 <Row
