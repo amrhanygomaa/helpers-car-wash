@@ -24,6 +24,7 @@ import { StocktakesPage } from "./pages/StocktakesPage";
 import { ImportPage } from "./pages/ImportPage";
 import { StocktakeDetailPage } from "./pages/StocktakeDetailPage";
 import { QuotationNewPage } from "./pages/QuotationNewPage";
+import { QuotationEditPage } from "./pages/QuotationEditPage";
 import { QuotationDetailPage } from "./pages/QuotationDetailPage";
 import { QuotationPrintPage } from "./pages/QuotationPrintPage";
 import { CashboxPage } from "./pages/CashboxPage";
