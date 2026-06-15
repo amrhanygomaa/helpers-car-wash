@@ -2060,6 +2060,50 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [salesInvoices, logAudit]
   );
 
+  const applyCustomerCredit: AppActions["applyCustomerCredit"] = (customerId, invoiceId, amount) => {
+    if (amount <= 0) return;
+    setSalesInvoices((list) => {
+      const target = list.find((inv) => inv.id === invoiceId && inv.customerId === customerId);
+      if (!target || target.remaining <= 0) return list;
+      const sources = list
+        .filter((inv) => inv.customerId === customerId && inv.id !== invoiceId && (inv.overpayment ?? 0) > 0)
+        .sort((a, b) => b.date.localeCompare(a.date));
+      if (sources.length === 0) return list;
+      const updates = new Map<string, Partial<import("../types").SalesInvoice>>();
+      const apply = Math.min(amount, target.remaining);
+      const newReceived = target.amountReceived + apply;
+      const creditEntry: import("../types").PaymentLogEntry = {
+        id: uid("slog_cr"),
+        date: todayISO(),
+        amount: apply,
+        paymentMethod: "other",
+        notes: "رصيد دائن مستخدم",
+      };
+      updates.set(invoiceId, {
+        amountReceived: newReceived,
+        remaining: Math.max(0, target.total - newReceived),
+        status: computeStatus(target.total, newReceived),
+        paymentLog: [...(target.paymentLog ?? []), creditEntry],
+      });
+      let toReduce = apply;
+      for (const source of sources) {
+        if (toReduce <= 0) break;
+        const credit = source.overpayment ?? 0;
+        const reduced = Math.min(toReduce, credit);
+        const existing = updates.get(source.id) ?? {};
+        updates.set(source.id, {
+          ...existing,
+          overpayment: Math.max(0, credit - reduced) || undefined,
+        });
+        toReduce -= reduced;
+      }
+      return list.map((inv) => {
+        const patch = updates.get(inv.id);
+        return patch ? { ...inv, ...patch } : inv;
+      });
+    });
+  };
+
   const settleSupplierDues = useCallback(
     (supplierId: string): number => {
       const supplierInvoices = purchaseInvoices.filter(
@@ -2628,7 +2672,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       quotations, addQuotation, convertQuotation, deleteQuotation,
       salesInvoices, purchaseInvoices, salesReturns, purchaseReturns, cashEntries, stockMovements,
       addSalesInvoice, updateSalesInvoice, recordSalesReceipt, cancelSalesInvoice,
-      deleteSalesInvoice, settleAllDues, settleSupplierDues,
+      deleteSalesInvoice, applyCustomerCredit, settleAllDues, settleSupplierDues,
       addPurchaseInvoice, updatePurchaseInvoice, recordPurchasePayment, deletePurchaseInvoice,
       addSalesReturn, addPurchaseReturn,
       addCashEntry, currentCashBalance,
