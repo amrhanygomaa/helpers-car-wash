@@ -608,6 +608,26 @@ export function SalesInvoiceNewPage() {
                 </label>
               </div>
             </Field>
+            {paymentType === "cash" ? (
+              <Field label="وسيلة الدفع">
+                <div className="flex flex-wrap gap-1.5">
+                  {(Object.entries(PAYMENT_METHOD_LABELS) as [PaymentMethod, string][]).map(([key, label]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setPaymentMethod(key)}
+                      className={`px-3 h-8 rounded-lg border text-xs font-medium transition-colors ${
+                        paymentMethod === key
+                          ? "border-brand-600 bg-brand-50 text-brand-700"
+                          : "border-slate-200 bg-white text-slate-600 hover:border-brand-300"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </Field>
+            ) : null}
             {paymentType === "account" ? (
               <Field label="تاريخ الاستحقاق" required>
                 <Input
