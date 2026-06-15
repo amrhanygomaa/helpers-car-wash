@@ -145,7 +145,8 @@ export function SalesInvoiceNewPage() {
     [lines]
   );
   const invoiceNet = Math.max(0, gross - (discount || 0));
-  const creditAvailable = customerId ? customerCredit(customerId) : 0;
+  // Net available credit = overpayment surplus after netting out any open balances on other invoices
+  const creditAvailable = customerId ? Math.max(0, -customerBalance(customerId)) : 0;
   const creditApplied = useCredit ? Math.min(creditAvailable, invoiceNet) : 0;
   const totalEffective = amountReceived + creditApplied;
   const receivedForInvoice = Math.min(totalEffective, invoiceNet);
@@ -154,9 +155,9 @@ export function SalesInvoiceNewPage() {
 
   useEffect(() => {
     if (paymentType !== "cash") { setAmountReceived(0); return; }
-    const cr = useCredit ? Math.min(customerCredit(customerId), invoiceNet) : 0;
+    const cr = useCredit ? Math.min(creditAvailable, invoiceNet) : 0;
     setAmountReceived(Math.max(0, invoiceNet - cr));
-  }, [paymentType, invoiceNet, useCredit, customerId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [paymentType, invoiceNet, useCredit, customerId, creditAvailable]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (paymentType === "cash") setPaymentDueDate("");
