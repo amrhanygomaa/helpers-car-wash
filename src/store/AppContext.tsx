@@ -37,6 +37,7 @@ import type {
 import { lsClearAll, lsGet, lsRemove, lsSet, lsSetBatch, reloadStorageCache } from "../lib/storage";
 import { hashPassword, verifyFallbackPassword } from "../lib/auth";
 import { normalizeUser } from "../lib/permissions";
+import { FEATURES, isAllowedByLicense } from "../lib/features";
 import { formatSupplierCode, nextSupplierCodeFromExisting } from "../lib/codes";
 import {
   seedCashEntries,
@@ -768,11 +769,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setLicenseStatus(status);
       return { ok: true, status };
     }
+    const prevLicense = licenseStatus?.license ?? null;
     const result = await window.desktopAPI.license.activate(serial);
     setLicenseStatus(result.status);
-    setSettings((current) => applyLicenseSettings(current, result.status));
+    setSettings((current) => {
+      let next = applyLicenseSettings(current, result.status);
+      // On upgrade, auto-enable modules the new license unlocks that the previous
+      // one didn't — so an upgraded package works immediately without the owner
+      // toggling each feature. Features already allowed keep the owner's choice.
+      const newLicense = result.status.license;
+      if (newLicense) {
+        const features: Record<string, boolean> = { ...(next.features ?? {}) };
+        let changed = false;
+        for (const f of FEATURES) {
+          if (isAllowedByLicense(f.key, newLicense) && !isAllowedByLicense(f.key, prevLicense)) {
+            features[f.key] = true;
+            changed = true;
+          }
+        }
+        if (changed) next = { ...next, features };
+      }
+      return next;
+    });
     return result;
-  }, []);
+  }, [licenseStatus]);
 
   const createOwner = useCallback(async (username: string, password: string) => {
     if (window.desktopAPI?.setup) {
