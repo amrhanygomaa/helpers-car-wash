@@ -40,6 +40,9 @@ jobs:
   test:
     name: Unit & Integration Tests
     runs-on: windows-latest
+    permissions:
+      contents: read
+      checks: write
 
     steps:
       - name: Checkout
