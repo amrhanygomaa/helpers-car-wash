@@ -6,7 +6,7 @@ Professional offline desktop system for warehouse, inventory, sales, purchasing,
 
 The application is built for Windows desktop deployment using Electron, React, TypeScript, Vite, and an encrypted local SQLite database.
 
-**Current version: v3.0.0** — stable production release.
+**Current version: v3.1.0** — stable production release.
 
 ## Product Overview
 
@@ -98,7 +98,7 @@ The installer is generated under `release/` using the `productName` and `version
 Current artifact name:
 
 ```text
-release/Helpers warehouse system-3.0.0-Setup.exe
+release/Helpers warehouse system-3.1.0-Setup.exe
 ```
 
 Release artifacts, signing certificates, private keys, and client USB packages are not committed to this repository.
