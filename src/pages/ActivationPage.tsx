@@ -13,9 +13,6 @@ const statusText = {
   active: "مفعل",
 };
 
-const activationMessage = encodeURIComponent("أريد تفعيل نسخة Helpers warehouse system");
-const activationWhatsappUrl = `https://wa.me/201118445625?text=${activationMessage}`;
-
 export function ActivationPage() {
   const { licenseStatus, activateLicense } = useAuth();
   const toast = useToast();
@@ -48,6 +45,12 @@ export function ActivationPage() {
       </div>
     );
   }
+
+  const activationWhatsappUrl = `https://wa.me/201118445625?text=${encodeURIComponent(
+    "طلب تفعيل / تجديد نسخة — Helpers Warehouse System\n" +
+      "الحالة: " + (statusText[licenseStatus.state] || "—") + "\n" +
+      "كود الجهاز: " + (licenseStatus.machineCode || "غير متاح")
+  )}`;
 
   return (
     <div className="min-h-screen grid md:grid-cols-2 bg-slate-50" dir="rtl">

@@ -3,18 +3,80 @@ import { PageHeader } from "../components/layout/AppLayout";
 import { Card, CardBody, CardHeader } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Field, Input, Select, Textarea } from "../components/ui/Input";
+import { Dialog } from "../components/ui/Dialog";
 import { useApp } from "../store/AppContext";
 import { useToast } from "../components/ui/Toast";
 import { lsGet } from "../lib/storage";
 import { FEATURES, defaultFeatureState, isAllowedByLicense, type FeatureKey } from "../lib/features";
-import { Save, Printer, Download, Upload, Database, FileSpreadsheet, ShieldCheck, Clock, Image as ImageIcon, Trash2, FolderOpen, Boxes, Lock } from "lucide-react";
+import { Save, Printer, Download, Upload, Database, FileSpreadsheet, ShieldCheck, Clock, Image as ImageIcon, Trash2, FolderOpen, Boxes, Lock, Copy, KeyRound, MessageCircle } from "lucide-react";
+
+const SUPPORT_WHATSAPP = "201118445625";
 
 export function SettingsPage() {
-  const { settings, updateSettings, exportBackup, importBackup, backupToPath, exportToExcel, licenseStatus } = useApp();
+  const { settings, updateSettings, exportBackup, importBackup, backupToPath, exportToExcel, licenseStatus, activateLicense } = useApp();
   const toast = useToast();
   const [form, setForm] = useState(settings);
+  const [licenseDialogOpen, setLicenseDialogOpen] = useState(false);
+  const [newSerial, setNewSerial] = useState("");
+  const [applyingSerial, setApplyingSerial] = useState(false);
 
   useEffect(() => setForm(settings), [settings]);
+
+  async function copyMachineCode() {
+    const code = licenseStatus?.machineCode;
+    if (!code) return toast.error("كود الجهاز غير متاح");
+    await navigator.clipboard.writeText(code);
+    toast.success("تم نسخ كود الجهاز");
+  }
+
+  function buildLicenseRequest() {
+    const code = licenseStatus?.machineCode ?? "غير متاح";
+    const sub = form.subscriptionType === "lifetime" ? "مدى الحياة" : "مدة محددة";
+    const subLeft =
+      form.subscriptionType === "limited"
+        ? Math.max(0, getRemainingDays(form.subscriptionStartDate, form.subscriptionMonths)) + " يوم"
+        : "—";
+    const war =
+      form.warrantyType === "none"
+        ? "بدون ضمان"
+        : Math.max(0, getRemainingDays(form.warrantyStartDate, form.warrantyMonths)) + " يوم";
+    return [
+      "طلب تجديد / ترقية ترخيص — Helpers Warehouse System",
+      "العميل: " + (form.companyNameAr || form.companyName || "—"),
+      "كود الجهاز: " + code,
+      "نوع الاشتراك: " + sub,
+      "المتبقي في الاشتراك: " + subLeft,
+      "حالة الضمان: " + war,
+      "",
+      "المطلوب: (تجديد اشتراك / تمديد ضمان / ترقية باقة)",
+    ].join("\n");
+  }
+
+  function openLicenseRequestWhatsapp() {
+    const url = "https://wa.me/" + SUPPORT_WHATSAPP + "?text=" + encodeURIComponent(buildLicenseRequest());
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+
+  async function applyNewSerial() {
+    const serial = newSerial.trim();
+    if (!serial) return toast.error("الصق السيريال أولاً");
+    setApplyingSerial(true);
+    const result = await activateLicense(serial);
+    setApplyingSerial(false);
+    if (result.ok) {
+      toast.success("تم تحديث الترخيص", "تم تطبيق السيريال الجديد — الاشتراك/الضمان/الباقة محدّثة");
+      setNewSerial("");
+      setLicenseDialogOpen(false);
+      return;
+    }
+    const messages: Record<string, string> = {
+      expired: "السيريال منتهي الصلاحية",
+      machine_mismatch: "هذا السيريال مخصص لجهاز آخر",
+      clock_tampered: "تم اكتشاف تغيير غير آمن في تاريخ الجهاز",
+      inactive: "السيريال غير صالح",
+    };
+    toast.error("فشل تطبيق السيريال", messages[result.status.state] || "السيريال غير صالح");
+  }
 
   function save() {
     updateSettings(form);
@@ -421,9 +483,15 @@ export function SettingsPage() {
                   <ShieldCheck className="w-5 h-5" />
                   <span>حالة الاشتراك</span>
                 </div>
-                <div className="text-[10px] text-slate-400 font-mono" title="كود الجهاز المستخدم في الترخيص والدعم الفني">
-                  كود الجهاز: {licenseStatus?.machineCode ?? "—"}
-                </div>
+                <button
+                  type="button"
+                  onClick={copyMachineCode}
+                  title="اضغط لنسخ كود الجهاز"
+                  className="text-[10px] text-slate-500 font-mono flex items-center gap-1 hover:text-brand-600 transition-colors"
+                >
+                  <Copy className="w-3 h-3" />
+                  <span dir="ltr">كود الجهاز: {licenseStatus?.machineCode ?? "—"}</span>
+                </button>
               </div>
 
               <div className="grid grid-cols-2 gap-6 p-4 rounded-xl bg-white border border-brand-100 shadow-sm">
@@ -500,20 +568,90 @@ export function SettingsPage() {
               </div>
             </div>
           </CardBody>
-          <div className="px-6 py-3 bg-brand-50/50 border-t border-brand-100 flex items-center justify-between">
+          <div className="px-6 py-3 bg-brand-50/50 border-t border-brand-100 flex items-center justify-between gap-3 flex-wrap">
             <div className="text-xs text-slate-500">
               * هذه البيانات رسمية وموثقة من قبل <strong>Helpers Technologies</strong> ولا يمكن تعديلها من قبل المستخدم.
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="text-[10px] h-7 px-3"
-              onClick={() => window.open("https://wa.me/201118445625", "_blank")}
-            >
-              طلب تمديد أو دعم
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-[10px] h-7 px-3 gap-1"
+                onClick={copyMachineCode}
+              >
+                <Copy className="w-3 h-3" /> نسخ كود الجهاز
+              </Button>
+              <Button
+                size="sm"
+                className="text-[10px] h-7 px-3 gap-1"
+                onClick={() => setLicenseDialogOpen(true)}
+              >
+                <KeyRound className="w-3 h-3" /> تجديد / ترقية / تفعيل ضمان
+              </Button>
+            </div>
           </div>
         </Card>
+
+        <Dialog
+          open={licenseDialogOpen}
+          onClose={() => setLicenseDialogOpen(false)}
+          title="تجديد أو ترقية أو تمديد الترخيص"
+          subtitle="جدّد اشتراكك أو فعّل ضمانك أو ارقِ باقتك بدون إعادة تثبيت أو فقدان بياناتك"
+          width="lg"
+        >
+          <div className="space-y-5">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+              <div className="text-xs font-bold text-slate-700">خطوة 1 — أرسل كود جهازك للمطوّر</div>
+              <Field label="كود الجهاز">
+                <div className="flex gap-2">
+                  <Input value={licenseStatus?.machineCode ?? "—"} readOnly dir="ltr" className="font-mono text-left" />
+                  <Button type="button" variant="outline" onClick={copyMachineCode}>
+                    <Copy className="w-4 h-4" />
+                  </Button>
+                </div>
+              </Field>
+              <Button
+                type="button"
+                className="w-full gap-2 bg-emerald-600 hover:bg-emerald-700"
+                onClick={openLicenseRequestWhatsapp}
+              >
+                <MessageCircle className="w-4 h-4" /> إرسال الطلب عبر واتساب (كود الجهاز مرفق تلقائياً)
+              </Button>
+              <p className="text-[11px] text-slate-500 leading-relaxed">
+                ستصلك رسالة بالكود والحالة جاهزة — يكفي إرسالها. سيرسل لك المطوّر سيريالاً جديداً
+                يجدّد الاشتراك أو يفعّل الضمان أو يفتح مميزات الباقة الأعلى.
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-brand-200 bg-brand-50/40 p-4 space-y-3">
+              <div className="text-xs font-bold text-brand-700">خطوة 2 — الصق السيريال الجديد وفعّله</div>
+              <Field label="السيريال الجديد">
+                <Textarea
+                  rows={3}
+                  value={newSerial}
+                  onChange={(e) => setNewSerial(e.target.value)}
+                  placeholder="HTLIC..."
+                  dir="ltr"
+                  className="font-mono text-left"
+                />
+              </Field>
+              <Button
+                type="button"
+                size="lg"
+                className="w-full gap-2"
+                onClick={applyNewSerial}
+                disabled={applyingSerial || !newSerial.trim()}
+              >
+                <KeyRound className="w-4 h-4" />
+                {applyingSerial ? "جارٍ التطبيق..." : "تطبيق السيريال وتحديث الترخيص"}
+              </Button>
+              <p className="text-[11px] text-slate-500 leading-relaxed">
+                يتم التطبيق فوراً على هذا الجهاز دون أي تأثير على بياناتك. يمكنك التجديد في أي وقت —
+                حتى قبل انتهاء الاشتراك — فلن يتوقف العمل.
+              </p>
+            </div>
+          </div>
+        </Dialog>
 
         <Card className="lg:col-span-1">
           <CardHeader title="النسخة الاحتياطية" subtitle="حفظ واستعادة كل بيانات النظام" />
