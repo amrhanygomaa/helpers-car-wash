@@ -120,7 +120,7 @@ export function SalesInvoiceNewPage() {
       saveDraft({ invoiceNumber, date, customerId, driverId, paymentType, paymentMethod, paymentMethodLabel, priceType, paymentDueDate, discount, amountReceived, notes, lines });
     }, 150);
     return () => window.clearTimeout(timer);
-  }, [invoiceNumber, date, customerId, driverId, paymentType, priceType, paymentDueDate, discount, amountReceived, notes, lines]);
+  }, [invoiceNumber, date, customerId, driverId, paymentType, paymentMethod, paymentMethodLabel, priceType, paymentDueDate, discount, amountReceived, notes, lines]);
 
   function handleClearDraft() {
     clearDraft();
@@ -156,7 +156,7 @@ export function SalesInvoiceNewPage() {
     if (paymentType !== "cash") { setAmountReceived(0); return; }
     const cr = useCredit ? Math.min(creditAvailable, invoiceNet) : 0;
     setAmountReceived(Math.max(0, invoiceNet - cr));
-  }, [paymentType, invoiceNet, useCredit, customerId, creditAvailable]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [paymentType, invoiceNet, useCredit, customerId, creditAvailable]);
 
   useEffect(() => {
     if (paymentType === "cash") setPaymentDueDate("");

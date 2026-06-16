@@ -622,7 +622,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     checkAndBackup(); // run once immediately on mount / when enabled
     const timer = window.setInterval(checkAndBackup, 30 * 60 * 1000); // then every 30 min
     return () => window.clearInterval(timer);
-  }, [settings.autoBackupEnabled]); // only re-schedules if user toggles the setting
+  }, [settings.autoBackupEnabled, isDesktop]); // isDesktop is constant at runtime; effectively re-schedules only when the user toggles the setting
 
   // Session backup — uses liveStateRef so the handler always reads current
   // state without needing to re-register on every state change.
