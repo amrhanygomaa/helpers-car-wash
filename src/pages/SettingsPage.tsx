@@ -12,6 +12,32 @@ import { Save, Printer, Download, Upload, Database, FileSpreadsheet, ShieldCheck
 
 const SUPPORT_WHATSAPP = "201118445625";
 
+const PLAN_LABELS: Record<string, string> = {
+  basic: "الباقة الأساسية",
+  pro: "الباقة الاحترافية",
+  full: "الباقة الكاملة",
+  custom: "باقة مخصّصة",
+};
+
+function subscriptionDurationLabel(type: string, months: number): string {
+  if (type === "lifetime") return "مدى الحياة";
+  const m = Number(months) || 0;
+  if (m <= 0) return "غير محددة";
+  if (m % 12 === 0) {
+    const y = m / 12;
+    return y === 1 ? "سنة كاملة" : y === 2 ? "سنتان" : `${y} سنوات`;
+  }
+  return `${m} شهر`;
+}
+
+function planDisplayLabel(license?: { plan?: string; features?: string[] } | null): string {
+  if (!license) return "—";
+  if (license.plan && PLAN_LABELS[license.plan]) return PLAN_LABELS[license.plan];
+  const f = license.features;
+  if (Array.isArray(f) && f.length > 0) return `${f.length} ميزة مفعّلة`;
+  return "الباقة الكاملة";
+}
+
 export function SettingsPage() {
   const { settings, updateSettings, exportBackup, importBackup, backupToPath, exportToExcel, licenseStatus, activateLicense } = useApp();
   const toast = useToast();
@@ -31,7 +57,8 @@ export function SettingsPage() {
 
   function buildLicenseRequest() {
     const code = licenseStatus?.machineCode ?? "غير متاح";
-    const sub = form.subscriptionType === "lifetime" ? "مدى الحياة" : "مدة محددة";
+    const sub = subscriptionDurationLabel(form.subscriptionType, form.subscriptionMonths);
+    const plan = planDisplayLabel(licenseStatus?.license);
     const subLeft =
       form.subscriptionType === "limited"
         ? Math.max(0, getRemainingDays(form.subscriptionStartDate, form.subscriptionMonths)) + " يوم"
@@ -44,7 +71,8 @@ export function SettingsPage() {
       "طلب تجديد / ترقية ترخيص — Helpers Warehouse System",
       "العميل: " + (form.companyNameAr || form.companyName || "—"),
       "كود الجهاز: " + code,
-      "نوع الاشتراك: " + sub,
+      "مدة الاشتراك: " + sub,
+      "الباقة الحالية: " + plan,
       "المتبقي في الاشتراك: " + subLeft,
       "حالة الضمان: " + war,
       "",
@@ -496,9 +524,15 @@ export function SettingsPage() {
 
               <div className="grid grid-cols-2 gap-6 p-4 rounded-xl bg-white border border-brand-100 shadow-sm">
                 <div>
-                  <div className="text-[10px] text-slate-400 uppercase font-bold mb-1">نوع الاشتراك</div>
+                  <div className="text-[10px] text-slate-400 uppercase font-bold mb-1">مدة الاشتراك</div>
                   <div className="text-sm font-bold text-slate-900">
-                    {form.subscriptionType === "lifetime" ? "مدى الحياة (احترافي)" : "فترة محدودة"}
+                    {subscriptionDurationLabel(form.subscriptionType, form.subscriptionMonths)}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[10px] text-slate-400 uppercase font-bold mb-1">الباقة الحالية</div>
+                  <div className="text-sm font-bold text-brand-700">
+                    {planDisplayLabel(licenseStatus?.license)}
                   </div>
                 </div>
                 <div>
