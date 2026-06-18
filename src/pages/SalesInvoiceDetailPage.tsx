@@ -159,6 +159,7 @@ export function SalesInvoiceDetailPage() {
       ) : null}
 
       <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+        {/* 1. Invoice total */}
         <Stat
           label={inv.discount && inv.discount > 0 ? "الإجمالي قبل الخصم" : "الإجمالي"}
           value={formatCurrency(inv.discount && inv.discount > 0 ? inv.total + inv.discount : inv.total, settings.currency)}
@@ -169,17 +170,22 @@ export function SalesInvoiceDetailPage() {
         {inv.discount && inv.discount > 0 ? (
           <Stat label="الإجمالي بعد الخصم" value={formatCurrency(inv.total, settings.currency)} />
         ) : null}
+        {/* 2. Amount paid */}
+        <Stat label="المبلغ المدفوع" value={formatCurrency(inv.amountReceived, settings.currency)} tone="green" />
+        {/* 3. Returns */}
         {totalReturns > 0 && (
           <Stat label="المرتجعات" value={`- ${formatCurrency(totalReturns, settings.currency)}`} tone="red" />
         )}
         {totalReturns > 0 && (
           <Stat label="صافي بعد المرتجع" value={formatCurrency(Math.max(0, inv.total - totalReturns), settings.currency)} />
         )}
-        <Stat label="المستلم" value={formatCurrency(inv.amountReceived, settings.currency)} tone="green" />
+        {/* 4. Remaining */}
         <Stat label="المتبقي على هذه الفاتورة" value={formatCurrency(inv.remaining, settings.currency)} tone={inv.remaining > 0 ? "amber" : "slate"} />
-        {inv.overpayment && inv.overpayment > 0 ? (
-          <Stat label="رصيد دائن للعميل" value={formatCurrency(inv.overpayment, settings.currency)} tone="green" />
+        {/* 5. Credit balance — prominent when return creates credit */}
+        {(inv.overpayment ?? 0) > 0 ? (
+          <Stat label="رصيد دائن للعميل (من هذه الفاتورة)" value={formatCurrency(inv.overpayment!, settings.currency)} tone="blue" />
         ) : null}
+        {/* Status / type / due date */}
         <Stat
           label="الحالة"
           value={
@@ -205,18 +211,27 @@ export function SalesInvoiceDetailPage() {
             tone={dueDatePassed ? "red" : "slate"}
           />
         ) : null}
+        {/* 6. Total customer balance across all invoices */}
         <Stat
           label={`إجمالي رصيد ${inv.customerName}`}
           value={
             totalCustomerBalance > 0
-              ? `- ${formatCurrency(totalCustomerBalance, settings.currency)}`
+              ? `مديون: ${formatCurrency(totalCustomerBalance, settings.currency)}`
               : totalCustomerBalance < 0
                 ? `رصيد دائن: ${formatCurrency(-totalCustomerBalance, settings.currency)}`
                 : "لا يوجد مستحق"
           }
-          tone={totalCustomerBalance > 0 ? "red" : "green"}
+          tone={totalCustomerBalance > 0 ? "red" : totalCustomerBalance < 0 ? "blue" : "slate"}
         />
       </div>
+      {/* Credit balance notice when return creates credit */}
+      {(inv.overpayment ?? 0) > 0 && !inv.cancelled && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-900">
+          <span className="font-semibold">رصيد دائن: </span>
+          للعميل <strong>{inv.customerName}</strong> رصيد دائن من هذه الفاتورة بقيمة{" "}
+          <strong>{formatCurrency(inv.overpayment!, settings.currency)}</strong> — يمكن استخدامه في فواتير قادمة أو استرداده نقداً.
+        </div>
+      )}
 
       <Card>
         <CardHeader title="تفاصيل العميل والفاتورة" />

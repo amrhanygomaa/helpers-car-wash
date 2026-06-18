@@ -1005,6 +1005,20 @@ function buildInvoicePrintHtml(route) {
   const partyName = isSales ? invoice.customerName : invoice.supplierName;
   const amountPaid = isSales ? invoice.amountReceived : invoice.amountPaid;
 
+  // Customer's overall outstanding balance across ALL their sales invoices.
+  // Mirrors customerBalance() in the renderer: Σ(remaining − overpayment).
+  // Positive → customer owes us (مدين); negative → customer has credit (دائن).
+  let customerBalanceTotal = null;
+  if (isSales && invoice.customerId) {
+    const allSales = readJsonKey(`${STORE_PREFIX}salesInvoices`, []);
+    if (Array.isArray(allSales)) {
+      const raw = allSales
+        .filter((s) => s.customerId === invoice.customerId && !s.cancelled)
+        .reduce((a, s) => a + (Number(s.remaining) || 0) - (Number(s.overpayment) || 0), 0);
+      customerBalanceTotal = Math.round(raw * 100) / 100;
+    }
+  }
+
   const returnsKey = isSales ? `${STORE_PREFIX}salesReturns` : `${STORE_PREFIX}purchaseReturns`;
   const allReturns = readJsonKey(returnsKey, []);
   const invoiceReturns = Array.isArray(allReturns)
@@ -1196,6 +1210,21 @@ function buildInvoicePrintHtml(route) {
       font-size: 16px;
       font-weight: 700;
     }
+    .customer-balance {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 9px 14px;
+      border-radius: 8px;
+      font-weight: 700;
+      font-size: 13px;
+      margin-bottom: 16px;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .customer-balance.credit { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; }
+    .customer-balance.debit { background: #fef2f2; border: 1px solid #fecaca; color: #dc2626; }
+    .customer-balance.settled { background: #f8fafc; border: 1px solid #e2e8f0; color: #334155; }
     .notes {
       border-top: 1px solid #e2e8f0;
       padding-top: 9px;
@@ -1373,6 +1402,25 @@ function buildInvoicePrintHtml(route) {
         <div class="total-row final"><span>المتبقي</span><span class="mono">${escapeHtml(formatCurrency(invoice.remaining, settings.currency))}</span></div>
       </div>
     </div>
+
+    ${isSales && customerBalanceTotal !== null && partyName ? `
+    <div class="customer-balance ${customerBalanceTotal < 0 ? "credit" : customerBalanceTotal > 0 ? "debit" : "settled"}">
+      <span>${
+        customerBalanceTotal < 0
+          ? `رصيد دائن للعميل (${escapeHtml(partyName)})`
+          : customerBalanceTotal > 0
+            ? `رصيد مدين على العميل (${escapeHtml(partyName)})`
+            : `رصيد العميل (${escapeHtml(partyName)})`
+      }</span>
+      <span class="mono">${
+        customerBalanceTotal < 0
+          ? `+ ${escapeHtml(formatCurrency(-customerBalanceTotal, settings.currency))}`
+          : customerBalanceTotal > 0
+            ? `- ${escapeHtml(formatCurrency(customerBalanceTotal, settings.currency))}`
+            : "الحساب مسوّى ✓"
+      }</span>
+    </div>
+    ` : ""}
 
     ${invoice.notes ? `<div class="notes"><strong>ملاحظات: </strong>${escapeHtml(invoice.notes)}</div>` : ""}
     <div class="footer">${escapeHtml(settings.invoiceFooter || "")}</div>

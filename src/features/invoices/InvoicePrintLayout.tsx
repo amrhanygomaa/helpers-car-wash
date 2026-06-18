@@ -25,6 +25,7 @@ interface Props {
   customerBalance?: number;
   customerName?: string;
   paymentLog?: PaymentLogEntry[];
+  overpayment?: number;
 }
 
 export function InvoicePrintLayout(props: Props) {
@@ -310,21 +311,40 @@ export function InvoicePrintLayout(props: Props) {
                 value={props.remaining > 0 ? `- ${formatCurrency(props.remaining, settings.currency)}` : formatCurrency(props.remaining, settings.currency)}
                 highlight
               />
-              {isSales && props.customerBalance !== undefined && props.customerName ? (
-                <TotalRow
-                  label={`رصيد ${props.customerName}`}
-                  value={
-                    props.customerBalance > 0
-                      ? `- ${formatCurrency(props.customerBalance, settings.currency)}`
-                      : props.customerBalance < 0
-                        ? `دائن: ${formatCurrency(-props.customerBalance, settings.currency)}`
-                        : "لا يوجد مستحق"
-                  }
-                  deduction={props.customerBalance > 0}
-                />
-              ) : null}
             </div>
           </div>
+
+          {/* Customer balance + overpayment — OUTSIDE overflow:hidden so they are never clipped */}
+          {isSales && props.customerName && props.customerBalance !== undefined && (
+            <div style={{
+              marginTop: 8,
+              padding: "8px 12px",
+              background: props.customerBalance < 0 ? "#eff6ff" : props.customerBalance > 0 ? "#fef2f2" : "#f8fafc",
+              border: `1px solid ${props.customerBalance < 0 ? "#bfdbfe" : props.customerBalance > 0 ? "#fecaca" : "#e2e8f0"}`,
+              borderRadius: 6,
+              fontSize: 11,
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              WebkitPrintColorAdjust: "exact",
+              printColorAdjust: "exact",
+            } as React.CSSProperties}>
+              <span style={{ fontWeight: 700, color: props.customerBalance < 0 ? "#1e40af" : props.customerBalance > 0 ? "#dc2626" : "#334155" }}>
+                {props.customerBalance < 0
+                  ? `رصيد دائن للعميل (${props.customerName})`
+                  : props.customerBalance > 0
+                    ? `رصيد مدين على العميل (${props.customerName})`
+                    : `رصيد العميل (${props.customerName})`}
+              </span>
+              <span style={{ fontWeight: 700, fontSize: 13, color: props.customerBalance < 0 ? "#1e40af" : props.customerBalance > 0 ? "#dc2626" : "#334155" }}>
+                {props.customerBalance < 0
+                  ? `+ ${formatCurrency(-props.customerBalance, settings.currency)}`
+                  : props.customerBalance > 0
+                    ? `- ${formatCurrency(props.customerBalance, settings.currency)}`
+                    : "الحساب مسوّى ✓"}
+              </span>
+            </div>
+          )}
 
           {/* Notes */}
           {props.notes && (

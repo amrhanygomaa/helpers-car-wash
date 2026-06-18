@@ -72,3 +72,33 @@ contextBridge.exposeInMainWorld("desktopAPI", {
     closeBackupDone: () => ipcRenderer.send("app:close-backup-done"),
   },
 });
+
+// Prevent internal file:// paths from appearing in the browser status bar
+// when the user hovers over navigation links. Temporarily replaces the full
+// href with just the hash fragment (#/route) on mouseover, then restores it
+// on mouseout. React Router navigates via onClick (pushState) so this is safe.
+window.addEventListener("DOMContentLoaded", () => {
+  function findAnchor(target) {
+    let el = target;
+    while (el && el.tagName !== "A") el = el.parentElement;
+    return el || null;
+  }
+
+  document.addEventListener("mouseover", (e) => {
+    const a = findAnchor(e.target);
+    if (!a) return;
+    const href = a.getAttribute("href");
+    if (!href || !href.startsWith("file:")) return;
+    const hashIdx = href.indexOf("#");
+    const clean = hashIdx !== -1 ? href.slice(hashIdx) : "#";
+    a._preloadSavedHref = href;
+    a.setAttribute("href", clean);
+  }, true);
+
+  document.addEventListener("mouseout", (e) => {
+    const a = findAnchor(e.target);
+    if (!a || !a._preloadSavedHref) return;
+    a.setAttribute("href", a._preloadSavedHref);
+    delete a._preloadSavedHref;
+  }, true);
+}, { once: true });

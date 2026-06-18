@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import {
   Download,
   Printer,
+  Eye,
   TrendingUp,
   TrendingDown,
   Coins,
@@ -78,6 +79,7 @@ export function ReportsPage() {
   });
   const [to, setTo] = useState<string>(() => todayISO());
   const [printMode, setPrintMode] = useState<PrintMode>("full");
+  const [previewOpen, setPreviewOpen] = useState(false);
   const canViewEmployeeBonuses = currentUser?.role === "owner";
 
   const salesInRange = useMemo(
@@ -124,10 +126,14 @@ export function ReportsPage() {
     { wholesale: 0, retail: 0 }
   );
 
-  // Net sales: invoice totals are already net of their discount; returns in
-  // the period are deducted so the report shows what was actually kept.
-  const totalSales = salesInRange.reduce((a, s) => a + s.total, 0) - returnsTotalInRange;
+  // Gross sales = sum of invoice totals (already net of invoice-level discounts).
+  const grossSalesInRange = salesInRange.reduce((a, s) => a + s.total, 0);
+  // Net sales: returns in the period are deducted.
+  const totalSales = grossSalesInRange - returnsTotalInRange;
   const totalPurchases = purchasesInRange.reduce((a, p) => a + p.total, 0);
+  // Cash collected and still outstanding for invoices in the period.
+  const collectedInRange = salesInRange.reduce((a, s) => a + s.amountReceived, 0);
+  const remainingInRange = salesInRange.reduce((a, s) => a + s.remaining, 0);
   const wholesaleSalesTotal =
     salesInRange
       .filter((s) => s.priceType === "wholesale")
@@ -470,6 +476,9 @@ export function ReportsPage() {
                 <option value="monthlyProfit">تقرير الربح الشهري</option>
                 <option value="customerDues">كشف فلوس لدينا من عملاء</option>
               </Select>
+              <Button variant="outline" onClick={() => setPreviewOpen(true)}>
+                <Eye className="w-4 h-4" /> معاينة
+              </Button>
               <Button variant="outline" onClick={() => window.print()}>
                 <Printer className="w-4 h-4" /> طباعة
               </Button>
@@ -509,6 +518,47 @@ export function ReportsPage() {
         </TabsList>
 
         <TabsContent value="sales">
+          {/* ── Sales summary ── */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
+            <SummaryCard
+              label="إجمالي المبيعات"
+              value={formatCurrency(grossSalesInRange, settings.currency)}
+              sub={`${salesInRange.length} فاتورة`}
+              tone="slate"
+            />
+            {returnsTotalInRange > 0 && (
+              <SummaryCard
+                label="إجمالي المرتجعات"
+                value={`- ${formatCurrency(returnsTotalInRange, settings.currency)}`}
+                sub={`${salesReturnsInRange.length} مرتجع`}
+                tone="red"
+              />
+            )}
+            <SummaryCard
+              label="صافي المبيعات"
+              value={formatCurrency(totalSales, settings.currency)}
+              sub="بعد المرتجعات"
+              tone="green"
+            />
+            <SummaryCard
+              label="المبالغ المحصلة"
+              value={formatCurrency(collectedInRange, settings.currency)}
+              sub="نقدي + آجل مسدد"
+              tone="emerald"
+            />
+            <SummaryCard
+              label="المبالغ المتبقية"
+              value={formatCurrency(remainingInRange, settings.currency)}
+              sub="غير محصل بعد"
+              tone={remainingInRange > 0 ? "amber" : "slate"}
+            />
+            <SummaryCard
+              label="الربح التقديري"
+              value={formatCurrency(estimatedProfit, settings.currency)}
+              sub="بعد الخصومات والمرتجعات"
+              tone={estimatedProfit >= 0 ? "indigo" : "red"}
+            />
+          </div>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <Card className="lg:col-span-2">
               <CardHeader title="المبيعات اليومية" />
@@ -676,6 +726,47 @@ export function ReportsPage() {
         </TabsContent>
 
         <TabsContent value="stock">
+          {products.length > 0 && (() => {
+            const totalPurchase = products.reduce((s, p) => s + p.quantity * p.purchasePrice, 0);
+            const totalWholesale = products.reduce((s, p) => s + p.quantity * p.wholesalePrice, 0);
+            const totalRetail = products.reduce((s, p) => s + p.quantity * p.retailPrice, 0);
+            const profitIfWholesale = totalWholesale - totalPurchase;
+            const profitIfRetail = totalRetail - totalPurchase;
+            return (
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
+                <SummaryCard
+                  label="عدد المنتجات"
+                  value={`${products.length} منتج`}
+                  sub={`${products.filter(p => p.quantity > 0).length} متاح في المخزن`}
+                  tone="slate"
+                />
+                <SummaryCard
+                  label="إجمالي قيمة الشراء"
+                  value={formatCurrency(totalPurchase, settings.currency)}
+                  sub="التكلفة الكلية للمخزون"
+                  tone="slate"
+                />
+                <SummaryCard
+                  label="قيمة البيع جملة"
+                  value={formatCurrency(totalWholesale, settings.currency)}
+                  sub={`هامش: ${formatCurrency(profitIfWholesale, settings.currency)}`}
+                  tone="indigo"
+                />
+                <SummaryCard
+                  label="قيمة البيع تجزئة"
+                  value={formatCurrency(totalRetail, settings.currency)}
+                  sub={`هامش: ${formatCurrency(profitIfRetail, settings.currency)}`}
+                  tone="emerald"
+                />
+                <SummaryCard
+                  label="منتجات نفذت"
+                  value={`${products.filter(p => p.quantity <= 0).length} منتج`}
+                  sub={`${products.filter(p => p.quantity > 0 && p.quantity <= p.minStock).length} منخفض المخزون`}
+                  tone={products.some(p => p.quantity <= 0) ? "red" : "slate"}
+                />
+              </div>
+            );
+          })()}
           <Card>
             <CardHeader title={`قائمة المخزون (${products.length} منتج)`} />
             <CardBody>
@@ -687,7 +778,8 @@ export function ReportsPage() {
                     <TH>الفئة</TH>
                     <TH className="text-end">الكمية</TH>
                     <TH className="text-end">قيمة الشراء</TH>
-                    <TH className="text-end">قيمة البيع</TH>
+                    <TH className="text-end">قيمة البيع جملة</TH>
+                    <TH className="text-end">قيمة البيع تجزئة</TH>
                   </TR>
                 </THead>
                 <TBody>
@@ -696,8 +788,11 @@ export function ReportsPage() {
                       <TD className="font-mono text-xs">{p.code}</TD>
                       <TD className="font-medium text-slate-900">{p.name}</TD>
                       <TD className="text-slate-600">{p.category}</TD>
-                      <TD className="text-end">{p.quantity} {p.unit}</TD>
+                      <TD className={`text-end font-mono ${p.quantity <= 0 ? "text-rose-700 font-bold" : p.quantity <= p.minStock ? "text-amber-700" : ""}`}>
+                        {p.quantity} {p.unit}
+                      </TD>
                       <TD className="text-end">{formatCurrency(p.quantity * p.purchasePrice, settings.currency)}</TD>
+                      <TD className="text-end">{formatCurrency(p.quantity * p.wholesalePrice, settings.currency)}</TD>
                       <TD className="text-end">{formatCurrency(p.quantity * p.retailPrice, settings.currency)}</TD>
                     </TR>
                   ))}
@@ -1295,484 +1390,75 @@ export function ReportsPage() {
       </Tabs>
       </div>
 
-      {/* Print-Only Layout (Statement Style) */}
-      <div className="print-only font-sans text-slate-900">
-        <div className="border-b-2 border-slate-900 pb-6 mb-8 flex justify-between items-end">
-          <div>
-            <h1 className="text-3xl font-bold">{settings.companyNameAr}</h1>
-            <p className="text-lg text-slate-600 mt-1">{settings.companyName}</p>
-            <div className="mt-4 space-y-1 text-sm text-slate-500">
-              <p>تاريخ استخراج التقرير: {formatDate(new Date().toISOString())}</p>
-              {printMode === "supplierDues" ? (
-                <p>النطاق: كل فواتير الموردين المفتوحة حتى تاريخ الاستخراج</p>
-              ) : (
-                <p>الفترة من: {formatDate(from)} إلى: {formatDate(to)}</p>
-              )}
+      {/* ── Preview Modal ── */}
+      {previewOpen && (
+        <div
+          className="fixed inset-0 z-50 bg-black/60 flex flex-col items-center overflow-y-auto py-8 px-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setPreviewOpen(false); }}
+        >
+          <div className="w-full max-w-[820px] mb-4 flex items-center justify-between no-print">
+            <div className="flex gap-2">
+              <button
+                onClick={() => { setPreviewOpen(false); setTimeout(() => window.print(), 50); }}
+                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 h-9 rounded-lg"
+              >
+                <Printer className="w-4 h-4" /> طباعة
+              </button>
             </div>
+            <button
+              onClick={() => setPreviewOpen(false)}
+              className="text-white/80 hover:text-white text-sm flex items-center gap-1.5 bg-white/10 hover:bg-white/20 px-3 h-9 rounded-lg"
+            >
+              ✕ إغلاق
+            </button>
           </div>
-          <div className="text-right">
-            <div className="w-20 h-20 bg-slate-900 text-white rounded-2xl grid place-items-center text-3xl font-bold mb-3 ms-auto">
-              {settings.logoText}
-            </div>
-            <h2 className="text-xl font-bold tracking-widest uppercase">
-              {printMode === "full" && "كشف حساب مالي تحليلي"}
-              {printMode === "sales" && "تقرير مبيعات تفصيلي"}
-              {printMode === "purchases" && "تقرير مشتريات تفصيلي"}
-              {printMode === "stock" && "تقرير جرد المخزون"}
-              {printMode === "customers" && "كشف أرصدة مديونيات العملاء"}
-              {printMode === "suppliers" && "كشف مستحقات الموردين"}
-              {printMode === "supplierDues" && "كشف الفلوس المطلوبة للموردين"}
-              {printMode === "commissions" && "تقرير عمولات الموردين"}
-              {printMode === "monthlyProfit" && "تقرير الربح الشهري"}
-              {printMode === "customerDues" && "كشف فلوس لدينا من العملاء"}
-            </h2>
-            <p className="text-xs opacity-50">نظام الهلبرز لإدارة المستودعات</p>
-          </div>
-        </div>
-
-        {printMode === "full" && (
-          <>
-            <div className="grid grid-cols-2 gap-8 mb-10">
-              <section>
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 border-b pb-1">الخلاصة المالية</h3>
-                <table className="w-full text-sm">
-                  <tbody className="divide-y divide-slate-100">
-                    <TR_Print label="إجمالي قيمة المبيعات" value={formatCurrency(totalSales, settings.currency)} />
-                    <TR_Print label="إجمالي قيمة المشتريات" value={formatCurrency(totalPurchases, settings.currency)} />
-                    <TR_Print label="إجمالي مرتجعات البيع" value={formatCurrency(salesInRange.reduce((a, s) => a + (s.total < 0 ? s.total : 0), 0), settings.currency)} />
-                    <TR_Print label="الربح التشغيلي التقديري" value={formatCurrency(estimatedProfit, settings.currency)} highlight />
-                    <TR_Print label="إجمالي العمولات المستحقة" value={formatCurrency(totalCommissions, settings.currency)} highlight />
-                    {canViewEmployeeBonuses ? (
-                      <>
-                        <TR_Print label="إجمالي بونص الموظفين" value={formatCurrency(totalEmployeeBonuses, settings.currency)} highlight />
-                        <TR_Print label="صافي تقديري بعد البونصات" value={formatCurrency(estimatedProfitAfterBonuses, settings.currency)} highlight />
-                      </>
-                    ) : null}
-                  </tbody>
-                </table>
-              </section>
-              <section>
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 border-b pb-1">إحصائيات العمليات</h3>
-                <table className="w-full text-sm">
-                  <tbody className="divide-y divide-slate-100">
-                    <TR_Print label="عدد فواتير البيع" value={salesInRange.length.toString()} />
-                    <TR_Print label="عدد فواتير الشراء" value={purchasesInRange.length.toString()} />
-                    <TR_Print label="أعلى فئة مبيعاً" value={categoryShare[0]?.name || "—"} />
-                    <TR_Print label="متوسط قيمة الفاتورة" value={formatCurrency(totalSales / (salesInRange.length || 1), settings.currency)} />
-                  </tbody>
-                </table>
-              </section>
-            </div>
-
-            <div className="space-y-10">
-              <section className="break-inside-avoid">
-                <h3 className="text-sm font-bold mb-4 bg-slate-100 p-2 border-r-4 border-slate-900">أداء المنتجات (الأكثر مبيعاً)</h3>
-                <table className="w-full text-left text-sm">
-                  <thead>
-                    <tr className="border-b-2 border-slate-200">
-                      <th className="py-2 text-right">المنتج</th>
-                      <th className="py-2 text-center">الكمية المباعة</th>
-                      <th className="py-2 text-left">إجمالي الإيراد</th>
-                      <th className="py-2 text-left">هامش الربح</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {topProducts.map((p, i) => (
-                      <tr key={i}>
-                        <td className="py-2 text-right font-medium">{p.name}</td>
-                        <td className="py-2 text-center tabular-nums">{p.qty}</td>
-                        <td className="py-2 text-left tabular-nums font-mono">{formatCurrency(p.revenue, settings.currency)}</td>
-                        <td className="py-2 text-left tabular-nums font-mono">{formatCurrency(p.grossProfit, settings.currency)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </section>
-
-              <section className="break-inside-avoid">
-                <h3 className="text-sm font-bold mb-4 bg-slate-100 p-2 border-r-4 border-slate-900">مديونيات العملاء والموردين</h3>
-                <div className="grid grid-cols-2 gap-8">
-                  <div>
-                    <h4 className="text-xs font-bold text-slate-500 mb-2">أعلى 5 مديونيات عملاء</h4>
-                    <table className="w-full text-xs">
-                      <tbody className="divide-y divide-slate-50">
-                        {customers.map(c => ({ name: c.name, bal: customerBalance(c.id) }))
-                          .filter(x => x.bal > 0)
-                          .sort((a,b) => b.bal - a.bal)
-                          .slice(0, 5)
-                          .map((x, i) => (
-                            <tr key={i}><td className="py-1 text-right">{x.name}</td><td className="py-1 text-left tabular-nums font-mono font-semibold">{formatCurrency(x.bal, settings.currency)}</td></tr>
-                          ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-slate-500 mb-2">أعلى 5 مستحقات موردين</h4>
-                    <table className="w-full text-xs">
-                      <tbody className="divide-y divide-slate-50">
-                        {suppliers.map(s => ({ name: s.name, bal: supplierBalance(s.id) }))
-                          .filter(x => x.bal > 0)
-                          .sort((a,b) => b.bal - a.bal)
-                          .slice(0, 5)
-                          .map((x, i) => (
-                            <tr key={i}><td className="py-1 text-right">{x.name}</td><td className="py-1 text-left tabular-nums font-mono font-semibold">{formatCurrency(x.bal, settings.currency)}</td></tr>
-                          ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </section>
-            </div>
-          </>
-        )}
-
-        {printMode === "sales" && (
-          <section>
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b-2 border-slate-200">
-                  <th className="py-2 text-right">رقم الفاتورة</th>
-                  <th className="py-2 text-right">التاريخ</th>
-                  <th className="py-2 text-right">العميل</th>
-                  <th className="py-2 text-left">الإجمالي</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {salesInRange.map((s, i) => (
-                  <tr key={i}>
-                    <td className="py-2 text-right font-mono tabular-nums">{s.invoiceNumber}</td>
-                    <td className="py-2 text-right tabular-nums">{formatDate(s.date)}</td>
-                    <td className="py-2 text-right">{s.customerName}</td>
-                    <td className="py-2 text-left tabular-nums font-mono">{formatCurrency(s.total, settings.currency)}</td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr className="border-t-2 border-slate-900 font-bold bg-slate-50">
-                  <td colSpan={3} className="py-3 text-right">الإجمالي الكلي للمبيعات</td>
-                  <td className="py-3 text-left tabular-nums font-mono text-lg">{formatCurrency(totalSales, settings.currency)}</td>
-                </tr>
-              </tfoot>
-            </table>
-          </section>
-        )}
-
-        {printMode === "purchases" && (
-          <section>
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b-2 border-slate-200">
-                  <th className="py-2 text-right">رقم الفاتورة</th>
-                  <th className="py-2 text-right">التاريخ</th>
-                  <th className="py-2 text-right">المورد</th>
-                  <th className="py-2 text-left">الإجمالي</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {purchasesInRange.map((p, i) => (
-                  <tr key={i}>
-                    <td className="py-2 text-right font-mono tabular-nums">{p.invoiceNumber}</td>
-                    <td className="py-2 text-right tabular-nums">{formatDate(p.date)}</td>
-                    <td className="py-2 text-right">{p.supplierName}</td>
-                    <td className="py-2 text-left tabular-nums font-mono">{formatCurrency(p.total, settings.currency)}</td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr className="border-t-2 border-slate-900 font-bold bg-slate-50">
-                  <td colSpan={3} className="py-3 text-right">الإجمالي الكلي للمشتريات</td>
-                  <td className="py-3 text-left tabular-nums font-mono text-lg">{formatCurrency(totalPurchases, settings.currency)}</td>
-                </tr>
-              </tfoot>
-            </table>
-          </section>
-        )}
-
-        {printMode === "stock" && (
-          <section>
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b-2 border-slate-200">
-                  <th className="py-2 text-right">الكود</th>
-                  <th className="py-2 text-right">المنتج</th>
-                  <th className="py-2 text-center">الكمية</th>
-                  <th className="py-2 text-left">قيمة المخزون (شراء)</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {products.map((p, i) => (
-                  <tr key={i}>
-                    <td className="py-2 text-right font-mono tabular-nums">{p.code}</td>
-                    <td className="py-2 text-right">{p.name}</td>
-                    <td className="py-2 text-center tabular-nums">{p.quantity} {p.unit}</td>
-                    <td className="py-2 text-left tabular-nums font-mono">{formatCurrency(p.quantity * p.purchasePrice, settings.currency)}</td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr className="border-t-2 border-slate-900 font-bold bg-slate-50">
-                  <td colSpan={3} className="py-3 text-right">قيمة المخزون الكلية (سعر الشراء)</td>
-                  <td className="py-3 text-left tabular-nums font-mono text-lg">{formatCurrency(products.reduce((a,p) => a + (p.quantity * p.purchasePrice), 0), settings.currency)}</td>
-                </tr>
-              </tfoot>
-            </table>
-          </section>
-        )}
-
-        {printMode === "customers" && (
-          <section>
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b-2 border-slate-200">
-                  <th className="py-2 text-right">العميل</th>
-                  <th className="py-2 text-right">الهاتف</th>
-                  <th className="py-2 text-left">الرصيد المستحق</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {customers.map((c, i) => {
-                  const bal = customerBalance(c.id);
-                  if (bal === 0) return null;
-                  return (
-                    <tr key={i}>
-                      <td className="py-2 text-right font-medium">{c.name}</td>
-                      <td className="py-2 text-right text-slate-500 tabular-nums">{c.phone || "—"}</td>
-                      <td className="py-2 text-left font-bold tabular-nums font-mono">{formatCurrency(bal, settings.currency)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-              <tfoot>
-                <tr className="border-t-2 border-slate-900 font-bold bg-slate-50">
-                  <td colSpan={2} className="py-3 text-right">إجمالي أرصدة العملاء المستحقة</td>
-                  <td className="py-3 text-left tabular-nums font-mono text-lg">{formatCurrency(customers.reduce((a,c) => a + customerBalance(c.id), 0), settings.currency)}</td>
-                </tr>
-              </tfoot>
-            </table>
-          </section>
-        )}
-
-        {printMode === "suppliers" && (
-          <section>
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b-2 border-slate-200">
-                  <th className="py-2 text-right">المورد</th>
-                  <th className="py-2 text-right">الهاتف</th>
-                  <th className="py-2 text-left">الرصيد المستحق</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {suppliers.map((s, i) => {
-                  const bal = supplierBalance(s.id);
-                  if (bal === 0) return null;
-                  return (
-                    <tr key={i}>
-                      <td className="py-2 text-right font-medium">{s.name}</td>
-                      <td className="py-2 text-right text-slate-500 tabular-nums">{s.phone || "—"}</td>
-                      <td className="py-2 text-left font-bold tabular-nums font-mono">{formatCurrency(bal, settings.currency)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-              <tfoot>
-                <tr className="border-t-2 border-slate-900 font-bold bg-slate-50">
-                  <td colSpan={2} className="py-3 text-right">إجمالي مستحقات الموردين</td>
-                  <td className="py-3 text-left tabular-nums font-mono text-lg">{formatCurrency(suppliers.reduce((a,s) => a + supplierBalance(s.id), 0), settings.currency)}</td>
-                </tr>
-              </tfoot>
-            </table>
-          </section>
-        )}
-
-        {printMode === "supplierDues" && (
-          <section>
-            <div className="grid grid-cols-3 gap-4 mb-6 text-sm">
-              <div className="border border-slate-200 rounded-lg p-3">
-                <div className="text-slate-500">إجمالي المطلوب دفعه</div>
-                <div className="font-bold text-lg">{formatCurrency(supplierPayablesTotal, settings.currency)}</div>
-              </div>
-              <div className="border border-slate-200 rounded-lg p-3">
-                <div className="text-slate-500">عدد الفواتير المفتوحة</div>
-                <div className="font-bold text-lg">{supplierDueInvoices.length}</div>
-              </div>
-              <div className="border border-slate-200 rounded-lg p-3">
-                <div className="text-slate-500">عدد الموردين</div>
-                <div className="font-bold text-lg">{supplierPayableRows.length}</div>
-              </div>
-            </div>
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b-2 border-slate-200">
-                  <th className="py-2 text-right">رقم الفاتورة</th>
-                  <th className="py-2 text-right">التاريخ</th>
-                  <th className="py-2 text-right">العمر</th>
-                  <th className="py-2 text-right">المورد</th>
-                  <th className="py-2 text-left">الإجمالي</th>
-                  <th className="py-2 text-left">المدفوع</th>
-                  <th className="py-2 text-left">المتبقي</th>
-                  <th className="py-2 text-right">الحالة</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {supplierDueInvoices.map((invoice, i) => {
-                  const age = invoiceAgeDays(invoice.date);
-                  return (
-                    <tr key={i}>
-                      <td className="py-2 text-right font-mono tabular-nums">{invoice.invoiceNumber}</td>
-                      <td className="py-2 text-right tabular-nums">{formatDate(invoice.date)}</td>
-                      <td className="py-2 text-right">{invoiceAgeLabel(age)}</td>
-                      <td className="py-2 text-right">{invoice.supplierName}</td>
-                      <td className="py-2 text-left tabular-nums font-mono">{formatCurrency(invoice.total, settings.currency)}</td>
-                      <td className="py-2 text-left tabular-nums font-mono">{formatCurrency(invoice.amountPaid, settings.currency)}</td>
-                      <td className="py-2 text-left tabular-nums font-mono font-bold">{formatCurrency(invoice.remaining, settings.currency)}</td>
-                      <td className="py-2 text-right">{purchaseStatusLabel(invoice.status)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-              <tfoot>
-                <tr className="border-t-2 border-slate-900 font-bold bg-slate-50">
-                  <td colSpan={6} className="py-3 text-right">إجمالي المطلوب دفعه للموردين</td>
-                  <td className="py-3 text-left tabular-nums font-mono text-lg">{formatCurrency(supplierPayablesTotal, settings.currency)}</td>
-                  <td />
-                </tr>
-              </tfoot>
-            </table>
-          </section>
-        )}
-
-        {printMode === "commissions" && (
-          <section>
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b-2 border-slate-200">
-                  <th className="py-2 text-right">المورد</th>
-                  <th className="py-2 text-right">الشريحة (الهدف)</th>
-                  <th className="py-2 text-center">المشتريات الحالية</th>
-                  <th className="py-2 text-left">البونص المستحق</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {suppliers.flatMap(s => calculateSupplierCommission(s.id).map(c => ({ sName: s.name, ...c }))).map((row, i) => (
-                  <tr key={i}>
-                    <td className="py-2 text-right font-medium">{row.sName}</td>
-                    <td className="py-2 text-right">{formatCurrency(row.threshold, settings.currency)} ({row.periodDays} يوم)</td>
-                    <td className="py-2 text-center">{formatCurrency(row.totalPurchases, settings.currency)}</td>
-                    <td className="py-2 text-left font-bold text-emerald-700 tabular-nums font-mono">{formatCurrency(row.earned, settings.currency)}</td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr className="border-t-2 border-slate-900 font-bold bg-slate-50">
-                  <td colSpan={3} className="py-3 text-right">إجمالي البونص المستحق لجميع الموردين</td>
-                  <td className="py-3 text-left tabular-nums font-mono text-lg">{formatCurrency(totalCommissions, settings.currency)}</td>
-                </tr>
-              </tfoot>
-            </table>
-          </section>
-        )}
-
-        {printMode === "monthlyProfit" && (
-          <section>
-            <div className="grid grid-cols-3 gap-4 mb-6 text-sm">
-              <div className="border border-slate-200 rounded-lg p-3">
-                <div className="text-slate-500">صافي المبيعات</div>
-                <div className="font-bold text-lg">{formatCurrency(monthlyTotals.sales, settings.currency)}</div>
-              </div>
-              <div className="border border-slate-200 rounded-lg p-3">
-                <div className="text-slate-500">إجمالي المشتريات</div>
-                <div className="font-bold text-lg">{formatCurrency(monthlyTotals.purchases, settings.currency)}</div>
-              </div>
-              <div className="border border-slate-200 rounded-lg p-3">
-                <div className="text-slate-500">هامش الربح</div>
-                <div className="font-bold text-lg">{formatCurrency(monthlyTotals.profit, settings.currency)}</div>
-              </div>
-            </div>
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b-2 border-slate-200">
-                  <th className="py-2 text-right">الشهر</th>
-                  <th className="py-2 text-left">المبيعات</th>
-                  <th className="py-2 text-left">المشتريات</th>
-                  <th className="py-2 text-left">هامش الربح</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {monthlyProfitData.map((row, i) => (
-                  <tr key={i}>
-                    <td className="py-2 text-right font-medium">{row.month}</td>
-                    <td className="py-2 text-left tabular-nums font-mono">{formatCurrency(row.sales, settings.currency)}</td>
-                    <td className="py-2 text-left tabular-nums font-mono">{formatCurrency(row.purchases, settings.currency)}</td>
-                    <td className="py-2 text-left tabular-nums font-mono font-bold">{formatCurrency(row.profit, settings.currency)}</td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr className="border-t-2 border-slate-900 font-bold bg-slate-50">
-                  <td className="py-3 text-right">الإجمالي</td>
-                  <td className="py-3 text-left tabular-nums font-mono">{formatCurrency(monthlyTotals.sales, settings.currency)}</td>
-                  <td className="py-3 text-left tabular-nums font-mono">{formatCurrency(monthlyTotals.purchases, settings.currency)}</td>
-                  <td className="py-3 text-left tabular-nums font-mono text-lg">{formatCurrency(monthlyTotals.profit, settings.currency)}</td>
-                </tr>
-              </tfoot>
-            </table>
-          </section>
-        )}
-
-        {printMode === "customerDues" && (
-          <section>
-            <div className="grid grid-cols-2 gap-4 mb-6 text-sm">
-              <div className="border border-slate-200 rounded-lg p-3">
-                <div className="text-slate-500">إجمالي المستحق من العملاء</div>
-                <div className="font-bold text-lg">{formatCurrency(totalReceivables, settings.currency)}</div>
-              </div>
-              <div className="border border-slate-200 rounded-lg p-3">
-                <div className="text-slate-500">عدد العملاء لديهم أرصدة</div>
-                <div className="font-bold text-lg">{customers.filter((c) => customerBalance(c.id) > 0).length}</div>
-              </div>
-            </div>
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b-2 border-slate-200">
-                  <th className="py-2 text-right">الكود</th>
-                  <th className="py-2 text-right">العميل</th>
-                  <th className="py-2 text-right">الهاتف</th>
-                  <th className="py-2 text-left">المبلغ المستحق</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {customers
-                  .map((c) => ({ c, bal: customerBalance(c.id) }))
-                  .filter(({ bal }) => bal > 0)
-                  .sort((a, b) => b.bal - a.bal)
-                  .map(({ c, bal }, i) => (
-                    <tr key={i}>
-                      <td className="py-2 text-right font-mono text-xs">{c.code || "—"}</td>
-                      <td className="py-2 text-right font-medium">{c.name}</td>
-                      <td className="py-2 text-right text-slate-500">{c.phone || "—"}</td>
-                      <td className="py-2 text-left font-bold tabular-nums font-mono">{formatCurrency(bal, settings.currency)}</td>
-                    </tr>
-                  ))}
-              </tbody>
-              <tfoot>
-                <tr className="border-t-2 border-slate-900 font-bold bg-slate-50">
-                  <td colSpan={3} className="py-3 text-right">الإجمالي المستحق من العملاء</td>
-                  <td className="py-3 text-left tabular-nums font-mono text-lg">{formatCurrency(totalReceivables, settings.currency)}</td>
-                </tr>
-              </tfoot>
-            </table>
-          </section>
-        )}
-
-        <div className="mt-20 pt-10 border-t border-slate-200 flex justify-between text-xs text-slate-400">
-          <p>هذا التقرير تم استخراجه آلياً ولا يحتاج لختم رسمي.</p>
-          <div className="text-center">
-            <p className="mb-8 font-bold text-slate-900">توقيع المسؤول</p>
-            <p>.........................................</p>
+          <div className="w-full max-w-[820px] bg-white rounded-xl shadow-2xl overflow-hidden">
+            <ReportContent
+              printMode={printMode} from={from} to={to}
+              settings={settings} formatCurrency={formatCurrency} formatDate={formatDate}
+              salesInRange={salesInRange} purchasesInRange={purchasesInRange}
+              salesReturnsInRange={salesReturnsInRange}
+              grossSalesInRange={grossSalesInRange} totalSales={totalSales}
+              totalPurchases={totalPurchases} returnsTotalInRange={returnsTotalInRange}
+              collectedInRange={collectedInRange} remainingInRange={remainingInRange}
+              estimatedProfit={estimatedProfit} estimatedProfitAfterBonuses={estimatedProfitAfterBonuses}
+              totalCommissions={totalCommissions} totalEmployeeBonuses={totalEmployeeBonuses}
+              totalReceivables={totalReceivables} supplierPayablesTotal={supplierPayablesTotal}
+              supplierDueInvoices={supplierDueInvoices} supplierPayableRows={supplierPayableRows}
+              monthlyProfitData={monthlyProfitData} monthlyTotals={monthlyTotals}
+              topProducts={topProducts} categoryShare={categoryShare}
+              products={products} customers={customers} suppliers={suppliers}
+              customerBalance={customerBalance} supplierBalance={supplierBalance}
+              calculateSupplierCommission={calculateSupplierCommission}
+              canViewEmployeeBonuses={canViewEmployeeBonuses}
+            />
           </div>
         </div>
+      )}
+
+      {/* Print-Only Layout */}
+      <div className="print-only">
+        <ReportContent
+          printMode={printMode} from={from} to={to}
+          settings={settings} formatCurrency={formatCurrency} formatDate={formatDate}
+          salesInRange={salesInRange} purchasesInRange={purchasesInRange}
+          salesReturnsInRange={salesReturnsInRange}
+          grossSalesInRange={grossSalesInRange} totalSales={totalSales}
+          totalPurchases={totalPurchases} returnsTotalInRange={returnsTotalInRange}
+          collectedInRange={collectedInRange} remainingInRange={remainingInRange}
+          estimatedProfit={estimatedProfit} estimatedProfitAfterBonuses={estimatedProfitAfterBonuses}
+          totalCommissions={totalCommissions} totalEmployeeBonuses={totalEmployeeBonuses}
+          totalReceivables={totalReceivables} supplierPayablesTotal={supplierPayablesTotal}
+          supplierDueInvoices={supplierDueInvoices} supplierPayableRows={supplierPayableRows}
+          monthlyProfitData={monthlyProfitData} monthlyTotals={monthlyTotals}
+          topProducts={topProducts} categoryShare={categoryShare}
+          products={products} customers={customers} suppliers={suppliers}
+          customerBalance={customerBalance} supplierBalance={supplierBalance}
+          calculateSupplierCommission={calculateSupplierCommission}
+          canViewEmployeeBonuses={canViewEmployeeBonuses}
+        />
       </div>
+
     </>
   );
 }
@@ -1803,15 +1489,6 @@ function purchaseStatusLabel(status: string): string {
   if (status === "partial") return "مدفوع جزئياً";
   if (status === "unpaid") return "غير مدفوع";
   return "مفتوح";
-}
-
-function TR_Print({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
-  return (
-    <tr>
-      <td className="py-2 text-slate-600">{label}</td>
-      <td className={`py-2 text-left tabular-nums font-mono ${highlight ? "text-lg font-bold text-slate-900" : "text-sm font-medium"}`}>{value}</td>
-    </tr>
-  );
 }
 
 function Stat({
@@ -1846,3 +1523,576 @@ function Stat({
     </div>
   );
 }
+
+function SummaryCard({
+  label,
+  value,
+  sub,
+  tone = "slate",
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  tone?: "slate" | "green" | "emerald" | "amber" | "red" | "indigo";
+}) {
+  const valueColors: Record<string, string> = {
+    slate: "text-slate-900",
+    green: "text-emerald-700",
+    emerald: "text-emerald-700",
+    amber: "text-amber-700",
+    red: "text-rose-700",
+    indigo: "text-indigo-700",
+  };
+  const borderColors: Record<string, string> = {
+    slate: "border-slate-200",
+    green: "border-emerald-200",
+    emerald: "border-emerald-200",
+    amber: "border-amber-200",
+    red: "border-rose-200",
+    indigo: "border-indigo-200",
+  };
+  return (
+    <div className={`bg-white rounded-xl border p-3 ${borderColors[tone]}`}>
+      <div className="text-[11px] text-slate-500 mb-1">{label}</div>
+      <div className={`text-base font-bold tabular-nums leading-tight ${valueColors[tone]}`}>{value}</div>
+      {sub && <div className="text-[10px] text-slate-400 mt-0.5">{sub}</div>}
+    </div>
+  );
+}
+
+// ─── Print / Preview Report Component ────────────────────────────────────────
+
+type RCProps = {
+  printMode: PrintMode;
+  from: string;
+  to: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  settings: any;
+  formatCurrency: (a: number, c: string) => string;
+  formatDate: (d: string) => string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  salesInRange: any[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  purchasesInRange: any[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  salesReturnsInRange: any[];
+  grossSalesInRange: number;
+  totalSales: number;
+  totalPurchases: number;
+  returnsTotalInRange: number;
+  collectedInRange: number;
+  remainingInRange: number;
+  estimatedProfit: number;
+  estimatedProfitAfterBonuses: number;
+  totalCommissions: number;
+  totalEmployeeBonuses: number;
+  totalReceivables: number;
+  supplierPayablesTotal: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supplierDueInvoices: any[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supplierPayableRows: any[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  monthlyProfitData: any[];
+  monthlyTotals: { sales: number; purchases: number; profit: number };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  topProducts: any[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  categoryShare: any[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  products: any[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  customers: any[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  suppliers: any[];
+  customerBalance: (id: string) => number;
+  supplierBalance: (id: string) => number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  calculateSupplierCommission: (id: string) => any[];
+  canViewEmployeeBonuses: boolean;
+};
+
+function SectionHeader({ title }: { title: string }) {
+  return (
+    <div className="flex items-center gap-2 mb-4 mt-6">
+      <div className="w-1 h-5 bg-blue-600 rounded-full shrink-0" />
+      <h3 className="text-sm font-bold text-slate-800 whitespace-nowrap">{title}</h3>
+      <div className="flex-1 h-px bg-slate-200" />
+    </div>
+  );
+}
+
+function KpiCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ border: "1.5px solid #0f172a", borderRadius: 6, overflow: "hidden" }}>
+      <div style={{ padding: "5px 10px", fontSize: 10, fontWeight: 700, color: "#0f172a", background: "#f1f5f9", borderBottom: "1px solid #cbd5e1" }}>
+        {label}
+      </div>
+      <div style={{ padding: "6px 10px", fontWeight: 800, color: "#0f172a", fontSize: 13, fontFamily: "monospace" }}>{value}</div>
+    </div>
+  );
+}
+
+function PrintTable({
+  head,
+  body,
+  foot,
+}: {
+  head: string[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  body: (string | React.ReactNode)[][];
+  foot?: (string | React.ReactNode)[];
+}) {
+  return (
+    <table className="w-full text-xs border-collapse">
+      <thead>
+        <tr className="bg-slate-800 text-white">
+          {head.map((h, i) => (
+            <th key={i} className="px-3 py-2 text-right font-semibold whitespace-nowrap">{h}</th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {body.map((row, ri) => (
+          <tr key={ri} className={ri % 2 === 0 ? "bg-white" : "bg-slate-50"}>
+            {row.map((cell, ci) => (
+              <td key={ci} className="px-3 py-1.5 text-right border-b border-slate-100">{cell}</td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+      {foot && (
+        <tfoot>
+          <tr className="bg-slate-100 border-t-2 border-slate-800 font-bold">
+            {foot.map((cell, i) => (
+              <td key={i} className="px-3 py-2 text-right tabular-nums">{cell}</td>
+            ))}
+          </tr>
+        </tfoot>
+      )}
+    </table>
+  );
+}
+
+function ReportContent({
+  printMode, from, to, settings,
+  formatCurrency, formatDate,
+  salesInRange, purchasesInRange,
+  grossSalesInRange, totalSales, totalPurchases,
+  returnsTotalInRange, collectedInRange, remainingInRange,
+  estimatedProfit, estimatedProfitAfterBonuses,
+  totalCommissions, totalEmployeeBonuses,
+  totalReceivables, supplierPayablesTotal,
+  supplierDueInvoices, supplierPayableRows,
+  monthlyProfitData, monthlyTotals,
+  topProducts,
+  products, customers, suppliers,
+  customerBalance, supplierBalance,
+  calculateSupplierCommission,
+  canViewEmployeeBonuses,
+}: RCProps) {
+  const cur = settings.currency;
+
+  const modeLabel: Record<PrintMode, string> = {
+    full:         "التقرير المالي التحليلي الشامل",
+    sales:        "تقرير مبيعات الفترة",
+    purchases:    "تقرير مشتريات الفترة",
+    stock:        "كشف حالة المخزون",
+    customers:    "كشف أرصدة العملاء",
+    suppliers:    "كشف مستحقات الموردين",
+    supplierDues: "كشف المبالغ المستحقة للموردين",
+    commissions:  "تقرير عمولات الموردين",
+    monthlyProfit:"تقرير الربح الشهري",
+    customerDues: "كشف المبالغ المستحقة من العملاء",
+  };
+
+  const periodLine =
+    printMode === "supplierDues"
+      ? "كل الفواتير المفتوحة حتى تاريخ الاستخراج"
+      : `الفترة: ${formatDate(from)} — ${formatDate(to)}`;
+
+  return (
+    <div className="font-sans text-slate-900" dir="rtl">
+      {/* ── Header ── */}
+      <div style={{ borderBottom: "3px solid #0f172a", padding: "16px 32px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{
+            width: 48, height: 48, borderRadius: 8, overflow: "hidden", flexShrink: 0,
+            border: "1px solid #e2e8f0",
+            background: settings.logoImage ? "transparent" : "#f1f5f9",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            {settings.logoImage
+              ? <img src={settings.logoImage} alt="Logo" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+              : <span style={{ fontWeight: 800, fontSize: 15, color: "#0f172a" }}>{settings.logoText}</span>
+            }
+          </div>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 17, color: "#0f172a", lineHeight: 1.2 }}>{settings.companyNameAr}</div>
+            {settings.companyName && settings.companyName !== settings.companyNameAr && (
+              <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>{settings.companyName}</div>
+            )}
+          </div>
+        </div>
+        <div style={{ textAlign: "left" }}>
+          <div style={{ fontSize: 15, fontWeight: 800, color: "#0f172a" }}>{modeLabel[printMode]}</div>
+          <div style={{ fontSize: 11, color: "#64748b", marginTop: 3 }}>{periodLine}</div>
+        </div>
+      </div>
+      <div style={{ borderBottom: "1px solid #e2e8f0", padding: "5px 32px", display: "flex", justifyContent: "space-between", fontSize: 10, color: "#94a3b8" }}>
+        <span>تاريخ الاستخراج: {formatDate(new Date().toISOString())}</span>
+      </div>
+
+      {/* ── Content ── */}
+      <div className="px-8 py-6">
+
+        {/* ════ FULL ════ */}
+        {printMode === "full" && (
+          <>
+            <div className="grid grid-cols-3 gap-3 mb-6">
+              <KpiCard label="إجمالي المبيعات" value={formatCurrency(totalSales, cur)} />
+              <KpiCard label="إجمالي المشتريات" value={formatCurrency(totalPurchases, cur)} />
+              <KpiCard label="الربح التشغيلي التقديري" value={formatCurrency(estimatedProfit, cur)} />
+            </div>
+
+            <div className="grid grid-cols-2 gap-8">
+              <div>
+                <SectionHeader title="الملخص المالي" />
+                <PrintTable
+                  head={["البيان", "القيمة"]}
+                  body={[
+                    ["إجمالي المبيعات", formatCurrency(totalSales, cur)],
+                    ["إجمالي المشتريات", formatCurrency(totalPurchases, cur)],
+                    ["مرتجعات البيع", formatCurrency(returnsTotalInRange, cur)],
+                    ["الربح التشغيلي", formatCurrency(estimatedProfit, cur)],
+                    ["عمولات الموردين المستحقة", formatCurrency(totalCommissions, cur)],
+                    ...(canViewEmployeeBonuses ? [["بونص الموظفين", formatCurrency(totalEmployeeBonuses, cur)]] : []),
+                    ...(canViewEmployeeBonuses ? [["صافي الربح بعد البونص", formatCurrency(estimatedProfitAfterBonuses, cur)]] : []),
+                    ["ذمم العملاء المستحقة", formatCurrency(totalReceivables, cur)],
+                    ["مستحقات الموردين", formatCurrency(supplierPayablesTotal, cur)],
+                  ]}
+                />
+              </div>
+              <div>
+                <SectionHeader title="إحصاءات الفترة" />
+                <PrintTable
+                  head={["البيان", "العدد"]}
+                  body={[
+                    ["عدد فواتير المبيعات", salesInRange.length.toString()],
+                    ["عدد فواتير المشتريات", purchasesInRange.length.toString()],
+                    ["عدد المنتجات في المخزون", products.filter((p) => p.quantity > 0).length.toString()],
+                    ["عدد العملاء", customers.length.toString()],
+                    ["عدد الموردين", suppliers.length.toString()],
+                    ["عدد الفواتير المفتوحة (موردين)", supplierDueInvoices.length.toString()],
+                  ]}
+                />
+              </div>
+            </div>
+
+            {topProducts.length > 0 && (
+              <>
+                <SectionHeader title="أعلى المنتجات مبيعاً" />
+                <PrintTable
+                  head={["المنتج", "الكمية", "الإيرادات"]}
+                  body={topProducts.slice(0, 10).map((p) => [
+                    p.name,
+                    p.qty.toString(),
+                    formatCurrency(p.revenue, cur),
+                  ])}
+                />
+              </>
+            )}
+
+            {customers.some((c) => customerBalance(c.id) > 0) && (
+              <>
+                <SectionHeader title="أرصدة العملاء المستحقة" />
+                <PrintTable
+                  head={["العميل", "المبلغ المستحق"]}
+                  body={customers
+                    .map((c) => ({ c, bal: customerBalance(c.id) }))
+                    .filter(({ bal }) => bal > 0)
+                    .sort((a, b) => b.bal - a.bal)
+                    .slice(0, 10)
+                    .map(({ c, bal }) => [c.name, formatCurrency(bal, cur)])}
+                  foot={["الإجمالي", formatCurrency(totalReceivables, cur)]}
+                />
+              </>
+            )}
+          </>
+        )}
+
+        {/* ════ SALES ════ */}
+        {printMode === "sales" && (
+          <>
+            <div className="grid grid-cols-3 gap-3 mb-2">
+              <KpiCard label="إجمالي المبيعات" value={formatCurrency(grossSalesInRange, cur)} />
+              <KpiCard label="المرتجعات" value={formatCurrency(returnsTotalInRange, cur)} />
+              <KpiCard label="صافي المبيعات" value={formatCurrency(totalSales, cur)} />
+            </div>
+            <div className="grid grid-cols-2 gap-3 mb-6">
+              <KpiCard label="المبالغ المحصلة" value={formatCurrency(collectedInRange, cur)} />
+              <KpiCard label="المبالغ المتبقية" value={formatCurrency(remainingInRange, cur)} />
+            </div>
+
+            <SectionHeader title="تفاصيل فواتير المبيعات" />
+            <PrintTable
+              head={["رقم الفاتورة", "التاريخ", "العميل", "نوع السعر", "الإجمالي", "المحصل", "المتبقي", "الحالة"]}
+              body={salesInRange.map((s) => [
+                s.invoiceNumber,
+                formatDate(s.date),
+                s.customerName || "—",
+                s.priceType === "retail" ? "تجزئة" : "جملة",
+                formatCurrency(s.total, cur),
+                formatCurrency(s.amountReceived, cur),
+                formatCurrency(s.remaining, cur),
+                s.paymentType === "cash" ? "نقدي" : "آجل",
+              ])}
+              foot={[
+                `${salesInRange.length} فاتورة`,
+                "",
+                "",
+                "",
+                formatCurrency(grossSalesInRange, cur),
+                formatCurrency(collectedInRange, cur),
+                formatCurrency(remainingInRange, cur),
+                "",
+              ]}
+            />
+          </>
+        )}
+
+        {/* ════ PURCHASES ════ */}
+        {printMode === "purchases" && (
+          <>
+            <div className="grid grid-cols-3 gap-3 mb-6">
+              <KpiCard label="إجمالي المشتريات" value={formatCurrency(totalPurchases, cur)} />
+              <KpiCard label="عدد الفواتير" value={purchasesInRange.length.toString()} />
+              <KpiCard label="إجمالي المستحق للموردين" value={formatCurrency(supplierPayablesTotal, cur)} />
+            </div>
+
+            <SectionHeader title="تفاصيل فواتير المشتريات" />
+            <PrintTable
+              head={["رقم الفاتورة", "التاريخ", "المورد", "الإجمالي", "المدفوع", "المتبقي", "الحالة"]}
+              body={purchasesInRange.map((p) => [
+                p.invoiceNumber,
+                formatDate(p.date),
+                p.supplierName || "—",
+                formatCurrency(p.total, cur),
+                formatCurrency(p.amountPaid, cur),
+                formatCurrency(p.remaining, cur),
+                p.status === "paid" ? "مدفوع" : p.status === "partial" ? "جزئي" : "غير مدفوع",
+              ])}
+              foot={[
+                `${purchasesInRange.length} فاتورة`,
+                "",
+                "",
+                formatCurrency(totalPurchases, cur),
+                formatCurrency(purchasesInRange.reduce((a: number, p: any) => a + p.amountPaid, 0), cur),
+                formatCurrency(supplierPayablesTotal, cur),
+                "",
+              ]}
+            />
+          </>
+        )}
+
+        {/* ════ STOCK ════ */}
+        {printMode === "stock" && (
+          <>
+            <div className="grid grid-cols-4 gap-3 mb-6">
+              <KpiCard
+                label="قيمة المخزون (شراء)"
+                value={formatCurrency(products.reduce((a: number, p: any) => a + p.quantity * p.purchasePrice, 0), cur)}
+               
+              />
+              <KpiCard
+                label="قيمة البيع جملة"
+                value={formatCurrency(products.reduce((a: number, p: any) => a + p.quantity * p.wholesalePrice, 0), cur)}
+               
+              />
+              <KpiCard
+                label="قيمة البيع تجزئة"
+                value={formatCurrency(products.reduce((a: number, p: any) => a + p.quantity * p.price, 0), cur)}
+               
+              />
+              <KpiCard
+                label="إجمالي عدد المنتجات"
+                value={products.length.toString()}
+               
+              />
+            </div>
+
+            <SectionHeader title="كشف المخزون التفصيلي" />
+            <PrintTable
+              head={["الكود", "المنتج", "الفئة", "الكمية", "قيمة الشراء", "قيمة جملة", "قيمة تجزئة"]}
+              body={products.map((p: any) => [
+                p.code || "—",
+                p.name,
+                p.category || "—",
+                `${p.quantity} ${p.unit || ""}`.trim(),
+                formatCurrency(p.quantity * p.purchasePrice, cur),
+                formatCurrency(p.quantity * p.wholesalePrice, cur),
+                formatCurrency(p.quantity * p.price, cur),
+              ])}
+              foot={[
+                "", "",
+                `${products.length} منتج`,
+                "",
+                formatCurrency(products.reduce((a: number, p: any) => a + p.quantity * p.purchasePrice, 0), cur),
+                formatCurrency(products.reduce((a: number, p: any) => a + p.quantity * p.wholesalePrice, 0), cur),
+                formatCurrency(products.reduce((a: number, p: any) => a + p.quantity * p.price, 0), cur),
+              ]}
+            />
+          </>
+        )}
+
+        {/* ════ CUSTOMERS ════ */}
+        {printMode === "customers" && (
+          <>
+            <div className="grid grid-cols-2 gap-3 mb-6">
+              <KpiCard label="إجمالي الأرصدة المستحقة" value={formatCurrency(totalReceivables, cur)} />
+              <KpiCard label="عدد العملاء لديهم أرصدة" value={customers.filter((c: any) => customerBalance(c.id) > 0).length.toString()} />
+            </div>
+            <SectionHeader title="كشف أرصدة العملاء" />
+            <PrintTable
+              head={["العميل", "الهاتف", "الرصيد المستحق"]}
+              body={customers
+                .map((c: any) => ({ c, bal: customerBalance(c.id) }))
+                .filter(({ bal }) => bal !== 0)
+                .sort((a, b) => b.bal - a.bal)
+                .map(({ c, bal }) => [c.name, c.phone || "—", formatCurrency(bal, cur)])}
+              foot={["الإجمالي", "", formatCurrency(totalReceivables, cur)]}
+            />
+          </>
+        )}
+
+        {/* ════ SUPPLIERS ════ */}
+        {printMode === "suppliers" && (
+          <>
+            <SectionHeader title="كشف مستحقات الموردين" />
+            <PrintTable
+              head={["المورد", "الهاتف", "المستحق"]}
+              body={suppliers
+                .map((s: any) => ({ s, bal: supplierBalance(s.id) }))
+                .filter(({ bal }) => bal !== 0)
+                .sort((a, b) => b.bal - a.bal)
+                .map(({ s, bal }) => [s.name, s.phone || "—", formatCurrency(bal, cur)])}
+              foot={["الإجمالي", "", formatCurrency(suppliers.reduce((a: number, s: any) => a + supplierBalance(s.id), 0), cur)]}
+            />
+          </>
+        )}
+
+        {/* ════ SUPPLIER DUES ════ */}
+        {printMode === "supplierDues" && (
+          <>
+            <div className="grid grid-cols-3 gap-3 mb-6">
+              <KpiCard label="إجمالي المطلوب دفعه" value={formatCurrency(supplierPayablesTotal, cur)} />
+              <KpiCard label="عدد الفواتير المفتوحة" value={supplierDueInvoices.length.toString()} />
+              <KpiCard label="عدد الموردين" value={supplierPayableRows.length.toString()} />
+            </div>
+            <SectionHeader title="ملخص الموردين" />
+            <PrintTable
+              head={["المورد", "عدد الفواتير", "الإجمالي", "المدفوع", "المتبقي"]}
+              body={supplierPayableRows.map((r: any) => [
+                r.supplierName,
+                r.invoiceCount.toString(),
+                formatCurrency(r.total, cur),
+                formatCurrency(r.paid, cur),
+                formatCurrency(r.remaining, cur),
+              ])}
+              foot={["الإجمالي", supplierDueInvoices.length.toString(), "", "", formatCurrency(supplierPayablesTotal, cur)]}
+            />
+            <SectionHeader title="تفاصيل الفواتير" />
+            <PrintTable
+              head={["رقم الفاتورة", "التاريخ", "المورد", "الإجمالي", "المدفوع", "المتبقي"]}
+              body={supplierDueInvoices.map((inv: any) => [
+                inv.invoiceNumber,
+                formatDate(inv.date),
+                inv.supplierName,
+                formatCurrency(inv.total, cur),
+                formatCurrency(inv.amountPaid, cur),
+                formatCurrency(inv.remaining, cur),
+              ])}
+              foot={["", "", "", "", "", formatCurrency(supplierPayablesTotal, cur)]}
+            />
+          </>
+        )}
+
+        {/* ════ COMMISSIONS ════ */}
+        {printMode === "commissions" && (
+          <>
+            <SectionHeader title="تقرير عمولات الموردين" />
+            <PrintTable
+              head={["المورد", "الشريحة (الهدف)", "المشتريات الحالية", "البونص المستحق"]}
+              body={suppliers.flatMap((s: any) =>
+                calculateSupplierCommission(s.id).map((c: any) => [
+                  s.name,
+                  `${formatCurrency(c.threshold, cur)} (${c.periodDays} يوم)`,
+                  formatCurrency(c.totalPurchases, cur),
+                  formatCurrency(c.earned, cur),
+                ])
+              )}
+            />
+          </>
+        )}
+
+        {/* ════ MONTHLY PROFIT ════ */}
+        {printMode === "monthlyProfit" && (
+          <>
+            <div className="grid grid-cols-3 gap-3 mb-6">
+              <KpiCard label="إجمالي المبيعات" value={formatCurrency(monthlyTotals.sales, cur)} />
+              <KpiCard label="إجمالي المشتريات" value={formatCurrency(monthlyTotals.purchases, cur)} />
+              <KpiCard label="إجمالي هامش الربح" value={formatCurrency(monthlyTotals.profit, cur)} />
+            </div>
+            <SectionHeader title="الربح الشهري التفصيلي" />
+            <PrintTable
+              head={["الشهر", "المبيعات", "المشتريات", "هامش الربح"]}
+              body={monthlyProfitData.map((r: any) => [
+                r.month,
+                formatCurrency(r.sales, cur),
+                formatCurrency(r.purchases, cur),
+                formatCurrency(r.profit, cur),
+              ])}
+              foot={[
+                "الإجمالي",
+                formatCurrency(monthlyTotals.sales, cur),
+                formatCurrency(monthlyTotals.purchases, cur),
+                formatCurrency(monthlyTotals.profit, cur),
+              ]}
+            />
+          </>
+        )}
+
+        {/* ════ CUSTOMER DUES ════ */}
+        {printMode === "customerDues" && (
+          <>
+            <div className="grid grid-cols-2 gap-3 mb-6">
+              <KpiCard label="إجمالي المستحق من العملاء" value={formatCurrency(totalReceivables, cur)} />
+              <KpiCard label="عدد العملاء لديهم أرصدة" value={customers.filter((c: any) => customerBalance(c.id) > 0).length.toString()} />
+            </div>
+            <SectionHeader title="كشف المبالغ المستحقة من العملاء" />
+            <PrintTable
+              head={["الكود", "العميل", "الهاتف", "المبلغ المستحق"]}
+              body={customers
+                .map((c: any) => ({ c, bal: customerBalance(c.id) }))
+                .filter(({ bal }) => bal > 0)
+                .sort((a, b) => b.bal - a.bal)
+                .map(({ c, bal }) => [c.code || "—", c.name, c.phone || "—", formatCurrency(bal, cur)])}
+              foot={["", "الإجمالي", "", formatCurrency(totalReceivables, cur)]}
+            />
+          </>
+        )}
+
+      </div>
+
+      {/* ── Footer ── */}
+      <div className="mx-8 mt-4 mb-6 pt-4 border-t border-slate-200 flex justify-between items-end text-[10px] text-slate-400">
+        <span>هذا التقرير تم استخراجه آلياً ولا يحتاج لختم رسمي.</span>
+        <div className="text-center">
+          <div className="mb-6 text-xs font-bold text-slate-700">توقيع المسؤول</div>
+          <div>.................................................</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+

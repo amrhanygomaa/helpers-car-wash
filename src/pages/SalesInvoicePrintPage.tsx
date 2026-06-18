@@ -49,6 +49,7 @@ export function SalesInvoicePrintPage() {
       customerBalance={totalBalance}
       customerName={inv.customerName}
       paymentLog={inv.paymentLog}
+      overpayment={inv.overpayment}
     />
   );
 }

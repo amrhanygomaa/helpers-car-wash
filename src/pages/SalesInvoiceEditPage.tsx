@@ -30,12 +30,13 @@ export function SalesInvoiceEditPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const toast = useToast();
-  const { salesInvoices, updateSalesInvoice } = useInvoicing();
+  const { salesInvoices, salesReturns, updateSalesInvoice } = useInvoicing();
   const { products, drivers } = useCatalog();
   const { settings } = useSettings();
   const { customerBalance } = useReporting();
 
   const inv = salesInvoices.find((s) => s.id === id);
+  const hasReturns = salesReturns.some((r) => r.originalInvoiceId === id);
 
   const [invoiceNumber] = useState(inv?.invoiceNumber ?? "");
   const [date, setDate] = useState(inv?.date ?? "");
@@ -428,11 +429,19 @@ export function SalesInvoiceEditPage() {
                 min={0}
                 step="0.01"
                 value={amountReceived}
-                onChange={(e) =>
-                  setAmountReceived(Math.max(0, parseNumericInput(e.target.value, amountReceived)))
-                }
+                readOnly={hasReturns}
+                className={hasReturns ? "bg-gray-100 cursor-not-allowed text-gray-600" : ""}
+                onChange={(e) => {
+                  if (hasReturns) return;
+                  setAmountReceived(Math.max(0, parseNumericInput(e.target.value, amountReceived)));
+                }}
               />
             </Field>
+            {hasReturns && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
+                لا يمكن تعديل المبلغ المستلم بعد وجود مرتجع. استخدم <strong>تسجيل دفعة</strong> أو <strong>حركة خزنة</strong> من صفحة الفاتورة.
+              </div>
+            )}
             <Field label="ملاحظات">
               <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
             </Field>
