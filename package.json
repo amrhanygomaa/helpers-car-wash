@@ -1,7 +1,7 @@
 {
   "name": "helpers-warehouse-system",
   "private": true,
-  "version": "3.3.3",
+  "version": "3.3.4",
   "description": "Protected desktop warehouse and sales management system",
   "author": "Helpers Technologies",
   "type": "module",

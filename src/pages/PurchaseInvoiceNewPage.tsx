@@ -33,8 +33,10 @@ function nextInvoiceNumber(existing: string[]): string {
   const nums = existing
     .map((x) => parseInt(x.replace(/\D/g, ""), 10))
     .filter((n) => !Number.isNaN(n));
-  const next = nums.length ? Math.max(...nums) + 1 : 1;
-  return `PO-${String(next).padStart(5, "0")}`;
+  const currentMax = nums.length ? Math.max(...nums) + 1 : 1;
+  const storedMax = parseInt(localStorage.getItem("seq_purchase_invoice") || "0", 10);
+  const absoluteMax = Math.max(currentMax, storedMax + 1);
+  return `PO-${String(absoluteMax).padStart(5, "0")}`;
 }
 
 export function PurchaseInvoiceNewPage() {
@@ -190,6 +192,13 @@ export function PurchaseInvoiceNewPage() {
       amountPaid,
       notes: notes.trim() || undefined,
     });
+
+    const issuedNum = parseInt(inv.invoiceNumber.replace(/\D/g, ""), 10);
+    if (!Number.isNaN(issuedNum)) {
+      const storedMax = parseInt(localStorage.getItem("seq_purchase_invoice") || "0", 10);
+      localStorage.setItem("seq_purchase_invoice", Math.max(storedMax, issuedNum).toString());
+    }
+
     isDirtyRef.current = false;
     toast.success("تم حفظ الفاتورة", `تم إضافة الكميات للمخزون`);
     navigate(`/purchases/${inv.id}`);

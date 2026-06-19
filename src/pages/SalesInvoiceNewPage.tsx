@@ -71,8 +71,10 @@ function nextInvoiceNumber(existing: string[]): string {
   const nums = existing
     .map((x) => parseInt(x.replace(/\D/g, ""), 10))
     .filter((n) => !Number.isNaN(n));
-  const max = nums.length ? Math.max(...nums) : 1000;
-  return `INV-${max + 1}`;
+  const currentMax = nums.length ? Math.max(...nums) : 1000;
+  const storedMax = parseInt(localStorage.getItem("seq_sales_invoice") || "0", 10);
+  const absoluteMax = Math.max(currentMax, storedMax);
+  return `INV-${absoluteMax + 1}`;
 }
 
 export function SalesInvoiceNewPage() {
@@ -362,6 +364,12 @@ export function SalesInvoiceNewPage() {
 
     if (creditApplied > 0) {
       applyCustomerCredit(customerId, inv.id, creditApplied);
+    }
+
+    const issuedNum = parseInt(inv.invoiceNumber.replace(/\D/g, ""), 10);
+    if (!Number.isNaN(issuedNum)) {
+      const storedMax = parseInt(localStorage.getItem("seq_sales_invoice") || "0", 10);
+      localStorage.setItem("seq_sales_invoice", Math.max(storedMax, issuedNum).toString());
     }
 
     isDirtyRef.current = false;

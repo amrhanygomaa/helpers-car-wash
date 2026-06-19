@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useInvoicing } from "../store/InvoicingContext";
 import { useAuth } from "../store/AuthContext";
 import { useSettings } from "../store/SettingsContext";
@@ -77,7 +78,11 @@ export function ReturnsPage() {
                     <tr key={r.id} className="hover:bg-slate-50">
                       <td className="px-4 py-3 font-medium text-brand-700">{r.returnNumber}</td>
                       <td className="px-4 py-3 text-slate-600">{formatDate(r.date)}</td>
-                      <td className="px-4 py-3 text-slate-600">{r.originalInvoiceNumber}</td>
+                      <td className="px-4 py-3 text-slate-600">
+                        <Link to={`/sales/${r.originalInvoiceId}`} className="text-brand-600 hover:text-brand-700 underline underline-offset-2">
+                          {r.originalInvoiceNumber}
+                        </Link>
+                      </td>
                       <td className="px-4 py-3 text-slate-900">{r.customerName}</td>
                       <td className="px-4 py-3 font-bold text-slate-900">{formatCurrency(r.total, settings.currency)}</td>
                       <td className="px-4 py-3 text-slate-600">
@@ -115,7 +120,11 @@ export function ReturnsPage() {
                     <tr key={r.id} className="hover:bg-slate-50">
                       <td className="px-4 py-3 font-medium text-brand-700">{r.returnNumber}</td>
                       <td className="px-4 py-3 text-slate-600">{formatDate(r.date)}</td>
-                      <td className="px-4 py-3 text-slate-600">{r.originalInvoiceNumber}</td>
+                      <td className="px-4 py-3 text-slate-600">
+                        <Link to={`/purchases/${r.originalInvoiceId}`} className="text-brand-600 hover:text-brand-700 underline underline-offset-2">
+                          {r.originalInvoiceNumber}
+                        </Link>
+                      </td>
                       <td className="px-4 py-3 text-slate-900">{r.supplierName}</td>
                       <td className="px-4 py-3 font-bold text-slate-900">{formatCurrency(r.total, settings.currency)}</td>
                     </tr>

@@ -41,10 +41,23 @@ export function SalesReturnDialog({
     (acc, l) => acc + (quantities[l.id] || 0) * l.price,
     0
   );
+  // FIX-05: Track cumulative returns to prevent exceeding invoice total
+  const previousReturnsTotal = salesReturns
+    .filter((r) => r.originalInvoiceId === invoice.id)
+    .reduce((sum, r) => sum + r.total, 0);
+  const maxReturnable = Math.max(0, invoice.total - previousReturnsTotal);
 
   function handleSave() {
     if (selectedLines.length === 0) {
       toast.error("الرجاء تحديد كميات للإرجاع");
+      return;
+    }
+    // FIX-05: Prevent total return value from exceeding invoice total
+    if (total > maxReturnable + 0.005) {
+      toast.error(
+        "قيمة المرتجع تتجاوز المتبقي من الفاتورة",
+        `الحد الأقصى المتاح للإرجاع: ${maxReturnable.toFixed(2)}`
+      );
       return;
     }
 

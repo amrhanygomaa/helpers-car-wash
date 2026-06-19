@@ -43,6 +43,8 @@ export function SalesInvoiceEditPage() {
   const [driverId, setDriverId] = useState(inv?.driverId ?? "");
   const [paymentType, setPaymentType] = useState<SalesPaymentType>(inv?.paymentType ?? "cash");
   const [paymentDueDate, setPaymentDueDate] = useState(inv?.paymentDueDate ?? "");
+  // FIX-08: Remember original due date so switching cash→account restores it
+  const savedDueDateRef = useRef(inv?.paymentDueDate ?? "");
   const [discount, setDiscount] = useState<number>(inv?.discount ?? 0);
   const [amountReceived, setAmountReceived] = useState(inv?.amountReceived ?? 0);
   const [notes, setNotes] = useState(inv?.notes ?? "");
@@ -58,7 +60,16 @@ export function SalesInvoiceEditPage() {
   );
 
   useEffect(() => {
-    if (paymentType === "cash") setPaymentDueDate("");
+    if (paymentType === "cash") {
+      // Save current due date before clearing so it can be restored
+      if (paymentDueDate) savedDueDateRef.current = paymentDueDate;
+      setPaymentDueDate("");
+    } else {
+      // Restore saved due date when switching back to account
+      if (!paymentDueDate && savedDueDateRef.current) {
+        setPaymentDueDate(savedDueDateRef.current);
+      }
+    }
   }, [paymentType]);
 
   const initializedRef = useRef(false);
@@ -84,6 +95,17 @@ export function SalesInvoiceEditPage() {
   );
   const invoiceNet = Math.max(0, gross - (discount || 0));
 
+  // FIX-11: Build a map of original quantities per product (sum ALL lines,
+  // not just the first match) so stock calculations are correct when the
+  // original invoice has multiple lines for the same product.
+  const origQtyByProduct = useMemo(() => {
+    const m = new Map<string, number>();
+    inv?.lines.forEach((l) => {
+      m.set(l.productId, (m.get(l.productId) ?? 0) + l.quantity);
+    });
+    return m;
+  }, [inv]);
+
   const stockWarnings = useMemo(() => {
     const map = new Map<string, number>();
     lines.forEach((l) => {
@@ -94,9 +116,8 @@ export function SalesInvoiceEditPage() {
     map.forEach((req, pid) => {
       const p = products.find((x) => x.id === pid);
       if (!p) return;
-      const origLine = inv?.lines.find((l) => l.productId === pid);
       const isRetailLine = inv?.priceType === "retail" && !!p.piecesPerUnit;
-      const originalQty = origLine?.quantity ?? 0;
+      const originalQty = origQtyByProduct.get(pid) ?? 0;
       const effectiveAvailable = isRetailLine
         ? p.quantity * p.piecesPerUnit! + (p.looseQuantity ?? 0) + originalQty
         : p.quantity + originalQty;
@@ -105,7 +126,7 @@ export function SalesInvoiceEditPage() {
       }
     });
     return out;
-  }, [lines, products, inv]);
+  }, [lines, products, inv, origQtyByProduct]);
 
   function addLine() {
     setLines((l) => [...l, { id: uid("line"), productId: "", quantity: 1, price: 0 }]);
@@ -155,6 +176,10 @@ export function SalesInvoiceEditPage() {
       toast.error("المبلغ المستلم غير صحيح");
       return;
     }
+    // FIX-06: Warn user about overpayment (amount > invoice net)
+    if (amountReceived > invoiceNet && invoiceNet > 0) {
+      toast.info(`تنبيه: المبلغ المستلم (${amountReceived}) أكبر من صافي الفاتورة (${invoiceNet}). الفائض سيُسجّل كرصيد دائن.`);
+    }
     if (paymentType === "cash" && amountReceived <= 0) {
       toast.error("أدخل المبلغ المستلم");
       return;
@@ -167,6 +192,9 @@ export function SalesInvoiceEditPage() {
     const invLines: InvoiceLine[] = lines.map((l) => {
       const p = products.find((x) => x.id === l.productId)!;
       const isRetailUnit = inv.priceType === "retail" && !!p.piecesPerUnit;
+      // FIX-04: Preserve existing costPrice or fall back to current purchase price
+      const existingLine = inv.lines.find((ol) => ol.id === l.id);
+      const costPrice = existingLine?.costPrice ?? p.purchasePrice;
       return {
         id: l.id,
         productId: p.id,
@@ -174,6 +202,7 @@ export function SalesInvoiceEditPage() {
         unit: isRetailUnit ? (p.retailUnit ?? "قطعة") : p.unit,
         quantity: l.quantity,
         price: l.price,
+        costPrice,
         expiryDate: l.expiryDate,
         subtotal: l.quantity * l.price,
         isRetailUnit: isRetailUnit || undefined,
@@ -211,6 +240,22 @@ export function SalesInvoiceEditPage() {
       <Card>
         <CardBody>
           <div className="text-center py-8 text-slate-500">الفاتورة غير موجودة</div>
+        </CardBody>
+      </Card>
+    );
+  }
+
+  // FIX-10: Block editing cancelled invoices with a clear message
+  if (inv.cancelled) {
+    return (
+      <Card>
+        <CardBody>
+          <div className="text-center py-8 space-y-3">
+            <div className="text-rose-600 font-semibold">هذه الفاتورة ملغاة ولا يمكن تعديلها</div>
+            <Button variant="outline" onClick={() => navigate(`/sales/${inv.id}`)}>
+              <ArrowRight className="w-4 h-4" /> العودة لتفاصيل الفاتورة
+            </Button>
+          </div>
         </CardBody>
       </Card>
     );
@@ -323,12 +368,18 @@ export function SalesInvoiceEditPage() {
               <TBody>
                 {lines.map((l) => {
                   const p = products.find((x) => x.id === l.productId);
-                  const origLine = inv.lines.find((ol) => ol.productId === l.productId);
                   const isRetailLine = inv.priceType === "retail" && !!p?.piecesPerUnit;
-                  const originalQty = origLine?.quantity ?? 0;
-                  const available = isRetailLine
+                  // FIX-11 + FIX-05: Use aggregated original qty and subtract
+                  // other draft lines for the same product from the available pool
+                  const originalQty = origQtyByProduct.get(l.productId) ?? 0;
+                  const totalAvailable = isRetailLine
                     ? p!.quantity * p!.piecesPerUnit! + (p!.looseQuantity ?? 0) + originalQty
                     : (p?.quantity ?? 0) + originalQty;
+                  // Subtract quantities claimed by OTHER draft lines for same product
+                  const otherDraftQty = lines
+                    .filter((ol) => ol.id !== l.id && ol.productId === l.productId)
+                    .reduce((sum, ol) => sum + ol.quantity, 0);
+                  const available = totalAvailable - otherDraftQty;
                   const availUnit = isRetailLine ? (p!.retailUnit ?? "قطعة") : (p?.unit ?? "");
                   const exceeds = !!p && l.quantity > available;
                   return (
@@ -406,14 +457,15 @@ export function SalesInvoiceEditPage() {
         <Card>
           <CardHeader title="الدفع" />
           <CardBody className="space-y-3">
+            {/* FIX-07: Lock payment type when returns exist to prevent inconsistent state */}
             <Field label="طريقة الدفع" required>
               <div className="flex items-center gap-4">
                 <label className="flex items-center gap-2 text-sm">
-                  <input type="radio" checked={paymentType === "cash"} onChange={() => setPaymentType("cash")} />
+                  <input type="radio" checked={paymentType === "cash"} onChange={() => setPaymentType("cash")} disabled={hasReturns} />
                   نقدي
                 </label>
                 <label className="flex items-center gap-2 text-sm">
-                  <input type="radio" checked={paymentType === "account"} onChange={() => setPaymentType("account")} />
+                  <input type="radio" checked={paymentType === "account"} onChange={() => setPaymentType("account")} disabled={hasReturns} />
                   آجل (حساب)
                 </label>
               </div>

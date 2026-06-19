@@ -1381,6 +1381,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const deletePurchaseInvoice: AppActions["deletePurchaseInvoice"] = (id) => {
     const inv = purchaseInvoices.find((i) => i.id === id);
     if (!inv) return false;
+    // FIX-06: Block deleting purchase invoices that have returns (mirrors sales logic)
+    if (purchaseReturns.some((r) => r.originalInvoiceId === id)) return false;
     // revert stock
     setProducts((list) =>
       list.map((p) => {
@@ -1529,31 +1531,33 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const inv = salesInvoices.find((s) => s.id === id);
     if (!inv || inv.cancelled) return;
 
-    // Restore old stock quantities
+    // Atomic stock update: restore old quantities and deduct new ones in a
+    // single setProducts call to avoid intermediate re-renders with wrong
+    // stock values (FIX-01: race condition).
     setProducts((list) =>
       list.map((p) => {
         const oldLines = inv.lines.filter((l) => l.productId === p.id);
-        if (oldLines.length === 0) return p;
-        const oldQty = oldLines.reduce((sum, l) => sum + l.quantity, 0);
-        if (oldLines.some((l) => l.isRetailUnit) && p.piecesPerUnit) {
-          return { ...p, ...applyPieceAddition(p, oldQty) };
-        }
-        return { ...p, quantity: p.quantity + oldQty };
-      })
-    );
-
-    // Deduct new stock quantities
-    setProducts((list) =>
-      list.map((p) => {
         const newLines = patch.lines.filter((l) => l.productId === p.id);
-        if (newLines.length === 0) return p;
+        if (oldLines.length === 0 && newLines.length === 0) return p;
+
+        const oldQty = oldLines.reduce((sum, l) => sum + l.quantity, 0);
         const newQty = newLines.reduce((sum, l) => sum + l.quantity, 0);
-        if (newLines.some((l) => l.isRetailUnit) && p.piecesPerUnit) {
-          return { ...p, ...applyPieceDeduction(p, newQty) };
+        const oldIsRetail = oldLines.some((l) => l.isRetailUnit) && p.piecesPerUnit;
+        const newIsRetail = newLines.some((l) => l.isRetailUnit) && p.piecesPerUnit;
+
+        // When either side uses retail (piece) math we must go through the
+        // piece helpers to keep looseQuantity correct.
+        if (oldIsRetail || newIsRetail) {
+          let updated = { ...p };
+          if (oldQty > 0) updated = { ...updated, ...applyPieceAddition(updated, oldQty) };
+          if (newQty > 0) updated = { ...updated, ...applyPieceDeduction(updated, newQty) };
+          return updated;
         }
-        // clamp at zero like addSalesInvoice — the edit page validates stock,
-        // this is the store-level backstop (OBS-05)
-        return { ...p, quantity: Math.max(0, p.quantity - newQty) };
+
+        // Simple whole-unit delta
+        const delta = oldQty - newQty;
+        if (delta === 0) return p;
+        return { ...p, quantity: Math.max(0, p.quantity + delta) };
       })
     );
 
@@ -1596,11 +1600,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setCashEntries((list) => [ce, ...list]);
     }
 
+    // FIX-02: Explicitly preserve paymentLog so it is never accidentally
+    // overwritten by a patch that does not include it.
     setSalesInvoices((list) =>
       list.map((s) =>
         s.id === id
           ? {
               ...s, ...patch,
+              paymentLog: s.paymentLog,
               amountReceived: cappedReceived,
               total: newTotal,
               remaining: newRemaining,
@@ -1775,8 +1782,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
     const id = uid("sr");
     const salesReturnNums = salesReturns.map((x) => parseInt(x.returnNumber.replace(/\D/g, ""), 10)).filter((n) => !isNaN(n));
-    const nextSRNum = salesReturnNums.length ? salesReturnNums.reduce((a, b) => (a > b ? a : b), 0) + 1 : 1;
+    const currentMax = salesReturnNums.length ? salesReturnNums.reduce((a, b) => (a > b ? a : b), 0) : 0;
+    const storedMax = parseInt(localStorage.getItem("seq_sales_return") || "0", 10);
+    const absoluteMax = Math.max(currentMax, storedMax);
+    const nextSRNum = absoluteMax + 1;
     const num = `SR-${nextSRNum.toString().padStart(4, "0")}`;
+
+    localStorage.setItem("seq_sales_return", nextSRNum.toString());
     const full: SalesReturn = {
       ...r,
       id,
@@ -1813,20 +1825,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }));
     setStockMovements((l) => [...movements, ...l]);
 
-    const originalInvoice = salesInvoices.find((inv) => inv.id === r.originalInvoiceId);
-    const cashRefundAmount = originalInvoice
-      ? settleSalesInvoiceReturn(originalInvoice, r).cashRefund
-      : r.refundCash
-        ? r.total
-        : 0;
+    // FIX-02 + FIX-04: Compute cashRefund and update the invoice inside a
+    // single setSalesInvoices callback to avoid stale closures and to pass
+    // previousReturnsTotal for correct effectiveTotal computation.
+    // We capture cashRefundAmount via a mutable ref so the cash entry below
+    // can use it without a second settleSalesInvoiceReturn call.
+    let cashRefundAmount = 0;
+    const previousReturns = salesReturns.filter(
+      (sr) => sr.originalInvoiceId === r.originalInvoiceId
+    );
+    const previousReturnsTotal = previousReturns.reduce((sum, sr) => sum + sr.total, 0);
 
     setSalesInvoices((list) =>
-      list.map((inv) =>
-        inv.id === r.originalInvoiceId && !inv.cancelled
-          ? settleSalesInvoiceReturn(inv, r).invoice
-          : inv
-      )
+      list.map((inv) => {
+        if (inv.id !== r.originalInvoiceId || inv.cancelled) return inv;
+        const result = settleSalesInvoiceReturn(inv, r, previousReturnsTotal);
+        cashRefundAmount = result.cashRefund;
+        return result.invoice;
+      })
     );
+
+    // If no invoice was found (edge case), fall back to simple calculation
+    if (cashRefundAmount === 0 && r.refundCash) {
+      cashRefundAmount = r.total;
+    }
 
     // Cash refund if applicable
     if (r.refundCash && cashRefundAmount > 0) {
@@ -1847,8 +1869,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const addPurchaseReturn: AppActions["addPurchaseReturn"] = (r) => {
     const id = uid("pr");
     const purchaseReturnNums = purchaseReturns.map((x) => parseInt(x.returnNumber.replace(/\D/g, ""), 10)).filter((n) => !isNaN(n));
-    const nextPRNum = purchaseReturnNums.length ? purchaseReturnNums.reduce((a, b) => (a > b ? a : b), 0) + 1 : 1;
+    const currentMax = purchaseReturnNums.length ? purchaseReturnNums.reduce((a, b) => (a > b ? a : b), 0) : 0;
+    const storedMax = parseInt(localStorage.getItem("seq_purchase_return") || "0", 10);
+    const absoluteMax = Math.max(currentMax, storedMax);
+    const nextPRNum = absoluteMax + 1;
     const num = `PR-${nextPRNum.toString().padStart(4, "0")}`;
+
+    localStorage.setItem("seq_purchase_return", nextPRNum.toString());
     const full: PurchaseReturn = {
       ...r,
       id,
@@ -1881,11 +1908,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }));
     setStockMovements((l) => [...movements, ...l]);
 
+    // FIX-03: Settle the invoice AND create a cash entry if the return
+    // creates overpayment (i.e. supplier owes us money back).
+    let purchaseRefundAmount = 0;
     setPurchaseInvoices((list) =>
-      list.map((inv) =>
-        inv.id === r.originalInvoiceId ? settlePurchaseInvoiceReturn(inv, r) : inv
-      )
+      list.map((inv) => {
+        if (inv.id !== r.originalInvoiceId) return inv;
+        const settled = settlePurchaseInvoiceReturn(inv, r);
+        // If the invoice was fully paid and the return reduces the total,
+        // the difference becomes overpayment (supplier credit).
+        const newOverpayment = settled.overpayment ?? 0;
+        const prevOverpayment = inv.overpayment ?? 0;
+        purchaseRefundAmount = Math.max(0, newOverpayment - prevOverpayment);
+        return settled;
+      })
     );
+
+    // Record cash entry for the refundable overpayment from the return
+    if (purchaseRefundAmount > 0) {
+      const ce: CashEntry = {
+        id: uid("cash_pr"),
+        type: "adjustment",
+        amount: purchaseRefundAmount,
+        description: `رصيد دائن من مرتجع توريد ${num} — ${r.supplierName}`,
+        referenceId: id,
+        date: r.date,
+      };
+      setCashEntries((l) => [ce, ...l]);
+    }
 
     return full;
   };

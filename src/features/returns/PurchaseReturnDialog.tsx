@@ -18,11 +18,22 @@ export function PurchaseReturnDialog({
   onClose: () => void;
   invoice: PurchaseInvoice;
 }) {
-  const { addPurchaseReturn } = useInvoicing();
+  const { addPurchaseReturn, purchaseReturns } = useInvoicing();
   const { settings } = useSettings();
   const toast = useToast();
 
   const [quantities, setQuantities] = useState<Record<string, number>>({});
+
+  // FIX-01: Track already-returned quantities per line so users can't over-return
+  const returnedQtyByLineId = new Map<string, number>();
+  purchaseReturns
+    .filter((r) => r.originalInvoiceId === invoice.id)
+    .forEach((r) =>
+      r.lines.forEach((rl) => {
+        const key = rl.sourceLineId ?? rl.id;
+        returnedQtyByLineId.set(key, (returnedQtyByLineId.get(key) ?? 0) + rl.quantity);
+      })
+    );
 
   const selectedLines = invoice.lines.filter((l) => (quantities[l.id] || 0) > 0);
   const total = selectedLines.reduce(
@@ -96,24 +107,30 @@ export function PurchaseReturnDialog({
             </TR>
           </THead>
           <TBody>
-            {invoice.lines.map((l) => {
+            {invoice.lines
+              .map((l) => ({
+                ...l,
+                availableQty: Math.max(0, l.quantity - (returnedQtyByLineId.get(l.id) ?? 0)),
+              }))
+              .filter((l) => l.availableQty > 0)
+              .map((l) => {
               const q = quantities[l.id] || 0;
               return (
                 <TR key={l.id}>
                   <TD>{l.productName}</TD>
                   <TD>{formatCurrency(l.price, settings.currency)}</TD>
-                  <TD>{l.quantity}</TD>
+                  <TD>{l.availableQty}</TD>
                   <TD>
                     <input
                       type="number"
                       min={0}
-                      max={l.quantity}
+                      max={l.availableQty}
                       className="w-full border-slate-200 rounded-md text-sm p-1.5 focus:border-brand-500 focus:ring-brand-500"
                       value={q || ""}
                       onChange={(e) => {
                         let val = Number(e.target.value);
                         if (val < 0) val = 0;
-                        if (val > l.quantity) val = l.quantity;
+                        if (val > l.availableQty) val = l.availableQty;
                         setQuantities((prev) => ({ ...prev, [l.id]: val }));
                       }}
                     />

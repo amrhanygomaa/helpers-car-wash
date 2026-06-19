@@ -141,11 +141,18 @@ export function employeeCollectedCash(
 export function settleSalesInvoiceReturn(
   invoice: SalesInvoice,
   ret: Pick<SalesReturn, "lines" | "total" | "refundCash">,
+  /** Cumulative total of ALL previous returns on this invoice (FIX-02). */
+  previousReturnsTotal = 0,
 ) {
   // Keep original lines and total unchanged — returns are shown as separate records.
-  const returnTotal = Math.min(invoice.total, ret.total);
+  // FIX-02: effectiveTotal must account for ALL returns (previous + current),
+  // not just the current one. Without this, a 2nd return on the same invoice
+  // would compute effectiveTotal = originalTotal − currentReturn, ignoring
+  // the amount already reduced by earlier returns.
+  const totalReturned = previousReturnsTotal + ret.total;
+  const returnTotal = Math.min(invoice.total, totalReturned);
   const paidAndCredit = invoice.amountReceived + (invoice.overpayment ?? 0);
-  const cashRefund = ret.refundCash ? Math.min(returnTotal, paidAndCredit) : 0;
+  const cashRefund = ret.refundCash ? Math.min(ret.total, paidAndCredit) : 0;
   const paidAndCreditAfterReturn = Math.max(0, paidAndCredit - cashRefund);
   const effectiveTotal = Math.max(0, invoice.total - returnTotal);
   const amountReceived = Math.min(effectiveTotal, paidAndCreditAfterReturn);
