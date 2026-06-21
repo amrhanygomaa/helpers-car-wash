@@ -85,7 +85,7 @@ export function SalesInvoiceDetailPage() {
               <ArrowRight className="w-4 h-4" />
               رجوع
             </Button>
-            {!inv.cancelled && canEditSales ? (
+            {!inv.cancelled && !inv.invoiceKind && canEditSales ? (
               <Button variant="outline" onClick={() => navigate(`/sales/${inv.id}/edit`)}>
                 <Pencil className="w-4 h-4" /> تعديل
               </Button>
@@ -238,7 +238,11 @@ export function SalesInvoiceDetailPage() {
         <CardBody className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <Info label="العميل">{inv.customerName}</Info>
           <Info label="هاتف العميل">{customer?.phone ?? "—"}</Info>
-          <Info label="السائق">{inv.driverName ?? "—"}</Info>
+          {inv.vehicleLabel ? (
+            <Info label="المركبة">{inv.vehicleLabel}</Info>
+          ) : (
+            <Info label="السائق">{inv.driverName ?? "—"}</Info>
+          )}
           <Info label="طريقة الدفع">
             <Badge tone={inv.paymentType === "cash" ? "emerald" : "indigo"}>
               {inv.paymentType === "cash" ? "نقدي" : "آجل"}
@@ -270,7 +274,12 @@ export function SalesInvoiceDetailPage() {
               {inv.lines.map((l, idx) => (
                 <TR key={l.id}>
                   <TD>{idx + 1}</TD>
-                  <TD className="font-medium text-slate-900">{l.productName}</TD>
+                  <TD className="font-medium text-slate-900">
+                    {l.productName}
+                    {l.employeeName ? (
+                      <span className="block text-xs font-normal text-slate-500">الفني: {l.employeeName}</span>
+                    ) : null}
+                  </TD>
                   <TD>{l.unit}</TD>
                   <TD className="text-end">{l.quantity}</TD>
                   <TD className="text-end">{formatCurrency(l.price, settings.currency)}</TD>

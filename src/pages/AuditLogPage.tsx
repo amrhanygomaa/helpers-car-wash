@@ -41,6 +41,9 @@ const ACTION_META: Record<
   supplier_archived:       { label: "أرشفة مورد",              tone: "slate" },
   supplier_restored:       { label: "استعادة مورد",            tone: "blue" },
   invoice_restored:        { label: "استعادة فاتورة",          tone: "blue" },
+  vehicle_deleted:         { label: "حذف مركبة",                tone: "red" },
+  service_deleted:         { label: "حذف خدمة",                 tone: "red" },
+  queue_ticket_cancelled:  { label: "إلغاء تذكرة طابور",       tone: "orange" },
 };
 
 type Category = "all" | "sales" | "purchases" | "returns" | "stock" | "deletions" | "cash";
@@ -51,7 +54,7 @@ const CATEGORY_ACTIONS: Record<Category, AuditAction[] | null> = {
   purchases: ["invoice_purchase_created", "invoice_purchase_updated", "invoice_purchase_deleted"],
   returns:   ["return_sale_created", "return_purchase_created"],
   stock:     ["stock_adjusted"],
-  deletions: ["product_deleted", "customer_deleted", "supplier_deleted"],
+  deletions: ["product_deleted", "customer_deleted", "supplier_deleted", "vehicle_deleted", "service_deleted"],
   cash:      ["cash_manual_add", "cash_manual_remove"],
 };
 

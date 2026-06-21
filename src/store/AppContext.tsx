@@ -33,6 +33,10 @@ import type {
   ID,
   InvoiceLine,
   LoginResult,
+  Vehicle,
+  WashService,
+  QueueTicket,
+  QueueStatus,
 } from "../types";
 import { lsClearAll, lsGet, lsRemove, lsSet, lsSetBatch, reloadStorageCache } from "../lib/storage";
 import { hashPassword, verifyFallbackPassword } from "../lib/auth";
@@ -49,6 +53,7 @@ import {
   seedStockMovements,
   seedSuppliers,
   seedUsers,
+  seedWashServices,
 } from "../data/seed";
 import { localISODate, todayISO, uid } from "../lib/utils";
 import { buildXlsx } from "../lib/xlsx";
@@ -61,11 +66,14 @@ import {
   settlePurchaseInvoiceReturn,
   quotationConversionFields,
   employeeCollectedCash,
+  expandServiceMaterials,
+  type MaterialConsumption,
 } from "./_pure";
 import { SettingsContext } from "./SettingsContext";
 import { AuditLogContext } from "./AuditLogContext";
 import { AuthContext, type AuthState, type UpdateCurrentUserProfileResult } from "./AuthContext";
 import { CatalogContext } from "./CatalogContext";
+import { CarwashContext } from "./CarwashContext";
 import { InvoicingContext } from "./InvoicingContext";
 import { ReportingContext } from "./ReportingContext";
 import { UsersContext } from "./UsersContext";
@@ -345,6 +353,23 @@ type LegacyProduct = Omit<Product, "wholesalePrice" | "retailPrice"> &
     sellingPrice?: number;
   };
 
+// Merges feature keys and forces car-wash core features to their seed values.
+// Handles two cases: (a) pre-carwash installs that never had these keys, and
+// (b) old installs that had them explicitly as false from the warehouse defaults.
+function normalizeSettings(s: Settings): Settings {
+  const carwashOverrides = {
+    carwashQueue: seedSettings.features?.carwashQueue ?? true,
+    vehicles: seedSettings.features?.vehicles ?? true,
+    washServices: seedSettings.features?.washServices ?? true,
+  };
+  const merged = {
+    ...seedSettings.features,
+    ...(s.features ?? {}),
+    ...carwashOverrides, // always take seed values for car-wash keys
+  };
+  return { ...s, features: merged };
+}
+
 function normalizeProduct(product: LegacyProduct): Product {
   const wholesalePrice = product.wholesalePrice ?? product.sellingPrice ?? 0;
   const retailPrice =
@@ -393,7 +418,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     () => (isDesktop ? null : false)
   );
   const [settings, setSettings] = useState<Settings>(() =>
-    lsGet<Settings>("settings", seedSettings)
+    normalizeSettings(lsGet<Settings>("settings", seedSettings))
   );
   const [products, setProducts] = useState<Product[]>(() =>
     lsGet<LegacyProduct[]>("products", seedProducts).map(normalizeProduct)
@@ -444,6 +469,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => lsGet<AuditLog[]>("auditLogs", []));
   const [quotations, setQuotations] = useState<Quotation[]>(() => lsGet<Quotation[]>("quotations", []));
   const [stocktakes, setStocktakes] = useState<Stocktake[]>(() => lsGet<Stocktake[]>("stocktakes", []));
+  // ── Car Wash collections ──
+  const [vehicles, setVehicles] = useState<Vehicle[]>(() => lsGet<Vehicle[]>("vehicles", []));
+  const [washServices, setWashServices] = useState<WashService[]>(() => lsGet<WashService[]>("washServices", seedWashServices));
+  const [queueTickets, setQueueTickets] = useState<QueueTicket[]>(() => lsGet<QueueTicket[]>("queueTickets", []));
+  const [nextQueueNumber, setNextQueueNumber] = useState<number>(() => lsGet<number>("nextQueueNumber", 1));
   const currentUserRef = useRef<AppUser | null>(null);
   // BUG-01: code counters mirrored in refs so several add* calls inside ONE
   // event handler (CSV bulk import) each get a distinct code — the state value
@@ -452,6 +482,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const nextProductCodeRef = useRef(nextProductCode);
   const nextSupplierCodeRef = useRef(nextSupplierCode);
   const nextCustomerCodeRef = useRef(nextCustomerCode);
+  const nextQueueNumberRef = useRef(nextQueueNumber);
   useEffect(() => {
     nextProductCodeRef.current = nextProductCode;
   }, [nextProductCode]);
@@ -461,6 +492,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     nextCustomerCodeRef.current = nextCustomerCode;
   }, [nextCustomerCode]);
+  useEffect(() => {
+    nextQueueNumberRef.current = nextQueueNumber;
+  }, [nextQueueNumber]);
 
   const logAudit = useCallback((action: AuditAction, entityLabel: string, details?: string, snapshot?: AuditSnapshot) => {
     const user = currentUserRef.current;
@@ -479,7 +513,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const loadStoredStateFromDesktop = useCallback(() => {
-    const storedSettings = lsGet<Settings>("settings", seedSettings);
+    const storedSettings = normalizeSettings(lsGet<Settings>("settings", seedSettings));
     setSettings(applyLicenseSettings(storedSettings, licenseStatus));
     setProducts(lsGet<LegacyProduct[]>("products", seedProducts).map(normalizeProduct));
     const storedSuppliers = lsGet<Supplier[]>("suppliers", seedSuppliers);
@@ -508,6 +542,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setAuditLogs(lsGet<AuditLog[]>("auditLogs", []));
     setQuotations(lsGet<Quotation[]>("quotations", []));
     setStocktakes(lsGet<Stocktake[]>("stocktakes", []));
+    setVehicles(lsGet<Vehicle[]>("vehicles", []));
+    setWashServices(lsGet<WashService[]>("washServices", seedWashServices));
+    setQueueTickets(lsGet<QueueTicket[]>("queueTickets", []));
+    setNextQueueNumber(lsGet<number>("nextQueueNumber", 1));
   }, [licenseStatus]);
 
   const clearDesktopRendererState = useCallback(() => {
@@ -529,6 +567,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setAuditLogs([]);
     setQuotations([]);
     setStocktakes([]);
+    setVehicles([]);
+    setWashServices([]);
+    setQueueTickets([]);
+    setNextQueueNumber(1);
   }, [licenseStatus]);
 
   const refreshLicenseStatus = useCallback(async () => {
@@ -570,6 +612,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     settings, products, suppliers, customers, purchaseInvoices, salesInvoices,
     stockMovements, cashEntries, nextProductCode, nextSupplierCode, nextCustomerCode, users,
     salesReturns, purchaseReturns, drivers, auditLogs, quotations, stocktakes,
+    vehicles, washServices, queueTickets, nextQueueNumber,
   });
   // True while state has changed but the 2s-debounced flush hasn't run yet —
   // lets the shutdown handler skip its synchronous full-state write when
@@ -580,9 +623,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       settings, products, suppliers, customers, purchaseInvoices, salesInvoices,
       stockMovements, cashEntries, nextProductCode, nextSupplierCode, nextCustomerCode, users,
       salesReturns, purchaseReturns, drivers, auditLogs, quotations, stocktakes,
+      vehicles, washServices, queueTickets, nextQueueNumber,
     };
     unflushedChangesRef.current = true;
-  }, [settings, products, suppliers, customers, purchaseInvoices, salesInvoices, stockMovements, cashEntries, nextProductCode, nextSupplierCode, nextCustomerCode, users, salesReturns, purchaseReturns, drivers, auditLogs, quotations, stocktakes]);
+  }, [settings, products, suppliers, customers, purchaseInvoices, salesInvoices, stockMovements, cashEntries, nextProductCode, nextSupplierCode, nextCustomerCode, users, salesReturns, purchaseReturns, drivers, auditLogs, quotations, stocktakes, vehicles, washServices, queueTickets, nextQueueNumber]);
 
   // --- Auto Backup Logic (timer-based — never blocks on state changes) ---
   useEffect(() => {
@@ -700,11 +744,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
         auditLogs,
         quotations,
         stocktakes,
+        vehicles,
+        washServices,
+        queueTickets,
+        nextQueueNumber,
       });
       unflushedChangesRef.current = false;
     }, 2000);
     return () => window.clearTimeout(timer);
-  }, [isDesktop, auth.isAuthenticated, settings, products, suppliers, customers, purchaseInvoices, salesInvoices, stockMovements, cashEntries, nextProductCode, nextSupplierCode, nextCustomerCode, users, salesReturns, purchaseReturns, drivers, auditLogs, quotations, stocktakes]);
+  }, [isDesktop, auth.isAuthenticated, settings, products, suppliers, customers, purchaseInvoices, salesInvoices, stockMovements, cashEntries, nextProductCode, nextSupplierCode, nextCustomerCode, users, salesReturns, purchaseReturns, drivers, auditLogs, quotations, stocktakes, vehicles, washServices, queueTickets, nextQueueNumber]);
 
   const login = useCallback(async (username: string, passwordRaw: string) => {
     const attemptKey = loginAttemptKey(username);
@@ -834,6 +882,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setAuditLogs([]);
     setQuotations([]);
     setStocktakes([]);
+    setVehicles([]);
+    setWashServices(seedWashServices);
+    setQueueTickets([]);
+    setNextQueueNumber(1);
   }, []);
 
   const updateSettings = useCallback((patch: Partial<Settings>) => {
@@ -1214,6 +1266,108 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return true;
   };
 
+  // ── Car Wash: Vehicles ──
+  const addVehicle = (v: Omit<Vehicle, "id" | "createdAt">): Vehicle => {
+    const vehicle: Vehicle = { ...v, id: uid("veh"), createdAt: new Date().toISOString() };
+    setVehicles((list) => [vehicle, ...list]);
+    return vehicle;
+  };
+  const updateVehicle = (id: string, patch: Partial<Vehicle>) => {
+    setVehicles((list) => list.map((v) => (v.id === id ? { ...v, ...patch } : v)));
+  };
+  const deleteVehicle = (id: string): boolean => {
+    // Block deletion if the vehicle is referenced by an invoice or a queue ticket.
+    const used =
+      salesInvoices.some((inv) => inv.vehicleId === id) ||
+      queueTickets.some((t) => t.vehicleId === id);
+    if (used) return false;
+    const label = vehicles.find((v) => v.id === id)?.plateNumber ?? id;
+    setVehicles((list) => list.filter((v) => v.id !== id));
+    logAudit("vehicle_deleted", label);
+    return true;
+  };
+  const archiveVehicle = (id: string, archived: boolean) => {
+    setVehicles((list) => list.map((v) => (v.id === id ? { ...v, archived } : v)));
+  };
+
+  // ── Car Wash: Services ──
+  const addWashService = (s: Omit<WashService, "id" | "createdAt">): WashService => {
+    const service: WashService = { ...s, id: uid("svc"), createdAt: new Date().toISOString() };
+    setWashServices((list) => [service, ...list]);
+    return service;
+  };
+  const updateWashService = (id: string, patch: Partial<WashService>) => {
+    setWashServices((list) => list.map((s) => (s.id === id ? { ...s, ...patch } : s)));
+  };
+  const deleteWashService = (id: string): boolean => {
+    // Block deletion if referenced by any invoice line; deactivate instead.
+    const used = salesInvoices.some((inv) => inv.lines.some((l) => l.serviceId === id));
+    if (used) return false;
+    const name = washServices.find((s) => s.id === id)?.name ?? id;
+    setWashServices((list) => list.filter((s) => s.id !== id));
+    logAudit("service_deleted", name);
+    return true;
+  };
+
+  // ── Car Wash: Queue ──
+  const addQueueTicket = (
+    t: Omit<QueueTicket, "id" | "number" | "createdAt" | "status"> & { status?: QueueStatus }
+  ): QueueTicket => {
+    const number = nextQueueNumberRef.current;
+    nextQueueNumberRef.current = number + 1;
+    setNextQueueNumber(nextQueueNumberRef.current);
+    const ticket: QueueTicket = {
+      ...t,
+      id: uid("queue"),
+      number,
+      status: t.status ?? "waiting",
+      arrivalTime: t.arrivalTime || new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+    };
+    setQueueTickets((list) => [ticket, ...list]);
+    return ticket;
+  };
+  const updateQueueTicket = (id: string, patch: Partial<QueueTicket>) => {
+    setQueueTickets((list) => list.map((t) => (t.id === id ? { ...t, ...patch } : t)));
+  };
+  const setQueueStatus = (id: string, status: QueueStatus) => {
+    setQueueTickets((list) => list.map((t) => (t.id === id ? { ...t, status } : t)));
+    if (status === "cancelled") {
+      const t = queueTickets.find((x) => x.id === id);
+      logAudit("queue_ticket_cancelled", t ? `#${t.number} — ${t.customerName}` : id);
+    }
+  };
+  const receiveVehicleKey = (id: string) => {
+    const user = currentUserRef.current;
+    setQueueTickets((list) =>
+      list.map((t) =>
+        t.id === id
+          ? {
+              ...t,
+              keyReceivedBy: user?.id,
+              keyReceivedByName: user?.name,
+              keyReceivedAt: new Date().toISOString(),
+            }
+          : t
+      )
+    );
+  };
+  const deliverVehicleKey = (id: string) => {
+    const user = currentUserRef.current;
+    setQueueTickets((list) =>
+      list.map((t) =>
+        t.id === id
+          ? {
+              ...t,
+              keyDeliveredBy: user?.id,
+              keyDeliveredByName: user?.name,
+              keyDeliveredAt: new Date().toISOString(),
+            }
+          : t
+      )
+    );
+  };
+
   // Purchase invoices
   const addPurchaseInvoice: AppActions["addPurchaseInvoice"] = (inv) => {
     const id = uid("pur");
@@ -1408,6 +1562,61 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return true;
   };
 
+  // Car Wash: deduct/restore inventory for a service invoice's linked materials
+  // (feature 7). Shared by create (consume) / cancel + delete (restore). Movement
+  // quantities are stored in base units (pieces ÷ piecesPerUnit when piece-based),
+  // matching how adjustStock records fractional unit movements.
+  const applyMaterialConsumption = (
+    consumptions: MaterialConsumption[],
+    direction: "consume" | "restore",
+    refId: string,
+    refNumber: string,
+    date: string
+  ) => {
+    if (consumptions.length === 0) return;
+    setProducts((list) =>
+      list.map((p) => {
+        const rows = consumptions.filter((c) => c.productId === p.id);
+        if (rows.length === 0) return p;
+        let next = p;
+        for (const c of rows) {
+          if (direction === "consume") {
+            next =
+              c.isRetailUnit && next.piecesPerUnit
+                ? { ...next, ...applyPieceDeduction(next, c.quantity) }
+                : { ...next, quantity: Math.max(0, next.quantity - c.quantity) };
+          } else {
+            next =
+              c.isRetailUnit && next.piecesPerUnit
+                ? { ...next, ...applyPieceAddition(next, c.quantity) }
+                : { ...next, quantity: next.quantity + c.quantity };
+          }
+        }
+        return next;
+      })
+    );
+    const movements: StockMovement[] = consumptions.map((c, idx) => {
+      const prod = products.find((p) => p.id === c.productId);
+      const baseQty =
+        c.isRetailUnit && prod?.piecesPerUnit ? c.quantity / prod.piecesPerUnit : c.quantity;
+      return {
+        id: uid(`mov_mat_${direction}_${idx}`),
+        productId: c.productId,
+        productName: prod?.name ?? c.productId,
+        type: direction === "consume" ? "sale" : "return",
+        quantity: direction === "consume" ? -baseQty : baseQty,
+        reason:
+          direction === "consume"
+            ? `خامات خدمة — فاتورة ${refNumber}`
+            : `استرجاع خامات خدمة — فاتورة ${refNumber}`,
+        referenceId: refId,
+        referenceType: "sale",
+        date,
+      };
+    });
+    setStockMovements((list) => [...movements, ...list]);
+  };
+
   // Sales invoices
   const addSalesInvoice: AppActions["addSalesInvoice"] = (inv) => {
     const id = uid("sal");
@@ -1443,18 +1652,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return { ...p, quantity: Math.max(0, p.quantity - totalQty) };
       })
     );
-    const movements: StockMovement[] = inv.lines.map((l, idx) => ({
-      id: uid(`mov_s_${idx}`),
-      productId: l.productId,
-      productName: l.productName,
-      type: "sale",
-      quantity: -l.quantity,
-      reason: `فاتورة مبيعات ${inv.invoiceNumber}`,
-      referenceId: id,
-      referenceType: "sale",
-      date: inv.date,
-    }));
+    const movements: StockMovement[] = inv.lines
+      .filter((l) => l.kind !== "service" && l.productId)
+      .map((l, idx) => ({
+        id: uid(`mov_s_${idx}`),
+        productId: l.productId,
+        productName: l.productName,
+        type: "sale",
+        quantity: -l.quantity,
+        reason: `فاتورة مبيعات ${inv.invoiceNumber}`,
+        referenceId: id,
+        referenceType: "sale",
+        date: inv.date,
+      }));
     setStockMovements((list) => [...movements, ...list]);
+
+    // Car Wash: consume inventory linked to service lines (feature 7).
+    applyMaterialConsumption(
+      expandServiceMaterials(inv.lines, washServices),
+      "consume",
+      id,
+      inv.invoiceNumber,
+      inv.date
+    );
 
     const totalCashReceived = inv.amountReceived + (inv.overpayment ?? 0);
     if (totalCashReceived > 0) {
@@ -1669,18 +1889,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
       : undefined;
     logAudit("invoice_sale_cancelled", `${inv.invoiceNumber} — ${inv.customerName}`, auditDetails);
     const cancelDate = todayISO();
-    const cancelMovements: StockMovement[] = inv.lines.map((l, idx) => ({
-      id: uid(`mov_cancel_${idx}`),
-      productId: l.productId,
-      productName: l.productName,
-      type: "return" as const,
-      quantity: l.quantity,
-      reason: `إلغاء فاتورة مبيعات ${inv.invoiceNumber}`,
-      referenceId: id,
-      referenceType: "sale" as const,
-      date: cancelDate,
-    }));
+    const cancelMovements: StockMovement[] = inv.lines
+      .filter((l) => l.kind !== "service" && l.productId)
+      .map((l, idx) => ({
+        id: uid(`mov_cancel_${idx}`),
+        productId: l.productId,
+        productName: l.productName,
+        type: "return" as const,
+        quantity: l.quantity,
+        reason: `إلغاء فاتورة مبيعات ${inv.invoiceNumber}`,
+        referenceId: id,
+        referenceType: "sale" as const,
+        date: cancelDate,
+      }));
     setStockMovements((list) => [...cancelMovements, ...list]);
+
+    // Car Wash: restore inventory consumed by this invoice's service lines.
+    applyMaterialConsumption(
+      expandServiceMaterials(inv.lines, washServices),
+      "restore",
+      id,
+      inv.invoiceNumber,
+      cancelDate
+    );
   };
   const deleteSalesInvoice: AppActions["deleteSalesInvoice"] = (id) => {
     const inv = salesInvoices.find((i) => i.id === id);
@@ -1700,6 +1931,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
           }
           return { ...p, quantity: p.quantity + totalQty };
         })
+      );
+      // Car Wash: restore service-material stock (cancelled invoices already
+      // had it restored at cancel time). Movements for this id are wiped below.
+      applyMaterialConsumption(
+        expandServiceMaterials(inv.lines, washServices),
+        "restore",
+        id,
+        inv.invoiceNumber,
+        todayISO()
       );
     }
     setSalesInvoices((list) => list.filter((i) => i.id !== id));
@@ -1744,6 +1984,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
             }
             return { ...p, quantity: Math.max(0, p.quantity - totalQty) };
           })
+        );
+        // Car Wash: re-consume service materials the delete had restored.
+        applyMaterialConsumption(
+          expandServiceMaterials(inv.lines, washServices),
+          "consume",
+          inv.id,
+          inv.invoiceNumber,
+          todayISO()
         );
       }
     } else {
@@ -2374,9 +2622,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       state: {
         settings, products, suppliers, customers, purchaseInvoices, salesInvoices,
         stockMovements, cashEntries, nextProductCode, nextSupplierCode, nextCustomerCode, users: safeUsers, salesReturns, purchaseReturns, drivers, auditLogs, quotations, stocktakes,
+        vehicles, washServices, queueTickets, nextQueueNumber,
       }
     };
-  }, [settings, products, suppliers, customers, purchaseInvoices, salesInvoices, stockMovements, cashEntries, nextProductCode, nextSupplierCode, nextCustomerCode, users, salesReturns, purchaseReturns, drivers, auditLogs, quotations, stocktakes]);
+  }, [settings, products, suppliers, customers, purchaseInvoices, salesInvoices, stockMovements, cashEntries, nextProductCode, nextSupplierCode, nextCustomerCode, users, salesReturns, purchaseReturns, drivers, auditLogs, quotations, stocktakes, vehicles, washServices, queueTickets, nextQueueNumber]);
 
   const exportBackup: AppActions["exportBackup"] = useCallback(() => {
     const blob = new Blob([JSON.stringify(buildBackupData(), null, 2)], { type: "application/json" });
@@ -2458,7 +2707,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const requiredKeys = ["products", "customers", "suppliers"];
       if (!requiredKeys.some(k => Array.isArray(s[k]))) return false;
 
-      if (s.settings) setSettings(applyLicenseSettings(s.settings, licenseStatus));
+      if (s.settings) setSettings(applyLicenseSettings(normalizeSettings(s.settings), licenseStatus));
       if (Array.isArray(s.products)) setProducts(s.products.map(normalizeProduct));
       if (Array.isArray(s.suppliers)) setSuppliers(s.suppliers);
       if (Array.isArray(s.customers)) setCustomers(s.customers);
@@ -2507,6 +2756,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (Array.isArray(s.auditLogs)) setAuditLogs(s.auditLogs);
       if (Array.isArray(s.quotations)) setQuotations(s.quotations);
       if (Array.isArray(s.stocktakes)) setStocktakes(s.stocktakes);
+      if (Array.isArray(s.vehicles)) setVehicles(s.vehicles);
+      if (Array.isArray(s.washServices)) setWashServices(s.washServices);
+      if (Array.isArray(s.queueTickets)) setQueueTickets(s.queueTickets);
+      if (typeof s.nextQueueNumber === "number") {
+        setNextQueueNumber(s.nextQueueNumber);
+      } else if (Array.isArray(s.queueTickets) && s.queueTickets.length > 0) {
+        const maxNum = s.queueTickets.reduce(
+          (max: number, t: Record<string, unknown>) =>
+            typeof t.number === "number" ? Math.max(max, t.number) : max,
+          0
+        );
+        setNextQueueNumber(maxNum + 1);
+      }
 
       return true;
     } catch {
@@ -2830,18 +3092,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [products, suppliers, customers, drivers, stocktakes, nextProductCode, nextSupplierCode, nextCustomerCode]
   );
 
+  // Car Wash slice — vehicles / wash services / queue + their actions.
+  // Same intentional pattern as catalogValue: memoize on data arrays only
+  // (actions are plain functions that read fresh state via setState updaters).
+  const carwashValue = useMemo(
+    () => ({
+      vehicles, addVehicle, updateVehicle, deleteVehicle, archiveVehicle,
+      washServices, addWashService, updateWashService, deleteWashService,
+      queueTickets, nextQueueNumber,
+      addQueueTicket, updateQueueTicket, setQueueStatus, receiveVehicleKey, deliverVehicleKey,
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [vehicles, washServices, queueTickets, nextQueueNumber]
+  );
+
   return (
     <SettingsContext.Provider value={settingsValue}>
       <AuditLogContext.Provider value={auditLogValue}>
         <AuthContext.Provider value={authValue}>
           <CatalogContext.Provider value={catalogValue}>
-            <UsersContext.Provider value={usersValue}>
-              <InvoicingContext.Provider value={invoicingValue}>
-                <ReportingContext.Provider value={reportingValue}>
-                  <AppContext.Provider value={value}>{children}</AppContext.Provider>
-                </ReportingContext.Provider>
-              </InvoicingContext.Provider>
-            </UsersContext.Provider>
+            <CarwashContext.Provider value={carwashValue}>
+              <UsersContext.Provider value={usersValue}>
+                <InvoicingContext.Provider value={invoicingValue}>
+                  <ReportingContext.Provider value={reportingValue}>
+                    <AppContext.Provider value={value}>{children}</AppContext.Provider>
+                  </ReportingContext.Provider>
+                </InvoicingContext.Provider>
+              </UsersContext.Provider>
+            </CarwashContext.Provider>
           </CatalogContext.Provider>
         </AuthContext.Provider>
       </AuditLogContext.Provider>

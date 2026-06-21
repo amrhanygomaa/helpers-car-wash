@@ -1,8 +1,8 @@
-# Helpers warehouse system
+# Top Gear Car Wash
 
 [![CI](https://github.com/amrhanygomaa/Inv_system/actions/workflows/ci.yml/badge.svg)](https://github.com/amrhanygomaa/Inv_system/actions/workflows/ci.yml)
 
-Professional offline desktop system for warehouse, inventory, sales, purchasing, cashbox, returns, reports, and user permissions.
+Professional offline desktop system for a car wash: incoming-car queue, vehicles, wash services, service invoices, key tracking, inventory consumption, cashbox, reports, and user permissions.
 
 The application is built for Windows desktop deployment using Electron, React, TypeScript, Vite, and an encrypted local SQLite database.
 
@@ -10,7 +10,7 @@ The application is built for Windows desktop deployment using Electron, React, T
 
 ## Product Overview
 
-`Helpers warehouse system` is a proprietary desktop application developed by Helpers Technologies for small and medium businesses that need an offline-first warehouse and sales workflow.
+`Top Gear Car Wash` is a proprietary desktop application developed by Helpers Technologies for car wash businesses that need an offline-first workflow — built on the same engine as the Helpers warehouse/sales platform.
 
 Core capabilities:
 
@@ -121,7 +121,7 @@ npm run license:generate -- --machine <HTW-...> --client "Client Name" --plan pr
 npm run license:init
 ```
 
-The license studio lives at `../helpers-warehouse-system-activate/`.
+The license studio lives at `../helpers-carwash-system-activate/`.
 
 ## Code Signing
 
@@ -176,7 +176,7 @@ The GitHub Actions workflow runs the same checks on pull requests and pushes to 
 ## Project Structure
 
 ```text
-helpers-warehouse-system/
+helpers-carwash-system/
 ├── .github/              GitHub Actions and PR templates
 ├── build/                Application icons used by Electron Builder
 ├── docs/                 Installation and support documentation

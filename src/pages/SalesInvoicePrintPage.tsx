@@ -50,6 +50,7 @@ export function SalesInvoicePrintPage() {
       customerName={inv.customerName}
       paymentLog={inv.paymentLog}
       overpayment={inv.overpayment}
+      vehicleLabel={inv.vehicleLabel}
     />
   );
 }

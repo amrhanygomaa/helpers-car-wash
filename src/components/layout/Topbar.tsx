@@ -12,6 +12,11 @@ import { useFeatures } from "../../lib/useFeatures";
 // order matters: more specific paths must precede their prefixes (startsWith match)
 const TITLES: Record<string, string> = {
   "/": "لوحة التحكم",
+  "/queue": "طابور الغسيل",
+  "/carwash/new": "فاتورة غسيل جديدة",
+  "/carwash/reports": "تقارير الغسيل",
+  "/vehicles": "المركبات",
+  "/services": "خدمات الغسيل",
   "/products": "المنتجات",
   "/inventory": "المخزون",
   "/stocktakes": "الجرد الدوري",
@@ -75,7 +80,7 @@ export function Topbar({
     for (const key of Object.keys(TITLES)) {
       if (loc.pathname === key || loc.pathname.startsWith(key + "/")) return TITLES[key];
     }
-    return "نظام المخزون";
+    return "غسيل السيارات";
   }, [loc.pathname]);
 
   const results = useMemo(() => {

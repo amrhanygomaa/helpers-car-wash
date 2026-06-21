@@ -119,6 +119,39 @@ export const PERMISSION_GROUPS: {
     description: "تقارير الأداء والأرصدة",
     actions: [{ key: "view", label: "عرض" }],
   },
+  {
+    key: "vehicles",
+    label: "المركبات",
+    description: "مركبات العملاء وبياناتها",
+    actions: [
+      { key: "view", label: "عرض" },
+      { key: "add", label: "إضافة" },
+      { key: "edit", label: "تعديل" },
+      { key: "delete", label: "حذف" },
+    ],
+  },
+  {
+    key: "washServices",
+    label: "خدمات الغسيل",
+    description: "خدمات الغسيل وأسعارها وخاماتها",
+    actions: [
+      { key: "view", label: "عرض" },
+      { key: "add", label: "إضافة" },
+      { key: "edit", label: "تعديل" },
+      { key: "delete", label: "حذف" },
+    ],
+  },
+  {
+    key: "queue",
+    label: "طابور الغسيل",
+    description: "استقبال السيارات وإدارة الطابور والمفاتيح",
+    actions: [
+      { key: "view", label: "عرض" },
+      { key: "add", label: "إضافة" },
+      { key: "edit", label: "تعديل" },
+      { key: "cancel", label: "إلغاء" },
+    ],
+  },
 ];
 
 export function createPermissions(enabled = false): UserPermissions {
@@ -134,6 +167,9 @@ export function createPermissions(enabled = false): UserPermissions {
     alerts: { view: enabled },
     cashbox: { view: enabled, add: enabled, spend: enabled, editOpeningBalance: enabled },
     reports: { view: enabled },
+    vehicles: { view: enabled, add: enabled, edit: enabled, delete: enabled },
+    washServices: { view: enabled, add: enabled, edit: enabled, delete: enabled },
+    queue: { view: enabled, add: enabled, edit: enabled, cancel: enabled },
   };
 }
 

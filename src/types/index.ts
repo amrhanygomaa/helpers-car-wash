@@ -58,6 +58,10 @@ export interface UserPermissions {
   alerts: { view: boolean };
   cashbox: { view: boolean; add: boolean; spend: boolean; editOpeningBalance: boolean };
   reports: { view: boolean };
+  // ── Car Wash modules ──
+  vehicles: { view: boolean; add: boolean; edit: boolean; delete: boolean };
+  washServices: { view: boolean; add: boolean; edit: boolean; delete: boolean };
+  queue: { view: boolean; add: boolean; edit: boolean; cancel: boolean };
 }
 
 export interface MonthlyEmployeeConfig {
@@ -114,6 +118,22 @@ export interface Customer {
   createdAt: string;
 }
 
+/**
+ * A car belonging to a customer. A customer can own multiple vehicles
+ * (Car Wash MVP — feature 2). Plate number is the human-friendly identifier.
+ */
+export interface Vehicle {
+  id: ID;
+  customerId: ID;
+  brand: string;
+  model?: string;
+  plateNumber: string;
+  color?: string;
+  notes?: string;
+  archived?: boolean;
+  createdAt: string;
+}
+
 export interface Driver {
   id: ID;
   name: string;
@@ -158,6 +178,17 @@ export interface InvoiceLine {
   expiryDate?: string;
   subtotal: number;
   isRetailUnit?: boolean;
+  /**
+   * Line kind (Car Wash MVP). Absent/"product" ⇒ a normal warehouse stock line
+   * (deducts the product). "service" ⇒ a car-wash service line: it carries a
+   * serviceId and the employee who performed it, and consumes inventory through
+   * the service's linked materials (BOM) rather than via productId.
+   */
+  kind?: "product" | "service";
+  serviceId?: ID;
+  /** Employee who performed this service (feature 5 — per-service attribution). */
+  employeeId?: ID;
+  employeeName?: string;
 }
 
 export interface PurchaseInvoice {
@@ -201,6 +232,82 @@ export interface SalesInvoice {
   cancelled?: boolean;
   paymentLog?: PaymentLogEntry[];
   createdByUserId?: ID;
+  /**
+   * Invoice kind (Car Wash MVP). Absent/"product" ⇒ standard warehouse sales
+   * invoice. "service" ⇒ a car-wash service invoice tied to a vehicle, whose
+   * service lines consume inventory via their linked materials.
+   */
+  invoiceKind?: "product" | "service";
+  vehicleId?: ID;
+  /** Denormalized vehicle label e.g. "Toyota Corolla · ABC-123" for printing/listing. */
+  vehicleLabel?: string;
+  /** Queue ticket this invoice was created from, if any. */
+  queueId?: ID;
+  createdAt: string;
+}
+
+// ── Car Wash MVP ────────────────────────────────────────────────────────────
+
+export type WashServiceCategory = "wash" | "extra";
+
+/**
+ * A material consumed when a wash service is performed (BOM line). Quantity is
+ * expressed in the product's base unit, or in pieces when isRetailUnit is set
+ * (mirrors InvoiceLine semantics so the same piece-aware deduction applies).
+ */
+export interface ServiceMaterial {
+  id: ID;
+  productId: ID;
+  quantity: number;
+  isRetailUnit?: boolean;
+}
+
+/**
+ * A car-wash service offered to customers (feature 3). Replaces "products only"
+ * for the wash business: exterior/interior/chemical/engine/upholstery washes
+ * plus extras (wax, trunk cleaning, polish). The default price can be overridden
+ * per invoice line.
+ */
+export interface WashService {
+  id: ID;
+  code?: string;
+  name: string;
+  category: WashServiceCategory;
+  defaultPrice: number;
+  active: boolean;
+  /** Linked inventory materials consumed when the service is performed (feature 7). */
+  materials?: ServiceMaterial[];
+  notes?: string;
+  createdAt: string;
+}
+
+export type QueueStatus = "waiting" | "washing" | "completed" | "cancelled";
+
+/**
+ * A car in the wash queue (feature 1). Supports walk-ins (customerName without a
+ * customer record) and links to a saved Customer/Vehicle when available. Key
+ * tracking (feature 6) is embedded: who received/delivered the keys and when.
+ */
+export interface QueueTicket {
+  id: ID;
+  number: number;
+  customerId?: ID;
+  customerName: string;
+  phone?: string;
+  vehicleId?: ID;
+  vehicleLabel?: string;
+  arrivalTime: string;
+  delayNote?: string;
+  status: QueueStatus;
+  // Key tracking
+  keyReceivedBy?: ID;
+  keyReceivedByName?: string;
+  keyReceivedAt?: string;
+  keyDeliveredBy?: ID;
+  keyDeliveredByName?: string;
+  keyDeliveredAt?: string;
+  /** Service invoice created from this ticket, if any. */
+  invoiceId?: ID;
   createdAt: string;
 }
 
@@ -403,7 +510,10 @@ export type AuditAction =
   | "supplier_restored"
   | "cash_manual_add"
   | "cash_manual_remove"
-  | "invoice_restored";
+  | "invoice_restored"
+  | "vehicle_deleted"
+  | "service_deleted"
+  | "queue_ticket_cancelled";
 
 /**
  * Full snapshot captured when an invoice is deleted — everything the delete

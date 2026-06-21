@@ -25,7 +25,7 @@ const { execFileSync } = require("node:child_process");
 const { flipFuses, FuseVersion, FuseV1Options } = require("@electron/fuses");
 
 const CERT_SHA1 = "E950B2D3C22831B0EDE52E0F69D7C0C422BCBE02";
-const MAIN_EXE_NAME = "Helpers warehouse system.exe";
+const MAIN_EXE_NAME = "Top Gear Car Wash.exe";
 
 const SIGNTOOL_CANDIDATES = [
   "C:\\Users\\amrha\\AppData\\Local\\electron-builder\\Cache\\winCodeSign\\winCodeSign-2.6.0\\windows-10\\x64\\signtool.exe",

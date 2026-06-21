@@ -23,6 +23,9 @@ import {
   ClipboardList,
   Upload,
   ChevronDown,
+  Car,
+  ListChecks,
+  Sparkles,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { lsGet, lsSet } from "../../lib/storage";
@@ -54,6 +57,17 @@ const TOP_ITEMS: NavItem[] = [
 ];
 
 const GROUPS: NavGroup[] = [
+  {
+    id: "carwash",
+    label: "غسيل السيارات",
+    items: [
+      { to: "/queue", label: "طابور الغسيل", icon: ListChecks, permission: "queue", feature: "carwashQueue" },
+      { to: "/carwash/new", label: "فاتورة غسيل جديدة", icon: Receipt, permission: "salesInvoices", feature: "washServices" },
+      { to: "/vehicles", label: "المركبات", icon: Car, permission: "vehicles", feature: "vehicles" },
+      { to: "/services", label: "خدمات الغسيل", icon: Sparkles, permission: "washServices", feature: "washServices" },
+      { to: "/carwash/reports", label: "تقارير الغسيل", icon: BarChart3, permission: "reports", feature: "washServices" },
+    ],
+  },
   {
     id: "invoices",
     label: "الفواتير",
@@ -211,7 +225,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
           <div className="font-semibold text-slate-900 truncate text-sm">
             {settings.arabicLabels ? settings.companyNameAr : settings.companyName}
           </div>
-          <div className="text-[11px] text-slate-500">نظام المخزون والمبيعات</div>
+          <div className="text-[11px] text-slate-500">نظام إدارة غسيل السيارات</div>
         </div>
       </div>
       <nav className={cn("p-2 flex-1 overflow-y-auto", collapsed && "space-y-1")}>

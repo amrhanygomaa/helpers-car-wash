@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from "react";
-import { ArrowRight, Target, TrendingUp, UserRound } from "lucide-react";
+import { ArrowRight, Sparkles, Target, TrendingUp, UserRound } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { PageHeader } from "../components/layout/AppLayout";
 import { Card, CardBody, CardHeader } from "../components/ui/Card";
@@ -9,9 +9,20 @@ import { Field } from "../components/ui/Input";
 import { EmptyState } from "../components/ui/EmptyState";
 import { useUsers } from "../store/UsersContext";
 import { useReporting } from "../store/ReportingContext";
+import { useInvoicing } from "../store/InvoicingContext";
 import { useSettings } from "../store/SettingsContext";
+import { useFeatures } from "../lib/useFeatures";
+import { employeeServiceStats } from "../store/_pure";
 import { formatCurrency } from "../lib/format";
 import { localISODate, MONTH_NAMES_AR } from "../lib/utils";
+
+function monthRange(month: string): { from: string; to: string } {
+  const [y, m] = month.split("-").map(Number);
+  const from = `${month}-01`;
+  const lastDay = new Date(y, m, 0).getDate();
+  const to = `${month}-${String(lastDay).padStart(2, "0")}`;
+  return { from, to };
+}
 
 function currentMonth(): string {
   return localISODate().slice(0, 7);
@@ -33,10 +44,13 @@ function buildMonthOptions(): { value: string; label: string }[] {
 export function EmployeeReportPage() {
   const { users } = useUsers();
   const { employeeSalesStats } = useReporting();
+  const { salesInvoices } = useInvoicing();
   const { settings } = useSettings();
+  const { isEnabled } = useFeatures();
   const navigate = useNavigate();
   const [month, setMonth] = useState(currentMonth);
   const monthOptions = useMemo(() => buildMonthOptions(), []);
+  const showWash = isEnabled("washServices");
 
   const employees = useMemo(
     () => users.filter((user) => user.role === "employee"),
@@ -91,6 +105,9 @@ export function EmployeeReportPage() {
               ? Math.min(100, Math.round((stats.totalCollected / stats.target) * 100))
               : null;
             const achieved = stats.target > 0 && stats.totalCollected >= stats.target;
+            const { from, to } = monthRange(month);
+            const washStats = showWash ? employeeServiceStats(salesInvoices, employee.id, from, to) : null;
+            const washCommission = washStats ? (washStats.attributedRevenue * (employee.salesCommissionPct ?? 0)) / 100 : 0;
 
             return (
               <Card key={employee.id}>
@@ -161,6 +178,28 @@ export function EmployeeReportPage() {
                     </div>
                   ) : (
                     <div className="text-xs text-slate-400 text-center py-1">لا يوجد تارجت لهذا الشهر</div>
+                  )}
+
+                  {/* Car wash service performance — shown when washServices feature is on */}
+                  {washStats && (washStats.carsWashed > 0 || washStats.servicesPerformed > 0) && (
+                    <div className="border border-cyan-100 bg-cyan-50/50 rounded-lg p-3 space-y-1">
+                      <div className="flex items-center gap-1.5 text-xs font-semibold text-cyan-700 mb-2">
+                        <Sparkles className="w-3.5 h-3.5" />
+                        أداء الغسيل
+                      </div>
+                      <div className="divide-y divide-cyan-100">
+                        <ReportRow label="سيارات مغسولة" value={String(washStats.carsWashed)} tone="slate" />
+                        <ReportRow label="خدمات منفّذة" value={String(washStats.servicesPerformed)} tone="slate" />
+                        <ReportRow label="إيراد منسوب" value={formatCurrency(washStats.attributedRevenue, settings.currency)} tone="slate" />
+                        {(employee.salesCommissionPct ?? 0) > 0 && (
+                          <ReportRow
+                            label={`عمولة الغسيل (${employee.salesCommissionPct}%)`}
+                            value={formatCurrency(washCommission, settings.currency)}
+                            tone="amber"
+                          />
+                        )}
+                      </div>
+                    </div>
                   )}
                 </CardBody>
               </Card>

@@ -261,6 +261,26 @@ export function SalesInvoiceEditPage() {
     );
   }
 
+  // Service invoices carry material BOM; editing them here would skip re-computation.
+  // Direct the user to cancel and re-issue instead.
+  if (inv.invoiceKind === "service") {
+    return (
+      <Card>
+        <CardBody>
+          <div className="text-center py-8 space-y-3">
+            <div className="text-slate-700 font-semibold">فاتورة خدمة غسيل — لا يمكن تعديلها مباشرةً</div>
+            <div className="text-slate-500 text-sm">
+              لتصحيح فاتورة الغسيل، قم بإلغائها وإنشاء فاتورة جديدة.
+            </div>
+            <Button variant="outline" onClick={() => navigate(`/sales/${inv.id}`)}>
+              <ArrowRight className="w-4 h-4" /> العودة لتفاصيل الفاتورة
+            </Button>
+          </div>
+        </CardBody>
+      </Card>
+    );
+  }
+
   return (
     <>
       <PageHeader

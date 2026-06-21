@@ -126,7 +126,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
             <div className="flex items-center gap-2">
               <span className="font-bold text-brand-600">© 2026 جميع الحقوق محفوظة لشركة Helpers Technologies</span>
               <span className="hidden md:inline">|</span>
-              <span>نظام إدارة المستودعات الذكي v{__APP_VERSION__}</span>
+              <span>نظام إدارة غسيل السيارات v{__APP_VERSION__}</span>
             </div>
             <div className="flex items-center gap-6">
               <a href="https://wa.me/201118445625" target="_blank" rel="noreferrer" className="hover:text-emerald-600 flex items-center gap-1.5 transition-colors">

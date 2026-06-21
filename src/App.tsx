@@ -8,6 +8,11 @@ import { ProductsPage } from "./pages/ProductsPage";
 import { InventoryPage } from "./pages/InventoryPage";
 import { SuppliersPage } from "./pages/SuppliersPage";
 import { CustomersPage } from "./pages/CustomersPage";
+import { VehiclesPage } from "./pages/VehiclesPage";
+import { ServicesPage } from "./pages/ServicesPage";
+import { CarwashInvoiceNewPage } from "./pages/CarwashInvoiceNewPage";
+import { QueuePage } from "./pages/QueuePage";
+import { CarwashReportsPage } from "./pages/CarwashReportsPage";
 import { PurchaseInvoicesPage } from "./pages/PurchaseInvoicesPage";
 import { PurchaseInvoiceNewPage } from "./pages/PurchaseInvoiceNewPage";
 import { PurchaseInvoiceDetailPage } from "./pages/PurchaseInvoiceDetailPage";
@@ -110,6 +115,46 @@ export default function App() {
         element={
           <ProtectedShell permission="customers" feature="customers">
             <CustomersPage />
+          </ProtectedShell>
+        }
+      />
+      <Route
+        path="/vehicles"
+        element={
+          <ProtectedShell permission="vehicles" feature="vehicles">
+            <VehiclesPage />
+          </ProtectedShell>
+        }
+      />
+      <Route
+        path="/services"
+        element={
+          <ProtectedShell permission="washServices" feature="washServices">
+            <ServicesPage />
+          </ProtectedShell>
+        }
+      />
+      <Route
+        path="/carwash/new"
+        element={
+          <ProtectedShell permission="salesInvoices" permissionAction="add" feature="washServices">
+            <CarwashInvoiceNewPage />
+          </ProtectedShell>
+        }
+      />
+      <Route
+        path="/queue"
+        element={
+          <ProtectedShell permission="queue" feature="carwashQueue">
+            <QueuePage />
+          </ProtectedShell>
+        }
+      />
+      <Route
+        path="/carwash/reports"
+        element={
+          <ProtectedShell permission="reports" feature="washServices">
+            <CarwashReportsPage />
           </ProtectedShell>
         }
       />

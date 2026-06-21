@@ -7,6 +7,8 @@ import type {
   PurchaseReturn,
   ReturnLine,
   CashEntry,
+  WashService,
+  ID,
 } from "../types";
 
 export type PaymentStatusResult = "paid" | "partial" | "unpaid";
@@ -40,6 +42,85 @@ export function applyPieceAddition(p: Product, pieces: number): Partial<Product>
     quantity: p.quantity + fullCartons,
     looseQuantity: newLoose - fullCartons * ppu,
   };
+}
+
+/** A net inventory deduction caused by performing service lines on an invoice. */
+export interface MaterialConsumption {
+  productId: ID;
+  /** Total quantity to consume, already multiplied by each service line's quantity. */
+  quantity: number;
+  /** When true, quantity is in pieces (piece-aware deduction); else in base units. */
+  isRetailUnit?: boolean;
+}
+
+/**
+ * Expands the service lines of an invoice into the aggregated inventory
+ * consumption from each service's linked materials (BOM). Product lines and
+ * services without materials contribute nothing. Quantities are summed per
+ * (product, unit-mode) so a material shared by two services is deducted once.
+ * Pure + side-effect free so it can be unit-tested in isolation (Car Wash —
+ * feature 7).
+ */
+export function expandServiceMaterials(
+  lines: Pick<InvoiceLine, "kind" | "serviceId" | "quantity">[],
+  services: Pick<WashService, "id" | "materials">[],
+): MaterialConsumption[] {
+  const byKey = new Map<string, MaterialConsumption>();
+  for (const line of lines) {
+    if (line.kind !== "service" || !line.serviceId) continue;
+    const svc = services.find((s) => s.id === line.serviceId);
+    if (!svc?.materials?.length) continue;
+    const lineQty = line.quantity > 0 ? line.quantity : 1;
+    for (const m of svc.materials) {
+      if (!m.productId || m.quantity <= 0) continue;
+      const key = `${m.productId}__${m.isRetailUnit ? "piece" : "unit"}`;
+      const qty = m.quantity * lineQty;
+      const existing = byKey.get(key);
+      if (existing) existing.quantity += qty;
+      else byKey.set(key, { productId: m.productId, quantity: qty, isRetailUnit: m.isRetailUnit });
+    }
+  }
+  return [...byKey.values()];
+}
+
+/** Per-employee service performance over a date range (Car Wash — features 5 + 8). */
+export interface EmployeeServiceStats {
+  carsWashed: number;
+  servicesPerformed: number;
+  attributedRevenue: number;
+}
+
+/**
+ * Sums the work a single employee performed on car-wash service invoices in
+ * [from, to] (inclusive). A "car washed" is a distinct non-cancelled service
+ * invoice on which the employee performed at least one line; "services
+ * performed" counts the service lines (× their quantity); "attributed revenue"
+ * sums those lines' subtotals — the base for that employee's commission. Pure +
+ * testable.
+ */
+export function employeeServiceStats(
+  invoices: Pick<SalesInvoice, "id" | "date" | "cancelled" | "invoiceKind" | "lines">[],
+  userId: string,
+  from: string,
+  to: string,
+): EmployeeServiceStats {
+  let carsWashed = 0;
+  let servicesPerformed = 0;
+  let attributedRevenue = 0;
+  for (const inv of invoices) {
+    if (inv.cancelled) continue;
+    if (inv.invoiceKind !== "service") continue;
+    if (inv.date < from || inv.date > to) continue;
+    let touchedThisInvoice = false;
+    for (const line of inv.lines) {
+      if (line.kind !== "service" || line.employeeId !== userId) continue;
+      touchedThisInvoice = true;
+      servicesPerformed += line.quantity > 0 ? line.quantity : 1;
+      attributedRevenue += line.subtotal;
+    }
+    if (touchedThisInvoice) carsWashed += 1;
+  }
+  return { carsWashed, servicesPerformed, attributedRevenue };
 }
 
 export function applyReturnToInvoiceLines(lines: InvoiceLine[], returns: ReturnLine[]) {

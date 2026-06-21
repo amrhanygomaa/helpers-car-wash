@@ -18,7 +18,7 @@ export const BRANDING: {
   companyName: string;
   logoImage: string;
 } = {
-  companyNameAr: "",
-  companyName: "",
+  companyNameAr: "توب جير لغسيل السيارات",
+  companyName: "Top Gear",
   logoImage: "",
 };

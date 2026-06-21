@@ -26,6 +26,8 @@ interface Props {
   customerName?: string;
   paymentLog?: PaymentLogEntry[];
   overpayment?: number;
+  /** Car Wash: vehicle this service invoice was issued for. */
+  vehicleLabel?: string;
 }
 
 export function InvoicePrintLayout(props: Props) {
@@ -137,6 +139,13 @@ export function InvoicePrintLayout(props: Props) {
             <InfoBox label="السائق" value={props.driverName ?? "—"} />
           </div>
 
+          {/* ── VEHICLE (car wash service invoices) ── */}
+          {props.vehicleLabel ? (
+            <div style={{ marginBottom: 16 }}>
+              <InfoBox label="المركبة" value={props.vehicleLabel} accent />
+            </div>
+          ) : null}
+
           {/* ── ITEMS TABLE ── */}
           <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
@@ -156,6 +165,11 @@ export function InvoicePrintLayout(props: Props) {
                     <Td center muted>{idx + 1}</Td>
                     <Td>
                       <span style={{ fontWeight: 600, color: "#0f172a" }}>{l.productName}</span>
+                      {l.employeeName && (
+                        <span style={{ display: "block", fontSize: 10, color: "#64748b" }}>
+                          الفني: {l.employeeName}
+                        </span>
+                      )}
                       {l.expiryDate && (
                         <span style={{ display: "block", fontSize: 10, color: "#94a3b8" }}>
                           صلاحية: {formatDate(l.expiryDate)}

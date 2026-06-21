@@ -4,7 +4,7 @@ import {
   Package, Warehouse, AlertTriangle, CalendarClock, TrendingUp, TrendingDown,
   Wallet, HandCoins, Receipt, Plus, ShoppingBag, Users, Clock,
   Settings2, Eye, EyeOff, GripVertical, RotateCcw, Building2, BarChart2,
-  CircleDollarSign,
+  CircleDollarSign, Car, ListChecks,
 } from "lucide-react";
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip,
@@ -16,10 +16,13 @@ import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { Dialog } from "../components/ui/Dialog";
 import { useCatalog } from "../store/CatalogContext";
+import { useCarwash } from "../store/CarwashContext";
 import { useInvoicing } from "../store/InvoicingContext";
 import { useReporting } from "../store/ReportingContext";
 import { useAuth } from "../store/AuthContext";
 import { useSettings } from "../store/SettingsContext";
+import { useFeatures } from "../lib/useFeatures";
+import type { FeatureKey } from "../lib/features";
 import { formatCurrency, formatDate, formatNumber } from "../lib/format";
 import { hasPermission } from "../lib/permissions";
 import { daysUntil, isToday, localISODate } from "../lib/utils";
@@ -27,6 +30,7 @@ import { lsGet, lsSet } from "../lib/storage";
 
 /* ─── Types ─── */
 type CardId =
+  | "carsToday" | "washSalesToday" | "inQueue" | "washCollectedToday"
   | "totalProducts" | "totalStock" | "lowStock" | "expiringSoon"
   | "todaySales" | "todayPurchases" | "monthlySales" | "monthlyPurchases"
   | "receivables" | "payables" | "cashBalance" | "accountInvoices"
@@ -41,6 +45,10 @@ type SectionsConfig = Record<SectionId, boolean>;
 
 /* ─── Defaults ─── */
 const DEFAULT_CARDS: CardConfig[] = [
+  { id: "carsToday",          visible: true },
+  { id: "washSalesToday",     visible: true },
+  { id: "washCollectedToday", visible: true },
+  { id: "inQueue",            visible: true },
   { id: "totalProducts",    visible: true },
   { id: "totalStock",       visible: true },
   { id: "lowStock",         visible: true },
@@ -65,6 +73,10 @@ const DEFAULT_SECTIONS: SectionsConfig = {
 };
 
 const CARD_LABELS: Record<CardId, string> = {
+  carsToday:          "سيارات اليوم",
+  washSalesToday:     "مبيعات الغسيل اليوم",
+  washCollectedToday: "المحصّل اليوم",
+  inQueue:            "في الطابور الآن",
   totalProducts:    "إجمالي المنتجات",
   totalStock:       "إجمالي الوحدات في المخزون",
   lowStock:         "منتجات قليلة المخزون",
@@ -297,10 +309,12 @@ function CustomizeDialog({
 /* ─── Main Page ─── */
 export function DashboardPage() {
   const { products, customers, suppliers } = useCatalog();
+  const { queueTickets } = useCarwash();
   const { purchaseInvoices, salesInvoices, currentCashBalance } = useInvoicing();
   const { customerBalance, supplierBalance } = useReporting();
   const { currentUser } = useAuth();
   const { settings } = useSettings();
+  const { isEnabled } = useFeatures();
 
   const [customizeOpen, setCustomizeOpen] = useState(false);
   const { cards, sections, toggleCard, toggleSection, moveCard, reset } = useDashboardConfig();
@@ -310,11 +324,13 @@ export function DashboardPage() {
   const canViewAlerts    = hasPermission(currentUser, "alerts");
   const canViewSales     = hasPermission(currentUser, "salesInvoices");
   const canAddSales      = hasPermission(currentUser, "salesInvoices", "add");
-  const canViewPurchases = hasPermission(currentUser, "purchaseInvoices");
-  const canAddPurchases  = hasPermission(currentUser, "purchaseInvoices", "add");
+  // Purchases/suppliers are AND-ed with their feature flag so the whole
+  // warehouse side (trend line, recent activity, panels) hides for Top Gear.
+  const canViewPurchases = hasPermission(currentUser, "purchaseInvoices") && isEnabled("purchaseInvoices");
+  const canAddPurchases  = hasPermission(currentUser, "purchaseInvoices", "add") && isEnabled("purchaseInvoices");
   const canViewCustomers = hasPermission(currentUser, "customers");
   const canAddCustomer   = hasPermission(currentUser, "customers", "add");
-  const canViewSuppliers = hasPermission(currentUser, "suppliers");
+  const canViewSuppliers = hasPermission(currentUser, "suppliers") && isEnabled("suppliers");
   const canViewCashbox   = hasPermission(currentUser, "cashbox");
   const canAddProduct    = hasPermission(currentUser, "products", "add");
 
@@ -347,6 +363,19 @@ export function DashboardPage() {
       totalCustomers: customers.length, totalSuppliers: suppliers.length,
     };
   }, [products, salesInvoices, purchaseInvoices, customers, suppliers, customerBalance, supplierBalance, currentCashBalance]);
+
+  // ── Car-wash stats ──
+  const washStats = useMemo(() => {
+    const serviceToday = salesInvoices.filter(
+      (s) => s.invoiceKind === "service" && !s.cancelled && isToday(s.date)
+    );
+    return {
+      carsToday: serviceToday.length,
+      washSalesToday: serviceToday.reduce((a, s) => a + s.total, 0),
+      washCollectedToday: serviceToday.reduce((a, s) => a + s.amountReceived, 0),
+      inQueue: queueTickets.filter((t) => t.status === "waiting" || t.status === "washing").length,
+    };
+  }, [salesInvoices, queueTickets]);
 
   const { accountInvoicesTotal, accountInvoicesCount, overdueInvoices, overdueTotal } = useMemo(() => {
     const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -405,29 +434,39 @@ export function DashboardPage() {
     return items.sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 8);
   }, [salesInvoices, purchaseInvoices, canViewSales, canViewPurchases]);
 
-  // ── Card permission map ──
+  // ── Card permission map (AND-ed with the module's feature flag so warehouse
+  // cards auto-hide when the owner has turned those modules off, e.g. Top Gear). ──
+  const f = (key: FeatureKey) => isEnabled(key);
   const cardAllowed: Record<CardId, boolean> = {
-    totalProducts:    canViewProducts,
-    totalStock:       canViewInventory,
-    lowStock:         canViewAlerts,
-    expiringSoon:     canViewAlerts,
-    todaySales:       canViewSales,
-    todayPurchases:   canViewPurchases,
-    monthlySales:     canViewSales,
-    monthlyPurchases: canViewPurchases,
-    receivables:      canViewCustomers,
-    payables:         canViewSuppliers,
-    cashBalance:      canViewCashbox,
-    accountInvoices:  canViewSales,
-    overdueCount:     canViewSales,
-    totalCustomers:   canViewCustomers,
-    totalSuppliers:   canViewSuppliers,
-    netProfitToday:   canViewSales && canViewPurchases,
+    carsToday:          canViewSales && f("washServices"),
+    washSalesToday:     canViewSales && f("washServices"),
+    washCollectedToday: canViewCashbox && f("washServices"),
+    inQueue:            f("carwashQueue") && hasPermission(currentUser, "queue"),
+    totalProducts:    canViewProducts && f("products"),
+    totalStock:       canViewInventory && f("inventory"),
+    lowStock:         canViewAlerts && f("alerts"),
+    expiringSoon:     canViewAlerts && f("alerts"),
+    todaySales:       canViewSales && f("salesInvoices"),
+    todayPurchases:   canViewPurchases && f("purchaseInvoices"),
+    monthlySales:     canViewSales && f("salesInvoices"),
+    monthlyPurchases: canViewPurchases && f("purchaseInvoices"),
+    receivables:      canViewCustomers && f("customers"),
+    payables:         canViewSuppliers && f("suppliers"),
+    cashBalance:      canViewCashbox && f("cashbox"),
+    accountInvoices:  canViewSales && f("salesInvoices"),
+    overdueCount:     canViewSales && f("salesInvoices"),
+    totalCustomers:   canViewCustomers && f("customers"),
+    totalSuppliers:   canViewSuppliers && f("suppliers"),
+    netProfitToday:   canViewSales && canViewPurchases && f("purchaseInvoices"),
   };
 
   function renderCard(id: CardId) {
     const cur = settings.currency;
     switch (id) {
+      case "carsToday":          return <StatCard key={id} title="سيارات اليوم" value={formatNumber(washStats.carsToday)} icon={<Car className="w-5 h-5" />} tone="blue" delta="فواتير غسيل اليوم" />;
+      case "washSalesToday":     return <StatCard key={id} title="مبيعات الغسيل اليوم" value={formatCurrency(washStats.washSalesToday, cur)} icon={<TrendingUp className="w-5 h-5" />} tone="green" />;
+      case "washCollectedToday": return <StatCard key={id} title="المحصّل اليوم" value={formatCurrency(washStats.washCollectedToday, cur)} icon={<Wallet className="w-5 h-5" />} tone="green" />;
+      case "inQueue":            return <StatCard key={id} title="في الطابور الآن" value={formatNumber(washStats.inQueue)} icon={<ListChecks className="w-5 h-5" />} tone="amber" delta="انتظار + جاري الغسيل" />;
       case "totalProducts":    return <StatCard key={id} title="إجمالي المنتجات" value={formatNumber(stats.totalProducts)} icon={<Package className="w-5 h-5" />} tone="blue" />;
       case "totalStock":       return <StatCard key={id} title="إجمالي الوحدات في المخزون" value={formatNumber(stats.totalStockUnits)} icon={<Warehouse className="w-5 h-5" />} tone="indigo" />;
       case "lowStock":         return <StatCard key={id} title="منتجات قليلة المخزون" value={formatNumber(stats.lowStock)} icon={<AlertTriangle className="w-5 h-5" />} tone="amber" />;
@@ -470,12 +509,17 @@ export function DashboardPage() {
               <Settings2 className="w-4 h-4" />
               تخصيص
             </Button>
-            {canAddSales && (
-              <Link to="/sales/new">
-                <Button><Plus className="w-4 h-4" />فاتورة مبيعات</Button>
+            {canAddSales && isEnabled("washServices") && (
+              <Link to="/carwash/new">
+                <Button><Plus className="w-4 h-4" />فاتورة غسيل جديدة</Button>
               </Link>
             )}
-            {canAddPurchases && (
+            {hasPermission(currentUser, "queue", "add") && isEnabled("carwashQueue") && (
+              <Link to="/queue">
+                <Button variant="outline"><Car className="w-4 h-4" />استقبال سيارة</Button>
+              </Link>
+            )}
+            {canAddPurchases && isEnabled("purchaseInvoices") && (
               <Link to="/purchases/new">
                 <Button variant="outline"><Plus className="w-4 h-4" />فاتورة مشتريات</Button>
               </Link>
@@ -665,10 +709,13 @@ export function DashboardPage() {
         <Card>
           <CardHeader title="إجراءات سريعة" />
           <CardBody className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {canAddSales     && <Link to="/sales/new"><Button variant="outline" className="w-full justify-start"><Receipt className="w-4 h-4" />فاتورة مبيعات جديدة</Button></Link>}
-            {canAddPurchases && <Link to="/purchases/new"><Button variant="outline" className="w-full justify-start"><ShoppingBag className="w-4 h-4" />فاتورة مشتريات جديدة</Button></Link>}
-            {canAddProduct   && <Link to="/products"><Button variant="outline" className="w-full justify-start"><Package className="w-4 h-4" />إضافة منتج</Button></Link>}
-            {canAddCustomer  && <Link to="/customers"><Button variant="outline" className="w-full justify-start"><Users className="w-4 h-4" />إضافة عميل</Button></Link>}
+            {canAddSales && isEnabled("washServices") && <Link to="/carwash/new"><Button variant="outline" className="w-full justify-start"><Receipt className="w-4 h-4" />فاتورة غسيل جديدة</Button></Link>}
+            {hasPermission(currentUser, "queue", "add") && isEnabled("carwashQueue") && <Link to="/queue"><Button variant="outline" className="w-full justify-start"><Car className="w-4 h-4" />استقبال سيارة</Button></Link>}
+            {hasPermission(currentUser, "washServices", "add") && isEnabled("washServices") && <Link to="/services"><Button variant="outline" className="w-full justify-start"><Receipt className="w-4 h-4" />إضافة خدمة غسيل</Button></Link>}
+            {canAddSales && isEnabled("salesInvoices") && <Link to="/sales/new"><Button variant="outline" className="w-full justify-start"><Receipt className="w-4 h-4" />فاتورة مبيعات</Button></Link>}
+            {canAddPurchases && isEnabled("purchaseInvoices") && <Link to="/purchases/new"><Button variant="outline" className="w-full justify-start"><ShoppingBag className="w-4 h-4" />فاتورة مشتريات جديدة</Button></Link>}
+            {canAddProduct   && isEnabled("products") && <Link to="/products"><Button variant="outline" className="w-full justify-start"><Package className="w-4 h-4" />إضافة منتج</Button></Link>}
+            {canAddCustomer  && isEnabled("customers") && <Link to="/customers"><Button variant="outline" className="w-full justify-start"><Users className="w-4 h-4" />إضافة عميل</Button></Link>}
           </CardBody>
         </Card>
       )}

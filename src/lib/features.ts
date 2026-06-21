@@ -26,7 +26,10 @@ export type FeatureKey =
   | "cashbox"
   | "dues"
   | "reports"
-  | "employeesReport";
+  | "employeesReport"
+  | "carwashQueue"
+  | "vehicles"
+  | "washServices";
 
 export interface FeatureDef {
   key: FeatureKey;
@@ -52,6 +55,10 @@ export const FEATURES: FeatureDef[] = [
   { key: "dues", label: "المستحقات", description: "متابعة مستحقات العملاء والموردين", defaultEnabled: true },
   { key: "reports", label: "التقارير", description: "تقارير المبيعات والمشتريات والأرباح", defaultEnabled: true },
   { key: "employeesReport", label: "تقرير الموظفين", description: "متابعة المحصَّل والعمولات الشهرية للموظفين", defaultEnabled: true },
+  // ── Car Wash modules ──
+  { key: "carwashQueue", label: "طابور الغسيل", description: "استقبال السيارات وإدارة طابور الغسيل ومفاتيح السيارات", defaultEnabled: true },
+  { key: "vehicles", label: "المركبات", description: "إدارة مركبات العملاء (الماركة والموديل واللوحة)", defaultEnabled: true },
+  { key: "washServices", label: "خدمات الغسيل", description: "تعريف خدمات الغسيل وأسعارها والخامات المرتبطة بها", defaultEnabled: true },
 ];
 
 export const FEATURE_MAP: Record<FeatureKey, FeatureDef> = FEATURES.reduce(
@@ -63,11 +70,25 @@ export const FEATURE_MAP: Record<FeatureKey, FeatureDef> = FEATURES.reduce(
 );
 
 /**
+ * Car-wash modules are the core of the Top Gear build — they ship with the
+ * product, not as a paid add-on. They are exempt from the license whitelist so
+ * that licenses issued before these keys existed (warehouse-era serials) still
+ * surface them. Owner Settings toggles can still hide them if unwanted.
+ */
+const LICENSE_EXEMPT_FEATURES: ReadonlySet<FeatureKey> = new Set<FeatureKey>([
+  "carwashQueue",
+  "vehicles",
+  "washServices",
+]);
+
+/**
  * License cap. When the serial carries an explicit feature whitelist, only those
  * keys are allowed. An absent/empty list means the license predates feature
- * packaging — allow everything so existing installs keep working.
+ * packaging — allow everything so existing installs keep working. Car-wash
+ * modules are always allowed (see {@link LICENSE_EXEMPT_FEATURES}).
  */
 export function isAllowedByLicense(key: FeatureKey, license?: LicensePayload | null): boolean {
+  if (LICENSE_EXEMPT_FEATURES.has(key)) return true;
   const allowed = license?.features;
   if (!allowed || allowed.length === 0) return true;
   return allowed.includes(key);
@@ -83,6 +104,8 @@ export function isAllowedByLicense(key: FeatureKey, license?: LicensePayload | n
  *   default — which is why Quotations/Stocktakes stay hidden until toggled.
  */
 export function defaultFeatureState(key: FeatureKey, license?: LicensePayload | null): boolean {
+  // Car-wash modules ship with the product — never gated by the license package.
+  if (LICENSE_EXEMPT_FEATURES.has(key)) return FEATURE_MAP[key].defaultEnabled;
   const licFeatures = license?.features;
   if (licFeatures && licFeatures.length > 0) return licFeatures.includes(key);
   return FEATURE_MAP[key].defaultEnabled;

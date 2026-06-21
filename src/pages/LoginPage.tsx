@@ -147,28 +147,28 @@ export function LoginPage() {
             <img src="./helpers_tech_logo.png" alt="Helpers Technologies" className="w-full h-full object-contain p-1" />
           </div>
           <div>
-            <div className="font-semibold">شركة هيلبيرز تكنولوجي</div>
-            <div className="text-xs text-white/70">Helpers Technologies</div>
+            <div className="font-semibold">توب جير لغسيل السيارات</div>
+            <div className="text-xs text-white/70">Top Gear Car Wash</div>
           </div>
         </div>
         <div className="space-y-3 max-w-md">
           <Boxes className="w-10 h-10 text-white/80" />
           <h2 className="text-3xl font-bold leading-tight">
-            نظام متكامل لإدارة المخزون والمبيعات
+            نظام متكامل لإدارة غسيل السيارات
           </h2>
           <p className="text-white/80 text-sm leading-relaxed">
-            تحكم كامل في المخزون، تنبيهات الصلاحية، فواتير الشراء والبيع،
-            الخزينة، وتقارير عملية — بديل حقيقي للدفاتر الورقية.
+            تنظيم طابور الغسيل، إدارة المركبات والخدمات، فواتير الغسيل،
+            تتبع المفاتيح، وتقارير الأداء اليومية — بديل حقيقي للدفاتر الورقية.
           </p>
           <ul className="text-sm text-white/80 space-y-1 mt-4">
-            <li>• إدخال فواتير سريع وسلس</li>
-            <li>• طباعة فواتير A4 احترافية</li>
-            <li>• متابعة أرصدة العملاء والموردين</li>
-            <li>• تنبيهات النقص والصلاحية</li>
+            <li>• استقبال السيارات وإدارة طابور الغسيل</li>
+            <li>• فواتير خدمات سريعة وطباعة احترافية</li>
+            <li>• تتبع الموظف المنفّذ لكل خدمة وعمولته</li>
+            <li>• خصم خامات الغسيل من المخزون تلقائياً</li>
           </ul>
         </div>
         <div className="text-xs text-white/60">
-          نظام مرخص ومعتمد — شركة هيلبيرز تكنولوجي
+          نظام مرخص ومعتمد — توب جير لغسيل السيارات
         </div>
       </div>
 

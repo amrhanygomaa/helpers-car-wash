@@ -1,8 +1,8 @@
 {
-  "name": "helpers-warehouse-system",
+  "name": "helpers-carwash-system",
   "private": true,
-  "version": "3.3.4",
-  "description": "Protected desktop warehouse and sales management system",
+  "version": "1.0.0",
+  "description": "Top Gear — protected desktop car wash management system",
   "author": "Helpers Technologies",
   "type": "module",
   "main": "electron/main.cjs",
@@ -12,9 +12,9 @@
     "dev:live": "node scripts/dev-live.cjs",
     "build": "tsc -b && vite build",
     "dist:win": "node scripts/prepare-dist-win.cjs && npm run build && electron-builder --win nsis",
-    "license:init": "node ../helpers-warehouse-system-activate/scripts/generate-license.cjs --init-keypair",
-    "license:generate": "node ../helpers-warehouse-system-activate/scripts/generate-license.cjs",
-    "license:studio": "node ../helpers-warehouse-system-activate/scripts/license-studio.cjs",
+    "license:init": "node ../helpers-carwash-system-activate/scripts/generate-license.cjs --init-keypair",
+    "license:generate": "node ../helpers-carwash-system-activate/scripts/generate-license.cjs",
+    "license:studio": "node ../helpers-carwash-system-activate/scripts/license-studio.cjs",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
@@ -25,8 +25,8 @@
     "test:smoke:e2e": "playwright test --grep @smoke"
   },
   "build": {
-    "appId": "com.helperstechnologies.warehouse",
-    "productName": "Helpers warehouse system",
+    "appId": "com.topgear.carwash",
+    "productName": "Top Gear Car Wash",
     "directories": {
       "output": "release"
     },

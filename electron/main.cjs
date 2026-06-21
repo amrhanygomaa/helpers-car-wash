@@ -37,7 +37,7 @@ if (!electronRuntime.app) {
 
 const { app, BrowserWindow, dialog, ipcMain, shell, session } = electronRuntime;
 
-const APP_ID = "com.helperstechnologies.warehouse";
+const APP_ID = "com.topgear.carwash";
 const APP_SALT = "helpers-inventory-system-v1-local-license";
 const CLOCK_SKEW_MS = 5 * 60 * 1000;
 const MAX_TOKEN_LENGTH = 8192;
@@ -628,7 +628,7 @@ function createWindow() {
     height: 860,
     minWidth: 1100,
     minHeight: 720,
-    title: "نظام إدارة المخازن والمبيعات — Helpers warehouse system",
+    title: "توب جير لغسيل السيارات — Top Gear Car Wash",
     icon: iconPath,
     autoHideMenuBar: true,
     webPreferences: {

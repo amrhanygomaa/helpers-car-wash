@@ -5,7 +5,7 @@ const { spawnSync } = require("node:child_process");
 const rootDir = path.resolve(__dirname, "..");
 const releaseDir = path.join(rootDir, "release");
 const winUnpackedDir = path.join(releaseDir, "win-unpacked");
-const unpackedExePath = path.join(winUnpackedDir, "Helpers warehouse system.exe");
+const unpackedExePath = path.join(winUnpackedDir, "Top Gear Car Wash.exe");
 
 function assertInsideRelease(targetPath) {
   const resolvedRelease = path.resolve(releaseDir);

@@ -68,7 +68,7 @@ export function ActivationPage() {
           <div className="w-16 h-16 rounded-2xl bg-white/10 flex items-center justify-center mb-6">
             <ShieldCheck className="w-10 h-10 text-white/85" />
           </div>
-          <h1 className="text-3xl font-bold leading-tight">تفعيل نسخة Helpers warehouse system</h1>
+          <h1 className="text-3xl font-bold leading-tight">تفعيل نظام توب جير لغسيل السيارات</h1>
           <p className="text-white/80 text-sm leading-relaxed">
             التفعيل يتم بسيريال موقّع ومربوط بهذا الجهاز، وبعده يتم إنشاء حساب مدير
             النظام لأول مرة.
