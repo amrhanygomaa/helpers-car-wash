@@ -1,12 +1,16 @@
 import { describe, it, expect } from "vitest";
 import {
   hasPermission,
+  hasPermissionKey,
   normalizePermissions,
   setPermission,
+  setPermissionKey,
   setPermissionGroup,
   createPermissions,
+  createCashierPermissions,
   areAllPermissionsEnabled,
   normalizeUser,
+  enabledPermissionKeys,
 } from "../../../src/lib/permissions";
 import type { AppUser } from "../../../src/types";
 
@@ -76,6 +80,34 @@ describe("hasPermission", () => {
   it("returns false for null or undefined user", () => {
     expect(hasPermission(null, "products", "view")).toBe(false);
     expect(hasPermission(undefined, "products", "view")).toBe(false);
+  });
+});
+
+describe("permission keys", () => {
+  it("cashier preset grants only queue and invoice core keys", () => {
+    const cashier = makeEmployee({
+      role: "cashier",
+      permissions: createCashierPermissions(),
+    });
+    expect(hasPermissionKey(cashier, "queue.manage")).toBe(true);
+    expect(hasPermissionKey(cashier, "invoice.create")).toBe(true);
+    expect(hasPermissionKey(cashier, "invoice.finalize")).toBe(true);
+    expect(hasPermissionKey(cashier, "reports.view")).toBe(false);
+    expect(hasPermissionKey(cashier, "customers.view")).toBe(false);
+    expect(hasPermissionKey(cashier, "treasury.manage")).toBe(false);
+  });
+
+  it("setPermissionKey toggles mapped module actions", () => {
+    const permissions = setPermissionKey(createPermissions(false), "products.manage", true);
+    expect(permissions.products.view).toBe(true);
+    expect(permissions.products.add).toBe(true);
+    expect(permissions.products.edit).toBe(true);
+    expect(permissions.products.delete).toBe(true);
+  });
+
+  it("enabledPermissionKeys lists official permission keys", () => {
+    const permissions = setPermissionKey(createPermissions(false), "settings.manage", true);
+    expect(enabledPermissionKeys(permissions)).toContain("settings.manage");
   });
 });
 

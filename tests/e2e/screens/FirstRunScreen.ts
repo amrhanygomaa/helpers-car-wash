@@ -14,7 +14,7 @@ export class FirstRunScreen {
   confirmPasswordInput = () => this.p.locator('input[type="password"]').nth(1);
 
   companyNameArInput = () =>
-    this.p.getByPlaceholder("مثال: شركة النور للتجارة");
+    this.p.getByPlaceholder("مثال: مغسلة توب جير");
 
   nextButton = () => this.p.getByRole("button", { name: "التالي" });
   backupFolderButton = () =>
@@ -23,7 +23,7 @@ export class FirstRunScreen {
     this.p.getByRole("button", { name: "اختر مجلد حفظ الفواتير" });
   skipEmployeeButton = () => this.p.getByRole("button", { name: "تخطّي الآن" });
   submitButton = () =>
-    this.p.getByRole("button", { name: "إضافة الموظف وفتح النظام" });
+    this.p.getByRole("button", { name: "إضافة الموظف" });
 
   toast = (text: string | RegExp) =>
     this.p.locator('[role="status"]', { hasText: text });
@@ -43,7 +43,7 @@ export class FirstRunScreen {
     await this.nextButton().click();
 
     // Step 2 — company (Arabic name is required).
-    await this.companyNameArInput().fill("شركة الاختبار");
+    await this.companyNameArInput().fill("مغسلة الاختبار");
     await this.nextButton().click();
 
     // Step 3 — financial defaults are fine as-is.

@@ -5,34 +5,32 @@ import {
   LayoutDashboard,
   Package,
   Warehouse,
-  Factory,
   Users,
-  ShoppingBag,
   Receipt,
-  Bell,
   Wallet,
-  HandCoins,
   BarChart3,
   Settings,
   LogOut,
-  ArrowLeftRight,
-  Truck,
   UserRound,
   Shield,
-  FileText,
   ClipboardList,
-  Upload,
   ChevronDown,
   Car,
   ListChecks,
   Sparkles,
+  MessageCircle,
+  Building2,
+  BadgeCheck,
+  DoorClosed,
+  CalendarDays,
+  UserCheck,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { lsGet, lsSet } from "../../lib/storage";
 import { useAuth } from "../../store/AuthContext";
 import { useSettings } from "../../store/SettingsContext";
 import type { AppUser, UserPermissions } from "../../types";
-import { hasPermission } from "../../lib/permissions";
+import { hasPermission, hasPermissionKey, type PermissionKey } from "../../lib/permissions";
 import { useFeatures } from "../../lib/useFeatures";
 import type { FeatureKey } from "../../lib/features";
 
@@ -41,6 +39,7 @@ type NavItem = {
   label: string;
   icon: ComponentType<{ className?: string }>;
   permission?: keyof UserPermissions;
+  permissionKey?: PermissionKey;
   feature?: FeatureKey;
   ownerOnly?: boolean;
   employeeOnly?: boolean;
@@ -65,6 +64,9 @@ const GROUPS: NavGroup[] = [
       { to: "/carwash/new", label: "فاتورة غسيل جديدة", icon: Receipt, permission: "salesInvoices", feature: "washServices" },
       { to: "/vehicles", label: "المركبات", icon: Car, permission: "vehicles", feature: "vehicles" },
       { to: "/services", label: "خدمات الغسيل", icon: Sparkles, permission: "washServices", feature: "washServices" },
+      { to: "/carwash/products", label: "إضافات الغسيل", icon: Package, permissionKey: "products.view", feature: "washServices" },
+      { to: "/carwash/materials", label: "خامات الغسيل", icon: Warehouse, permissionKey: "materials.view", feature: "washServices" },
+      { to: "/carwash/packages", label: "الاشتراكات والباقات", icon: BadgeCheck, permissionKey: "products.view", feature: "washServices" },
       { to: "/carwash/reports", label: "تقارير الغسيل", icon: BarChart3, permission: "reports", feature: "washServices" },
     ],
   },
@@ -72,29 +74,15 @@ const GROUPS: NavGroup[] = [
     id: "invoices",
     label: "الفواتير",
     items: [
-      { to: "/sales", label: "فواتير المبيعات", icon: Receipt, permission: "salesInvoices", feature: "salesInvoices" },
-      { to: "/purchases", label: "فواتير المشتريات", icon: ShoppingBag, permission: "purchaseInvoices", feature: "purchaseInvoices" },
-      { to: "/quotations", label: "عروض الأسعار", icon: FileText, permission: "salesInvoices", feature: "quotations" },
-      { to: "/returns", label: "المرتجعات", icon: ArrowLeftRight, permission: "returns", feature: "returns" },
-    ],
-  },
-  {
-    id: "inventory",
-    label: "المخزون",
-    items: [
-      { to: "/products", label: "المنتجات", icon: Package, permission: "products", feature: "products" },
-      { to: "/inventory", label: "المخزون", icon: Warehouse, permission: "inventory", feature: "inventory" },
-      { to: "/stocktakes", label: "الجرد الدوري", icon: ClipboardList, permission: "inventory", feature: "stocktakes" },
-      { to: "/alerts", label: "التنبيهات", icon: Bell, permission: "alerts", feature: "alerts" },
+      { to: "/sales", label: "فواتير الغسيل", icon: Receipt, permission: "salesInvoices", feature: "salesInvoices" },
     ],
   },
   {
     id: "parties",
-    label: "العملاء والموردون",
+    label: "العملاء والتسويق",
     items: [
       { to: "/customers", label: "العملاء", icon: Users, permission: "customers", feature: "customers" },
-      { to: "/suppliers", label: "الموردين", icon: Factory, permission: "suppliers", feature: "suppliers" },
-      { to: "/drivers", label: "السائقين", icon: Truck, permission: "drivers", feature: "drivers" },
+      { to: "/customers/marketing", label: "تسويق العملاء", icon: MessageCircle, permission: "customers", feature: "customers" },
     ],
   },
   {
@@ -102,9 +90,11 @@ const GROUPS: NavGroup[] = [
     label: "المالية والتقارير",
     items: [
       { to: "/cashbox", label: "الخزينة", icon: Wallet, permission: "cashbox", feature: "cashbox" },
-      { to: "/dues", label: "المستحقات", icon: HandCoins, permission: "reports", feature: "dues" },
-      { to: "/reports", label: "التقارير", icon: BarChart3, permission: "reports", feature: "reports" },
-      { to: "/reports/employees", label: "تقرير الموظفين", icon: Users, ownerOnly: true, feature: "employeesReport" },
+      { to: "/cashbox/shift", label: "وردية الخزنة", icon: DoorClosed, permission: "cashbox", feature: "cashbox" },
+      { to: "/workers/attendance", label: "حضور الصنايعية", icon: UserCheck, permissionKey: "payroll.manage" },
+      { to: "/payroll/day-close", label: "قفلة اليوم", icon: ClipboardList, permissionKey: "payroll.manage" },
+      { to: "/reports/end-of-day", label: "تقرير نهاية اليوم", icon: CalendarDays, permission: "reports", feature: "reports" },
+      { to: "/reports/employees", label: "تقرير الموظفين", icon: Users, permissionKey: "payroll.manage", feature: "employeesReport" },
     ],
   },
   {
@@ -113,8 +103,8 @@ const GROUPS: NavGroup[] = [
     items: [
       { to: "/users", label: "المستخدمين", icon: Users, ownerOnly: true },
       { to: "/audit-log", label: "سجل التدقيق", icon: Shield, ownerOnly: true },
-      { to: "/import", label: "استيراد البيانات", icon: Upload },
-      { to: "/settings", label: "الإعدادات", icon: Settings, ownerOnly: true },
+      { to: "/branches", label: "الفروع", icon: Building2, permissionKey: "settings.manage" },
+      { to: "/settings", label: "الإعدادات", icon: Settings, permissionKey: "settings.manage" },
     ],
   },
 ];
@@ -132,7 +122,7 @@ function canSee(
   if (item.feature && !isFeatureOn(item.feature)) return false;
   if (user.role === "owner") return !item.employeeOnly;
   if (item.ownerOnly) return false;
-  if (item.employeeOnly && user.role !== "employee") return false;
+  if (item.permissionKey && !hasPermissionKey(user, item.permissionKey)) return false;
   if (item.permission && !hasPermission(user, item.permission)) return false;
   return true;
 }
@@ -178,7 +168,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
       <NavLink
         key={item.to}
         to={item.to}
-        end={item.to === "/" || item.to === "/reports"}
+        end={item.to === "/" || item.to === "/carwash/reports"}
         title={collapsed ? item.label : undefined}
         className={({ isActive }) =>
           cn(

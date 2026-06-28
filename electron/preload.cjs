@@ -44,6 +44,7 @@ contextBridge.exposeInMainWorld("desktopAPI", {
   },
   print: {
     route: (route) => ipcRenderer.invoke("print:route", route),
+    testReceipt: () => ipcRenderer.invoke("print:test-receipt"),
   },
   storage: {
     get: (key) => sync("storage:get", key),
@@ -55,10 +56,25 @@ contextBridge.exposeInMainWorld("desktopAPI", {
     getBatch: () => ipcRenderer.invoke("storage:get-batch"),
     setBatch: (entries) => ipcRenderer.invoke("storage:set-batch", entries),
   },
+  // Relational data bridge for the car wash domain (Drizzle sqlite-proxy).
+  db: {
+    query: (sql, params, method) =>
+      ipcRenderer.invoke("db:query", { sql, params, method }),
+    batch: (queries) => ipcRenderer.invoke("db:batch", queries),
+  },
+  // Cloud sync (Phase 9) — optional multi-branch sync; engine runs in main.
+  sync: {
+    status: () => ipcRenderer.invoke("sync:status"),
+    getConfig: () => ipcRenderer.invoke("sync:get-config"),
+    setConfig: (cfg) => ipcRenderer.invoke("sync:set-config", cfg),
+    now: () => ipcRenderer.invoke("sync:now"),
+  },
   backup: {
     writeFile: (dir, fileName, content) =>
       ipcRenderer.invoke("backup:write-file", { dir, fileName, content }),
     selectDirectory: () => ipcRenderer.invoke("backup:select-directory"),
+    exportDatabase: () => ipcRenderer.invoke("backup:export-database"),
+    importDatabase: () => ipcRenderer.invoke("backup:import-database"),
   },
   app: {
     // Main asks the renderer to take a backup right before the window closes.

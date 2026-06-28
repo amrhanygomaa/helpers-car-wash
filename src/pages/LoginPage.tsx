@@ -73,7 +73,7 @@ export function LoginPage() {
         result.attemptsRemaining !== undefined
           ? `المتبقي قبل القفل: ${result.attemptsRemaining} محاولات.`
           : "بعد 5 محاولات فاشلة سيتم قفل الحساب لمدة دقيقة.";
-      toast.error("فشل تسجيل الدخول", `اسم الدخول أو كلمة المرور غير صحيحة. ${attemptsText}`);
+      toast.error("فشل تسجيل الدخول", `اسم الدخول أو الـ PIN غير صحيح. ${attemptsText}`);
     }
     submitInFlight.current = false;
     setSubmitting(false);
@@ -105,7 +105,7 @@ export function LoginPage() {
         machine_mismatch: "الكود صادر لجهاز مختلف. استخدم كود الجهاز الظاهر في هذه الشاشة.",
         support_code_expired: "كود الدعم منتهي الصلاحية. ولّد كود دعم جديد.",
         owner_missing: "لا يوجد مدير مسجل على هذا الجهاز.",
-        invalid_input: "اسم المدير وكلمة المرور الجديدة مطلوبان.",
+        invalid_input: "اسم المدير والـ PIN الجديد مطلوبان.",
         rate_limited: `محاولات كثيرة غير صحيحة. حاول مرة أخرى بعد ${result.remainSeconds ?? 600} ثانية.`,
       };
       toast.error("فشل كود الدعم", messages[result.error ?? "invalid_support_code"]);
@@ -194,13 +194,14 @@ export function LoginPage() {
               placeholder="Login username"
             />
           </Field>
-          <Field label="كلمة المرور" required>
+          <Field label="PIN" required>
             <div className="relative">
               <Input
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
+                placeholder="أدخل PIN"
                 type={showPassword ? "text" : "password"}
+                inputMode="numeric"
                 className="pl-10"
               />
               <button
@@ -283,9 +284,10 @@ export function LoginPage() {
                   onChange={(e) => setSupportUsername(e.target.value)}
                 />
               </Field>
-              <Field label="كلمة المرور الجديدة">
+              <Field label="PIN الجديد">
                 <Input
                   type="password"
+                  inputMode="numeric"
                   value={supportPassword}
                   onChange={(e) => setSupportPassword(e.target.value)}
                 />

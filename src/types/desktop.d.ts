@@ -2,6 +2,25 @@ import type { AppUser, LicenseStatus, LoginResult } from "./index";
 
 export {};
 
+export interface SyncConfig {
+  enabled: boolean;
+  url: string | null;
+  key: string | null;
+  orgId: string | null;
+  branchId: string;
+}
+
+export interface SyncStatus {
+  enabled: boolean;
+  configured: boolean;
+  branchId: string;
+  orgId: string | null;
+  url: string | null;
+  pending: number;
+  lastSyncAt: string | null;
+  lastError: string | null;
+}
+
 declare global {
   interface Window {
     desktopAPI?: {
@@ -64,6 +83,7 @@ declare global {
       };
       print: {
         route: (route: string) => Promise<{ ok: boolean; error?: string }>;
+        testReceipt: () => Promise<{ ok: boolean; error?: string }>;
       };
       storage: {
         get: (key: string) => string | null;
@@ -79,6 +99,23 @@ declare global {
         getBatch: () => Promise<Record<string, string>>;
         setBatch: (entries: Record<string, string>) => Promise<boolean>;
       };
+      /** Relational data bridge for the car wash domain (Drizzle sqlite-proxy). */
+      db: {
+        query: (
+          sql: string,
+          params: unknown[],
+          method: "run" | "all" | "values" | "get"
+        ) => Promise<{ rows: unknown[] }>;
+        batch: (
+          queries: { sql: string; params: unknown[]; method: "run" | "all" | "values" | "get" }[]
+        ) => Promise<{ rows: unknown[] }[]>;
+      };
+      sync?: {
+        status: () => Promise<SyncStatus>;
+        getConfig: () => Promise<SyncConfig>;
+        setConfig: (cfg: Partial<SyncConfig>) => Promise<SyncStatus>;
+        now: () => Promise<{ ok: boolean; reason?: string; error?: string; pushed?: number; pulled?: number }>;
+      };
       backup: {
         writeFile: (
           dir: string,
@@ -86,6 +123,12 @@ declare global {
           content: string
         ) => Promise<{ ok: boolean; path?: string; error?: string }>;
         selectDirectory: () => Promise<string | null>;
+        exportDatabase: () => Promise<{ ok: boolean; path?: string; error?: string }>;
+        importDatabase: () => Promise<{
+          ok: boolean;
+          restartRequired?: boolean;
+          error?: string;
+        }>;
       };
       app: {
         onRunCloseBackup: (cb: () => void) => () => void;

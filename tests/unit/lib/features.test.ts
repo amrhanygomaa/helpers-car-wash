@@ -36,16 +36,16 @@ describe("FEATURE_MAP", () => {
     }
   });
 
-  it("keeps quotations and stocktakes off by default", () => {
-    expect(FEATURE_MAP.quotations.defaultEnabled).toBe(false);
+  it("keeps stocktakes and dues off by default", () => {
     expect(FEATURE_MAP.stocktakes.defaultEnabled).toBe(false);
+    expect(FEATURE_MAP.dues.defaultEnabled).toBe(false);
   });
 });
 
 describe("isAllowedByLicense", () => {
   it("allows everything when the license is missing (back-compat)", () => {
-    expect(isAllowedByLicense("quotations", null)).toBe(true);
-    expect(isAllowedByLicense("quotations", undefined)).toBe(true);
+    expect(isAllowedByLicense("stocktakes", null)).toBe(true);
+    expect(isAllowedByLicense("stocktakes", undefined)).toBe(true);
   });
 
   it("allows everything when the feature list is empty", () => {
@@ -56,25 +56,25 @@ describe("isAllowedByLicense", () => {
     const lic = makeLicense(["salesInvoices", "products"]);
     expect(isAllowedByLicense("salesInvoices", lic)).toBe(true);
     expect(isAllowedByLicense("products", lic)).toBe(true);
-    expect(isAllowedByLicense("quotations", lic)).toBe(false);
+    expect(isAllowedByLicense("stocktakes", lic)).toBe(false);
   });
 });
 
 describe("defaultFeatureState", () => {
   it("falls back to the built-in default for unpackaged serials", () => {
     expect(defaultFeatureState("salesInvoices", null)).toBe(true);
-    expect(defaultFeatureState("quotations", null)).toBe(false);
+    expect(defaultFeatureState("stocktakes", null)).toBe(false);
   });
 
   it("falls back to the built-in default for an empty package list", () => {
-    expect(defaultFeatureState("quotations", makeLicense([]))).toBe(false);
+    expect(defaultFeatureState("stocktakes", makeLicense([]))).toBe(false);
   });
 
   it("is driven by the package list when one is present", () => {
-    const lic = makeLicense(["quotations"]);
-    // In the package ⇒ ON even though its built-in default is false.
-    expect(defaultFeatureState("quotations", lic)).toBe(true);
-    // Outside the package ⇒ OFF even though its built-in default is true.
+    const lic = makeLicense(["stocktakes"]);
+    // In the package => ON even though its built-in default is false.
+    expect(defaultFeatureState("stocktakes", lic)).toBe(true);
+    // Outside the package => OFF even though its built-in default is true.
     expect(defaultFeatureState("salesInvoices", lic)).toBe(false);
   });
 });
@@ -83,18 +83,18 @@ describe("isFeatureEnabled", () => {
   it("returns false when the license disallows the module (hard cap)", () => {
     const lic = makeLicense(["salesInvoices"]);
     // Even an explicit owner ON cannot widen past the license cap.
-    expect(isFeatureEnabled("quotations", settingsWith({ quotations: true }), lic)).toBe(false);
+    expect(isFeatureEnabled("stocktakes", settingsWith({ stocktakes: true }), lic)).toBe(false);
   });
 
   it("honours an explicit owner override when allowed by the license", () => {
     expect(isFeatureEnabled("reports", settingsWith({ reports: false }), null)).toBe(false);
-    expect(isFeatureEnabled("quotations", settingsWith({ quotations: true }), null)).toBe(true);
+    expect(isFeatureEnabled("stocktakes", settingsWith({ stocktakes: true }), null)).toBe(true);
   });
 
   it("falls back to the default state when no override is set", () => {
     expect(isFeatureEnabled("salesInvoices", settingsWith({}), null)).toBe(true);
-    expect(isFeatureEnabled("quotations", settingsWith({}), null)).toBe(false);
-    expect(isFeatureEnabled("quotations", null, null)).toBe(false);
+    expect(isFeatureEnabled("stocktakes", settingsWith({}), null)).toBe(false);
+    expect(isFeatureEnabled("stocktakes", null, null)).toBe(false);
   });
 
   it("treats an undefined override as 'not set' (uses default), not as off", () => {
@@ -103,11 +103,11 @@ describe("isFeatureEnabled", () => {
   });
 
   it("combines license package and owner hide-toggle", () => {
-    const lic = makeLicense(["salesInvoices", "quotations"]);
-    // Allowed + in package ⇒ default ON, owner hides it.
-    expect(isFeatureEnabled("quotations", settingsWith({ quotations: false }), lic)).toBe(false);
-    // Allowed + in package + no override ⇒ ON.
-    expect(isFeatureEnabled("quotations", settingsWith({}), lic)).toBe(true);
+    const lic = makeLicense(["salesInvoices", "stocktakes"]);
+    // Allowed + in package => default ON, owner hides it.
+    expect(isFeatureEnabled("stocktakes", settingsWith({ stocktakes: false }), lic)).toBe(false);
+    // Allowed + in package + no override => ON.
+    expect(isFeatureEnabled("stocktakes", settingsWith({}), lic)).toBe(true);
   });
 
   it("evaluates every feature key without throwing", () => {

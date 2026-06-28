@@ -13,16 +13,11 @@ import type { LicensePayload, Settings } from "../types";
  */
 export type FeatureKey =
   | "salesInvoices"
-  | "purchaseInvoices"
-  | "quotations"
-  | "returns"
   | "products"
   | "inventory"
   | "stocktakes"
   | "alerts"
   | "customers"
-  | "suppliers"
-  | "drivers"
   | "cashbox"
   | "dues"
   | "reports"
@@ -40,25 +35,19 @@ export interface FeatureDef {
 }
 
 export const FEATURES: FeatureDef[] = [
-  { key: "salesInvoices", label: "فواتير المبيعات", description: "إنشاء وإدارة فواتير البيع للعملاء", defaultEnabled: true },
-  { key: "purchaseInvoices", label: "فواتير المشتريات", description: "إنشاء وإدارة فواتير الشراء من الموردين", defaultEnabled: true },
-  { key: "quotations", label: "عروض الأسعار", description: "إعداد عروض أسعار وتحويلها لفواتير", defaultEnabled: false },
-  { key: "returns", label: "المرتجعات", description: "مرتجعات المبيعات والمشتريات", defaultEnabled: true },
-  { key: "products", label: "المنتجات", description: "كتالوج المنتجات والأسعار", defaultEnabled: true },
-  { key: "inventory", label: "المخزون", description: "متابعة الكميات وحركة المخزون", defaultEnabled: true },
-  { key: "stocktakes", label: "الجرد الدوري", description: "جرد المخزون وتسوية الفروقات", defaultEnabled: false },
-  { key: "alerts", label: "التنبيهات", description: "تنبيهات نفاد المخزون والمستحقات المتأخرة", defaultEnabled: true },
+  { key: "salesInvoices", label: "فواتير الغسيل", description: "إنشاء وإدارة فواتير الغسيل للعملاء", defaultEnabled: true },
   { key: "customers", label: "العملاء", description: "إدارة بيانات العملاء وكشوف حساباتهم", defaultEnabled: true },
-  { key: "suppliers", label: "الموردين", description: "إدارة الموردين والعمولات", defaultEnabled: true },
-  { key: "drivers", label: "السائقين", description: "إدارة السائقين وربطهم بالفواتير", defaultEnabled: true },
   { key: "cashbox", label: "الخزينة", description: "حركة النقدية والرصيد", defaultEnabled: true },
-  { key: "dues", label: "المستحقات", description: "متابعة مستحقات العملاء والموردين", defaultEnabled: true },
-  { key: "reports", label: "التقارير", description: "تقارير المبيعات والمشتريات والأرباح", defaultEnabled: true },
+  { key: "dues", label: "تحصيل العملاء", description: "متابعة تحصيل فواتير الغسيل", defaultEnabled: false },
+  { key: "reports", label: "تقارير الغسيل", description: "تقارير الغسيل والتحصيل والأرباح", defaultEnabled: true },
   { key: "employeesReport", label: "تقرير الموظفين", description: "متابعة المحصَّل والعمولات الشهرية للموظفين", defaultEnabled: true },
-  // ── Car Wash modules ──
   { key: "carwashQueue", label: "طابور الغسيل", description: "استقبال السيارات وإدارة طابور الغسيل ومفاتيح السيارات", defaultEnabled: true },
   { key: "vehicles", label: "المركبات", description: "إدارة مركبات العملاء (الماركة والموديل واللوحة)", defaultEnabled: true },
   { key: "washServices", label: "خدمات الغسيل", description: "تعريف خدمات الغسيل وأسعارها والخامات المرتبطة بها", defaultEnabled: true },
+  { key: "products", label: "إضافات الغسيل", description: "فوّاحات ومعطرات وإضافات تُباع مع الغسيل", defaultEnabled: true },
+  { key: "inventory", label: "خامات الغسيل", description: "متابعة رصيد الخامات والاستهلاك", defaultEnabled: true },
+  { key: "stocktakes", label: "مراجعة الكميات", description: "مراجعة كميات الإضافات والخامات", defaultEnabled: false },
+  { key: "alerts", label: "تنبيهات المخزون", description: "تنبيهات نقص الإضافات والخامات", defaultEnabled: true },
 ];
 
 export const FEATURE_MAP: Record<FeatureKey, FeatureDef> = FEATURES.reduce(

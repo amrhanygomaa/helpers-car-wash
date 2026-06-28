@@ -3,6 +3,7 @@ import { useSettings } from "../../store/SettingsContext";
 import { formatCurrency, formatDate } from "../../lib/format";
 import type { InvoiceLine, PaymentLogEntry, ReturnLine } from "../../types";
 import { PAYMENT_METHOD_LABELS } from "../../lib/format";
+import "./InvoicePrintLayout.css";
 
 interface Props {
   kind: "sales" | "purchase";
@@ -35,7 +36,7 @@ export function InvoicePrintLayout(props: Props) {
 
   useEffect(() => {
     const prev = document.title;
-    document.title = `${props.kind === "sales" ? "فاتورة مبيعات" : "فاتورة مشتريات"} ${props.invoiceNumber}`;
+    document.title = `فاتورة غسيل ${props.invoiceNumber}`;
     return () => { document.title = prev; };
   }, [props.invoiceNumber, props.kind]);
 
@@ -75,62 +76,52 @@ export function InvoicePrintLayout(props: Props) {
       </div>
 
       {/* A4 page */}
-      <div
-        className="invoice-page mx-auto bg-white shadow-xl print:shadow-none"
-        style={{ minHeight: "297mm", display: "flex", flexDirection: "column" }}
-      >
+      <div className="ipl-page invoice-page mx-auto bg-white shadow-xl print:shadow-none">
         {/* Top accent bar */}
-        <div style={{ height: 8, background: "linear-gradient(90deg, #1e3a5f 0%, #2563eb 100%)" }} />
+        <div className="ipl-accent-top" />
 
         {/* Page body with padding */}
-        <div style={{ padding: "20mm 16mm 14mm", display: "flex", flexDirection: "column", flex: 1 }}>
+        <div className="ipl-body">
 
           {/* ── HEADER ── */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, paddingBottom: 14, borderBottom: "2px solid #1e3a5f" }}>
+          <div className="ipl-header">
             {/* Company info */}
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <div style={{
-                width: 52, height: 52, borderRadius: 10, overflow: "hidden", flexShrink: 0,
-                background: settings.logoImage ? "transparent" : "linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%)",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                color: "white", fontWeight: 700, fontSize: 16
-              }}>
+            <div className="ipl-company-row">
+              <div className={`ipl-logo${settings.logoImage ? "" : " ipl-logo--gradient"}`}>
                 {settings.logoImage
-                  ? <img src={settings.logoImage} alt="Logo" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+                  ? <img src={settings.logoImage} alt="Logo" />
                   : settings.logoText}
               </div>
               <div>
-                <div style={{ fontWeight: 800, fontSize: 18, color: "#0f172a", lineHeight: 1.2 }}>
+                <div className="ipl-company-name">
                   {settings.arabicLabels ? settings.companyNameAr : settings.companyName}
                 </div>
                 {settings.companyNameAr && settings.companyName && settings.companyNameAr !== settings.companyName && (
-                  <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>{settings.companyName}</div>
+                  <div className="ipl-company-name-en">{settings.companyName}</div>
                 )}
               </div>
             </div>
 
             {/* Invoice identity */}
-            <div style={{ textAlign: "left" }}>
-              <div style={{ fontSize: 20, fontWeight: 800, color: "#1e3a5f", letterSpacing: -0.5 }}>
+            <div className="ipl-identity">
+              <div className="ipl-identity-title">
                 {isSales ? "فاتورة مبيعات" : "فاتورة مشتريات"}
               </div>
-              <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 2 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
-                  <span style={{ fontSize: 11, color: "#64748b" }}>رقم الفاتورة</span>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", fontFamily: "monospace", background: "#f1f5f9", padding: "1px 8px", borderRadius: 4 }}>
-                    {props.invoiceNumber}
-                  </span>
+              <div className="ipl-identity-meta">
+                <div className="ipl-meta-row">
+                  <span className="ipl-meta-label">رقم الفاتورة</span>
+                  <span className="ipl-meta-number">{props.invoiceNumber}</span>
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
-                  <span style={{ fontSize: 11, color: "#64748b" }}>التاريخ</span>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: "#334155" }}>{formatDate(props.date)}</span>
+                <div className="ipl-meta-row">
+                  <span className="ipl-meta-label">التاريخ</span>
+                  <span className="ipl-meta-date">{formatDate(props.date)}</span>
                 </div>
               </div>
             </div>
           </div>
 
           {/* ── INFO ROW ── */}
-          <div style={{ display: "grid", gridTemplateColumns: props.paymentDueDate ? "1fr 1fr 1fr 1fr" : "1fr 1fr 1fr", gap: 10, marginBottom: 16 }}>
+          <div className={`ipl-info-grid ${props.paymentDueDate ? "ipl-info-grid--4col" : "ipl-info-grid--3col"}`}>
             <InfoBox label={props.partyLabel} value={props.partyName} accent />
             <InfoBox label="طريقة الدفع" value={props.paymentLabel ?? "—"} sub={props.priceTypeLabel ? `نوع السعر: ${props.priceTypeLabel}` : undefined} />
             {props.paymentDueDate ? (
@@ -141,39 +132,35 @@ export function InvoicePrintLayout(props: Props) {
 
           {/* ── VEHICLE (car wash service invoices) ── */}
           {props.vehicleLabel ? (
-            <div style={{ marginBottom: 16 }}>
+            <div className="ipl-vehicle-row">
               <InfoBox label="المركبة" value={props.vehicleLabel} accent />
             </div>
           ) : null}
 
           {/* ── ITEMS TABLE ── */}
-          <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+          <div className="ipl-table-wrap">
+            <table className="ipl-table">
               <thead>
                 <tr>
-                  <Th center style={{ width: 28 }}>#</Th>
+                  <Th center colClass="ipl-col-seq">#</Th>
                   <Th>الصنف</Th>
-                  <Th center style={{ width: 52 }}>الوحدة</Th>
-                  <Th center style={{ width: 52 }}>الكمية</Th>
-                  <Th center style={{ width: 80 }}>السعر</Th>
-                  <Th center style={{ width: 88 }}>الإجمالي</Th>
+                  <Th center colClass="ipl-col-unit">الوحدة</Th>
+                  <Th center colClass="ipl-col-unit">الكمية</Th>
+                  <Th center colClass="ipl-col-price">السعر</Th>
+                  <Th center colClass="ipl-col-total">الإجمالي</Th>
                 </tr>
               </thead>
               <tbody>
                 {props.lines.map((l, idx) => (
-                  <tr key={l.id} style={{ background: idx % 2 === 1 ? "#f8fafc" : "#ffffff" }}>
+                  <tr key={l.id} className={idx % 2 === 1 ? "ipl-row-odd" : "ipl-row-even"}>
                     <Td center muted>{idx + 1}</Td>
                     <Td>
-                      <span style={{ fontWeight: 600, color: "#0f172a" }}>{l.productName}</span>
+                      <span className="ipl-td-name">{l.productName}</span>
                       {l.employeeName && (
-                        <span style={{ display: "block", fontSize: 10, color: "#64748b" }}>
-                          الفني: {l.employeeName}
-                        </span>
+                        <span className="ipl-td-employee">الفني: {l.employeeName}</span>
                       )}
                       {l.expiryDate && (
-                        <span style={{ display: "block", fontSize: 10, color: "#94a3b8" }}>
-                          صلاحية: {formatDate(l.expiryDate)}
-                        </span>
+                        <span className="ipl-td-expiry">صلاحية: {formatDate(l.expiryDate)}</span>
                       )}
                     </Td>
                     <Td center muted>{l.unit}</Td>
@@ -184,9 +171,9 @@ export function InvoicePrintLayout(props: Props) {
                 ))}
                 {/* Filler rows — minimum 8 rows total to fill space */}
                 {Array.from({ length: Math.max(0, 8 - props.lines.length) }).map((_, i) => (
-                  <tr key={`e${i}`} style={{ background: (props.lines.length + i) % 2 === 1 ? "#f8fafc" : "#ffffff" }}>
+                  <tr key={`e${i}`} className={(props.lines.length + i) % 2 === 1 ? "ipl-row-odd" : "ipl-row-even"}>
                     {[0,1,2,3,4,5].map(j => (
-                      <td key={j} style={{ padding: "9px 6px", border: "1px solid #e2e8f0" }}>&nbsp;</td>
+                      <td key={j} className="ipl-td-empty">&nbsp;</td>
                     ))}
                   </tr>
                 ))}
@@ -196,26 +183,24 @@ export function InvoicePrintLayout(props: Props) {
 
           {/* ── RETURNS ── */}
           {props.returns && props.returns.length > 0 && (
-            <div style={{ marginTop: 14 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "#dc2626", marginBottom: 6, borderBottom: "1.5px solid #dc2626", paddingBottom: 4 }}>
-                المرتجعات
-              </div>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+            <div className="ipl-returns">
+              <div className="ipl-returns-title">المرتجعات</div>
+              <table className="ipl-table ipl-table--small">
                 <thead>
                   <tr>
-                    <Th center style={{ width: 28 }}>#</Th>
+                    <Th center colClass="ipl-col-seq">#</Th>
                     <Th>الصنف</Th>
-                    <Th center style={{ width: 52 }}>الوحدة</Th>
-                    <Th center style={{ width: 52 }}>الكمية</Th>
-                    <Th center style={{ width: 80 }}>السعر</Th>
-                    <Th center style={{ width: 88 }}>الإجمالي</Th>
+                    <Th center colClass="ipl-col-unit">الوحدة</Th>
+                    <Th center colClass="ipl-col-unit">الكمية</Th>
+                    <Th center colClass="ipl-col-price">السعر</Th>
+                    <Th center colClass="ipl-col-total">الإجمالي</Th>
                   </tr>
                 </thead>
                 <tbody>
                   {props.returns.flatMap((r) => r.lines).map((l, idx) => (
-                    <tr key={l.id} style={{ background: idx % 2 === 1 ? "#fff5f5" : "#ffffff" }}>
+                    <tr key={l.id} className={idx % 2 === 1 ? "ipl-row-odd-return" : "ipl-row-even"}>
                       <Td center muted>{idx + 1}</Td>
-                      <Td><span style={{ fontWeight: 600, color: "#0f172a" }}>{l.productName}</span></Td>
+                      <Td><span className="ipl-td-name">{l.productName}</span></Td>
                       <Td center muted>{l.unit}</Td>
                       <Td center bold>{l.quantity}</Td>
                       <Td center mono>{formatCurrency(l.price, settings.currency)}</Td>
@@ -224,8 +209,8 @@ export function InvoicePrintLayout(props: Props) {
                   ))}
                 </tbody>
               </table>
-              <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 6 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: "#dc2626", background: "#fff5f5", border: "1px solid #fecaca", borderRadius: 6, padding: "4px 12px" }}>
+              <div className="ipl-returns-footer">
+                <div className="ipl-returns-total">
                   إجمالي المرتجع: {formatCurrency(props.returns.reduce((a, r) => a + r.total, 0), settings.currency)}
                 </div>
               </div>
@@ -234,23 +219,21 @@ export function InvoicePrintLayout(props: Props) {
 
           {/* ── PAYMENT LOG ── */}
           {props.paymentLog && props.paymentLog.length > 0 && (
-            <div style={{ marginTop: 14 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "#1e3a5f", marginBottom: 6, borderBottom: "1.5px solid #1e3a5f", paddingBottom: 4 }}>
-                سجل سداد الدفعات
-              </div>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+            <div className="ipl-payment-log">
+              <div className="ipl-payment-log-title">سجل سداد الدفعات</div>
+              <table className="ipl-table ipl-table--small">
                 <thead>
                   <tr>
-                    <Th center style={{ width: 28 }}>#</Th>
-                    <Th center style={{ width: 90 }}>التاريخ</Th>
-                    <Th center style={{ width: 100 }}>وسيلة الدفع</Th>
-                    <Th center style={{ width: 110 }}>المبلغ المسدد</Th>
+                    <Th center colClass="ipl-col-seq">#</Th>
+                    <Th center colClass="ipl-col-date">التاريخ</Th>
+                    <Th center colClass="ipl-col-method">وسيلة الدفع</Th>
+                    <Th center colClass="ipl-col-amount">المبلغ المسدد</Th>
                     <Th>ملاحظات</Th>
                   </tr>
                 </thead>
                 <tbody>
                   {props.paymentLog.map((entry, idx) => (
-                    <tr key={entry.id} style={{ background: idx % 2 === 1 ? "#f0f7ff" : "#ffffff" }}>
+                    <tr key={entry.id} className={idx % 2 === 1 ? "ipl-row-odd-payment" : "ipl-row-even"}>
                       <Td center muted>{idx + 1}</Td>
                       <Td center>{formatDate(entry.date)}</Td>
                       <Td center>{PAYMENT_METHOD_LABELS[entry.paymentMethod] ?? entry.paymentMethod}</Td>
@@ -264,16 +247,16 @@ export function InvoicePrintLayout(props: Props) {
           )}
 
           {/* ── TOTALS + SIGNATURES ── */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginTop: 14 }}>
+          <div className="ipl-bottom-row">
 
             {/* Signature lines */}
-            <div style={{ display: "flex", gap: 32, fontSize: 11, color: "#64748b" }}>
+            <div className="ipl-signatures">
               <SignatureLine label="توقيع المستلم" />
               <SignatureLine label="توقيع المسؤول" />
             </div>
 
             {/* Totals box */}
-            <div style={{ width: 220, border: "1px solid #cbd5e1", borderRadius: 8, overflow: "hidden" }}>
+            <div className="ipl-totals">
               {props.discount ? (
                 <>
                   <TotalRow label="الإجمالي قبل الخصم" value={formatCurrency(props.total + props.discount, settings.currency)} />
@@ -330,27 +313,27 @@ export function InvoicePrintLayout(props: Props) {
 
           {/* Customer balance + overpayment — OUTSIDE overflow:hidden so they are never clipped */}
           {isSales && props.customerName && props.customerBalance !== undefined && (
-            <div style={{
-              marginTop: 8,
-              padding: "8px 12px",
-              background: props.customerBalance < 0 ? "#eff6ff" : props.customerBalance > 0 ? "#fef2f2" : "#f8fafc",
-              border: `1px solid ${props.customerBalance < 0 ? "#bfdbfe" : props.customerBalance > 0 ? "#fecaca" : "#e2e8f0"}`,
-              borderRadius: 6,
-              fontSize: 11,
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              WebkitPrintColorAdjust: "exact",
-              printColorAdjust: "exact",
-            } as React.CSSProperties}>
-              <span style={{ fontWeight: 700, color: props.customerBalance < 0 ? "#1e40af" : props.customerBalance > 0 ? "#dc2626" : "#334155" }}>
+            <div className={`ipl-balance ${
+              props.customerBalance < 0 ? "ipl-balance--credit"
+              : props.customerBalance > 0 ? "ipl-balance--debit"
+              : "ipl-balance--settled"
+            }`}>
+              <span className={`ipl-balance-label ${
+                props.customerBalance < 0 ? "ipl-balance-label--credit"
+                : props.customerBalance > 0 ? "ipl-balance-label--debit"
+                : ""
+              }`}>
                 {props.customerBalance < 0
                   ? `رصيد دائن للعميل (${props.customerName})`
                   : props.customerBalance > 0
                     ? `رصيد مدين على العميل (${props.customerName})`
                     : `رصيد العميل (${props.customerName})`}
               </span>
-              <span style={{ fontWeight: 700, fontSize: 13, color: props.customerBalance < 0 ? "#1e40af" : props.customerBalance > 0 ? "#dc2626" : "#334155" }}>
+              <span className={`ipl-balance-amount ${
+                props.customerBalance < 0 ? "ipl-balance-amount--credit"
+                : props.customerBalance > 0 ? "ipl-balance-amount--debit"
+                : ""
+              }`}>
                 {props.customerBalance < 0
                   ? `+ ${formatCurrency(-props.customerBalance, settings.currency)}`
                   : props.customerBalance > 0
@@ -362,30 +345,26 @@ export function InvoicePrintLayout(props: Props) {
 
           {/* Notes */}
           {props.notes && (
-            <div style={{ marginTop: 12, padding: "8px 10px", background: "#fefce8", border: "1px solid #fde68a", borderRadius: 6, fontSize: 11, color: "#78350f" }}>
-              <span style={{ fontWeight: 700 }}>ملاحظات: </span>
+            <div className="ipl-notes">
+              <span className="ipl-notes-label">ملاحظات: </span>
               {props.notes}
             </div>
           )}
 
           {/* Spacer pushes footer to bottom */}
-          <div style={{ flex: 1 }} />
+          <div className="ipl-spacer" />
 
           {/* Footer */}
-          <div style={{ marginTop: 20, paddingTop: 10, borderTop: "1px solid #e2e8f0" }}>
+          <div className="ipl-footer">
             {settings.invoiceFooter && (
-              <div style={{ textAlign: "center", fontSize: 11, color: "#64748b", whiteSpace: "pre-line", marginBottom: 8 }}>
-                {settings.invoiceFooter}
-              </div>
+              <div className="ipl-footer-text">{settings.invoiceFooter}</div>
             )}
-            <div style={{ textAlign: "center", fontSize: 9, color: "#cbd5e1", marginTop: 4 }}>
-              هيلبيرز تكنولوجي
-            </div>
+            <div className="ipl-footer-brand">هيلبيرز تكنولوجي</div>
           </div>
         </div>
 
         {/* Bottom accent bar */}
-        <div style={{ height: 5, background: "linear-gradient(90deg, #1e3a5f 0%, #2563eb 100%)" }} />
+        <div className="ipl-accent-bottom" />
       </div>
     </div>
   );
@@ -395,32 +374,17 @@ export function InvoicePrintLayout(props: Props) {
 
 function InfoBox({ label, value, sub, accent }: { label: string; value: string; sub?: string; accent?: boolean }) {
   return (
-    <div style={{
-      border: `1px solid ${accent ? "#bfdbfe" : "#e2e8f0"}`,
-      borderRadius: 8,
-      padding: "8px 10px",
-      background: accent ? "#eff6ff" : "#f8fafc",
-      borderRight: accent ? "3px solid #2563eb" : undefined,
-    }}>
-      <div style={{ fontSize: 10, color: "#94a3b8", marginBottom: 3, textTransform: "uppercase", letterSpacing: 0.5 }}>{label}</div>
-      <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a" }}>{value}</div>
-      {sub && <div style={{ fontSize: 10, color: "#64748b", marginTop: 2 }}>{sub}</div>}
+    <div className={`ipl-infobox${accent ? " ipl-infobox--accent" : ""}`}>
+      <div className="ipl-infobox-label">{label}</div>
+      <div className="ipl-infobox-value">{value}</div>
+      {sub && <div className="ipl-infobox-sub">{sub}</div>}
     </div>
   );
 }
 
-function Th({ children, center, style }: { children: React.ReactNode; center?: boolean; style?: React.CSSProperties }) {
+function Th({ children, center, colClass }: { children: React.ReactNode; center?: boolean; colClass?: string }) {
   return (
-    <th style={{
-      padding: "8px 6px",
-      border: "1px solid #1e3a5f",
-      background: "#1e3a5f",
-      color: "white",
-      fontWeight: 700,
-      fontSize: 11,
-      textAlign: center ? "center" : "right",
-      ...style,
-    }}>
+    <th className={["ipl-th", center ? "ipl-th--center" : "", colClass ?? ""].filter(Boolean).join(" ")}>
       {children}
     </th>
   );
@@ -434,62 +398,39 @@ function Td({ children, center, muted, bold, mono, accent }: {
   mono?: boolean;
   accent?: boolean;
 }) {
-  return (
-    <td style={{
-      padding: "8px 6px",
-      border: "1px solid #e2e8f0",
-      textAlign: center ? "center" : "right",
-      color: accent ? "#1e3a5f" : muted ? "#64748b" : "#0f172a",
-      fontWeight: bold ? 700 : 400,
-      fontFamily: mono ? "monospace" : undefined,
-    }}>
-      {children}
-    </td>
-  );
+  const cls = [
+    "ipl-td",
+    center  ? "ipl-td--center" : "",
+    muted   ? "ipl-td--muted"  : "",
+    bold    ? "ipl-td--bold"   : "",
+    mono    ? "ipl-td--mono"   : "",
+    accent  ? "ipl-td--accent" : "",
+  ].filter(Boolean).join(" ");
+  return <td className={cls}>{children}</td>;
 }
 
 function TotalRow({ label, value, highlight, discount, deduction, paid }: { label: string; value: string; highlight?: boolean; discount?: boolean; deduction?: boolean; paid?: boolean }) {
-  const bgColor = highlight
-    ? "#1e3a5f"
-    : paid
-    ? "#f0fdf4"
-    : discount
-    ? "#f0fdf4"
-    : deduction
-    ? "#fef2f2"
-    : "#f8fafc";
-
-  const textColor = highlight
-    ? "white"
-    : paid
-    ? "#15803d"
-    : discount
-    ? "#16a34a"
-    : deduction
-    ? "#dc2626"
-    : "#334155";
+  const rowCls = [
+    "ipl-total-row",
+    highlight  ? "ipl-total-row--highlight"  : "",
+    paid       ? "ipl-total-row--paid"        : "",
+    discount   ? "ipl-total-row--discount"    : "",
+    deduction  ? "ipl-total-row--deduction"   : "",
+  ].filter(Boolean).join(" ");
 
   return (
-    <div style={{
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "center",
-      padding: highlight ? "10px 12px" : "7px 12px",
-      background: bgColor,
-      borderBottom: highlight ? "none" : "1px solid #e2e8f0",
-      color: textColor,
-    }}>
-      <span style={{ fontSize: highlight ? 13 : 12, fontWeight: highlight ? 700 : 500 }}>{label}</span>
-      <span style={{ fontSize: highlight ? 14 : 12, fontWeight: 700, fontFamily: "monospace" }}>{value}</span>
+    <div className={rowCls}>
+      <span className={highlight ? "ipl-total-label--large" : "ipl-total-label"}>{label}</span>
+      <span className={highlight ? "ipl-total-value--large" : "ipl-total-value"}>{value}</span>
     </div>
   );
 }
 
 function SignatureLine({ label }: { label: string }) {
   return (
-    <div style={{ textAlign: "center" }}>
-      <div style={{ width: 110, height: 36, borderBottom: "1.5px solid #94a3b8", marginBottom: 4 }} />
-      <div style={{ fontSize: 10, color: "#64748b" }}>{label}</div>
+    <div className="ipl-signature">
+      <div className="ipl-signature-line" />
+      <div className="ipl-signature-label">{label}</div>
     </div>
   );
 }

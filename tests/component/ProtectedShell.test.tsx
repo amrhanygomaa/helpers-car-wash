@@ -162,7 +162,7 @@ describe("ProtectedShell — TC-COMP-PSHELL", () => {
   it("TC-COMP-PSHELL-008 — route is redirected to / when its feature is disabled, even for the owner", () => {
     mockUseAuth.mockReturnValue(authenticatedAs(OWNER));
     mockUseFeatures.mockReturnValue({ isEnabled: () => false, isAllowed: () => false });
-    renderProtected({ feature: "quotations" });
+    renderProtected({ feature: "dues" });
     expect(screen.getByTestId("dashboard")).toBeInTheDocument();
     expect(screen.queryByTestId("protected-content")).not.toBeInTheDocument();
   });

@@ -1,0 +1,417 @@
+/* Print layout styles — extracted to avoid inline-style warnings */
+
+/* ── Page shell ── */
+.ipl-page {
+  min-height: 297mm;
+  display: flex;
+  flex-direction: column;
+}
+
+.ipl-accent-top {
+  height: 8px;
+  background: linear-gradient(90deg, #1e3a5f 0%, #2563eb 100%);
+}
+
+.ipl-accent-bottom {
+  height: 5px;
+  background: linear-gradient(90deg, #1e3a5f 0%, #2563eb 100%);
+}
+
+.ipl-body {
+  padding: 20mm 16mm 14mm;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+/* ── Header ── */
+.ipl-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 16px;
+  padding-bottom: 14px;
+  border-bottom: 2px solid #1e3a5f;
+}
+
+.ipl-company-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ipl-logo {
+  width: 52px;
+  height: 52px;
+  border-radius: 10px;
+  overflow: hidden;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.ipl-logo--gradient {
+  background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%);
+}
+
+.ipl-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.ipl-company-name {
+  font-weight: 800;
+  font-size: 18px;
+  color: #0f172a;
+  line-height: 1.2;
+}
+
+.ipl-company-name-en {
+  font-size: 11px;
+  color: #64748b;
+  margin-top: 2px;
+}
+
+.ipl-identity {
+  text-align: left;
+}
+
+.ipl-identity-title {
+  font-size: 20px;
+  font-weight: 800;
+  color: #1e3a5f;
+  letter-spacing: -0.5px;
+}
+
+.ipl-identity-meta {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ipl-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.ipl-meta-label {
+  font-size: 11px;
+  color: #64748b;
+}
+
+.ipl-meta-number {
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
+  font-family: monospace;
+  background: #f1f5f9;
+  padding: 1px 8px;
+  border-radius: 4px;
+}
+
+.ipl-meta-date {
+  font-size: 12px;
+  font-weight: 600;
+  color: #334155;
+}
+
+/* ── Info row ── */
+.ipl-info-grid {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.ipl-vehicle-row {
+  margin-bottom: 16px;
+}
+
+/* ── InfoBox component ── */
+.ipl-infobox {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: #f8fafc;
+}
+
+.ipl-infobox--accent {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  border-right: 3px solid #2563eb;
+}
+
+.ipl-infobox-label {
+  font-size: 10px;
+  color: #94a3b8;
+  margin-bottom: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.ipl-infobox-value {
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.ipl-infobox-sub {
+  font-size: 10px;
+  color: #64748b;
+  margin-top: 2px;
+}
+
+/* ── Items table ── */
+.ipl-table-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.ipl-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.ipl-table--small { font-size: 11px; }
+
+/* Column widths */
+.ipl-col-seq     { width: 28px; }
+.ipl-col-unit    { width: 52px; }
+.ipl-col-price   { width: 80px; }
+.ipl-col-total   { width: 88px; }
+.ipl-col-date    { width: 90px; }
+.ipl-col-method  { width: 100px; }
+.ipl-col-amount  { width: 110px; }
+
+/* Info grid column layouts */
+.ipl-info-grid--3col { grid-template-columns: 1fr 1fr 1fr; }
+.ipl-info-grid--4col { grid-template-columns: 1fr 1fr 1fr 1fr; }
+
+.ipl-th {
+  padding: 8px 6px;
+  border: 1px solid #1e3a5f;
+  background: #1e3a5f;
+  color: white;
+  font-weight: 700;
+  font-size: 11px;
+  text-align: right;
+}
+
+.ipl-th--center {
+  text-align: center;
+}
+
+.ipl-td {
+  padding: 8px 6px;
+  border: 1px solid #e2e8f0;
+  text-align: right;
+  color: #0f172a;
+}
+
+.ipl-td--center { text-align: center; }
+.ipl-td--muted  { color: #64748b; }
+.ipl-td--bold   { font-weight: 700; }
+.ipl-td--mono   { font-family: monospace; }
+.ipl-td--accent { color: #1e3a5f; }
+
+.ipl-row-even { background: #ffffff; }
+.ipl-row-odd  { background: #f8fafc; }
+.ipl-row-odd-return { background: #fff5f5; }
+.ipl-row-odd-payment { background: #f0f7ff; }
+
+.ipl-td-name       { font-weight: 600; color: #0f172a; }
+.ipl-td-employee   { display: block; font-size: 10px; color: #64748b; }
+.ipl-td-expiry     { display: block; font-size: 10px; color: #94a3b8; }
+.ipl-td-empty      { padding: 9px 6px; border: 1px solid #e2e8f0; }
+
+/* ── Returns section ── */
+.ipl-returns {
+  margin-top: 14px;
+}
+
+.ipl-returns-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #dc2626;
+  margin-bottom: 6px;
+  border-bottom: 1.5px solid #dc2626;
+  padding-bottom: 4px;
+}
+
+.ipl-returns-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 6px;
+}
+
+.ipl-returns-total {
+  font-size: 12px;
+  font-weight: 700;
+  color: #dc2626;
+  background: #fff5f5;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  padding: 4px 12px;
+}
+
+/* ── Payment log ── */
+.ipl-payment-log {
+  margin-top: 14px;
+}
+
+.ipl-payment-log-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #1e3a5f;
+  margin-bottom: 6px;
+  border-bottom: 1.5px solid #1e3a5f;
+  padding-bottom: 4px;
+}
+
+/* ── Totals + signatures ── */
+.ipl-bottom-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-top: 14px;
+}
+
+.ipl-signatures {
+  display: flex;
+  gap: 32px;
+  font-size: 11px;
+  color: #64748b;
+}
+
+.ipl-signature {
+  text-align: center;
+}
+
+.ipl-signature-line {
+  width: 110px;
+  height: 36px;
+  border-bottom: 1.5px solid #94a3b8;
+  margin-bottom: 4px;
+}
+
+.ipl-signature-label {
+  font-size: 10px;
+  color: #64748b;
+}
+
+/* ── Totals box ── */
+.ipl-totals {
+  width: 220px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.ipl-total-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 7px 12px;
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+  color: #334155;
+}
+
+.ipl-total-row--highlight {
+  padding: 10px 12px;
+  background: #1e3a5f;
+  border-bottom: none;
+  color: white;
+}
+
+.ipl-total-row--paid       { background: #f0fdf4; color: #15803d; }
+.ipl-total-row--discount   { background: #f0fdf4; color: #16a34a; }
+.ipl-total-row--deduction  { background: #fef2f2; color: #dc2626; }
+
+.ipl-total-label          { font-size: 12px; font-weight: 500; }
+.ipl-total-label--large   { font-size: 13px; font-weight: 700; }
+.ipl-total-value          { font-size: 12px; font-weight: 700; font-family: monospace; }
+.ipl-total-value--large   { font-size: 14px; font-weight: 700; font-family: monospace; }
+
+/* ── Customer balance banner ── */
+.ipl-balance {
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 11px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.ipl-balance--credit {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+}
+
+.ipl-balance--debit {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+}
+
+.ipl-balance--settled {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+.ipl-balance-label          { font-weight: 700; color: #334155; }
+.ipl-balance-label--credit  { color: #1e40af; }
+.ipl-balance-label--debit   { color: #dc2626; }
+.ipl-balance-amount         { font-weight: 700; font-size: 13px; color: #334155; }
+.ipl-balance-amount--credit { color: #1e40af; }
+.ipl-balance-amount--debit  { color: #dc2626; }
+
+/* ── Notes ── */
+.ipl-notes {
+  margin-top: 12px;
+  padding: 8px 10px;
+  background: #fefce8;
+  border: 1px solid #fde68a;
+  border-radius: 6px;
+  font-size: 11px;
+  color: #78350f;
+}
+
+.ipl-notes-label {
+  font-weight: 700;
+}
+
+/* ── Footer ── */
+.ipl-spacer { flex: 1; }
+
+.ipl-footer {
+  margin-top: 20px;
+  padding-top: 10px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.ipl-footer-text {
+  text-align: center;
+  font-size: 11px;
+  color: #64748b;
+  white-space: pre-line;
+  margin-bottom: 8px;
+}
+
+.ipl-footer-brand {
+  text-align: center;
+  font-size: 9px;
+  color: #cbd5e1;
+  margin-top: 4px;
+}

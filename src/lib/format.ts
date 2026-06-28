@@ -1,4 +1,4 @@
-export function formatCurrency(amount: number, currency = "ج.م"): string {
+export function formatCurrency(amount: number, currency = "EGP"): string {
   const n = Number.isFinite(amount) ? amount : 0;
   const fixed = n.toLocaleString("en-US", {
     minimumFractionDigits: 2,
@@ -37,4 +37,3 @@ export const PAYMENT_METHOD_LABELS: Record<string, string> = {
   instapay: "انستاباي",
   other: "أخرى",
 };
-

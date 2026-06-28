@@ -9,11 +9,13 @@ import type { AppUser, MonthlyEmployeeConfig, UserPermissions } from "../types";
 import { hashPassword } from "../lib/auth";
 import { MONTH_NAMES_AR, localISODate } from "../lib/utils";
 import {
-  PERMISSION_GROUPS,
+  CARWASH_PERMISSION_GROUPS,
+  areAllCarwashPermissionsEnabled,
   areAllPermissionsEnabled,
-  createPermissions,
+  createCashierPermissions,
   normalizePermissions,
   setPermission,
+  setCarwashPermissionGroups,
   setPermissionGroup,
 } from "../lib/permissions";
 
@@ -148,6 +150,9 @@ function UserFormDialog({
   const [name, setName] = useState(editing?.name || editing?.username || "");
   const [username, setUsername] = useState(editing?.username || "");
   const [password, setPassword] = useState("");
+  const [role, setRole] = useState<"cashier" | "employee">(
+    editing?.role === "cashier" ? "cashier" : "employee"
+  );
   const [permissions, setPermissions] = useState<UserPermissions>(
     normalizePermissions(editing?.permissions)
   );
@@ -166,7 +171,7 @@ function UserFormDialog({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const allPermissionsSelected = useMemo(
-    () => areAllPermissionsEnabled(permissions),
+    () => areAllCarwashPermissionsEnabled(permissions),
     [permissions]
   );
 
@@ -184,6 +189,7 @@ function UserFormDialog({
     );
     if (usernameExists) e.username = "اسم الدخول مستخدم بالفعل";
     if (!editing && !password) e.password = "مطلوب";
+    if (password && password.length < 4) e.password = "PIN يجب ألا يقل عن 4 أرقام";
     const salary = optionalNumber(monthlySalary);
     const commission = optionalNumber(salesCommissionPct);
     const target = optionalNumber(monthlySalesTarget);
@@ -217,6 +223,8 @@ function UserFormDialog({
       const patch: Partial<AppUser> = {
         name: name.trim(),
         username: username.trim(),
+        role: editing.role === "owner" ? "owner" : role,
+        roleId: editing.role === "owner" ? "owner" : role === "cashier" ? "cashier" : "custom",
         permissions,
         ...employeeFields,
       };
@@ -228,7 +236,8 @@ function UserFormDialog({
         name: name.trim(),
         username: username.trim(),
         passwordHash: await hashPassword(password),
-        role: "employee",
+        role,
+        roleId: role === "cashier" ? "cashier" : "custom",
         permissions,
         ...employeeFields,
       });
@@ -269,9 +278,26 @@ function UserFormDialog({
               disabled={editing?.role === "owner"}
             />
           </Field>
-          <Field label={editing ? "كلمة المرور (اتركه فارغاً لعدم التغيير)" : "كلمة المرور"} required={!editing} error={errors.password}>
+          {editing?.role !== "owner" && (
+            <Field label="الدور">
+              <select
+                value={role}
+                onChange={(e) => {
+                  const nextRole = e.target.value as "cashier" | "employee";
+                  setRole(nextRole);
+                  if (nextRole === "cashier") setPermissions(createCashierPermissions());
+                }}
+                className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+              >
+                <option value="cashier">Cashier / Operator</option>
+                <option value="employee">دور مخصص</option>
+              </select>
+            </Field>
+          )}
+          <Field label={editing ? "PIN (اتركه فارغاً لعدم التغيير)" : "PIN"} required={!editing} error={errors.password}>
             <Input
               type="password"
+              inputMode="numeric"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
@@ -291,7 +317,7 @@ function UserFormDialog({
                   placeholder="جنيه"
                 />
               </Field>
-              <Field label="نسبة العمولة على المبيعات" error={errors.salesCommissionPct}>
+              <Field label="نسبة العمولة على الغسيل" error={errors.salesCommissionPct}>
                 <Input
                   type="number"
                   min={0}
@@ -328,14 +354,16 @@ function UserFormDialog({
                 <input
                   type="checkbox"
                   checked={allPermissionsSelected}
-                  onChange={(e) => setPermissions(createPermissions(e.target.checked))}
+                  onChange={(e) =>
+                    setPermissions((current) => setCarwashPermissionGroups(current, e.target.checked))
+                  }
                 />
                 اختيار الكل
               </label>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {PERMISSION_GROUPS.map((group) => {
+              {CARWASH_PERMISSION_GROUPS.map((group) => {
                 const groupSelected = areAllPermissionsEnabled(permissions, group.key);
                 const groupPermissions = permissions[group.key] as Record<string, boolean>;
 
@@ -426,9 +454,13 @@ export function UsersPage() {
                     <span className="inline-flex items-center gap-1 bg-brand-100 text-brand-700 px-2 py-1 rounded-md text-xs font-semibold">
                       <Shield className="w-3 h-3" /> مدير النظام
                     </span>
+                  ) : user.role === "cashier" ? (
+                    <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-700 px-2 py-1 rounded-md text-xs font-medium">
+                      كاشير / استقبال
+                    </span>
                   ) : (
                     <span className="inline-flex items-center gap-1 bg-slate-100 text-slate-700 px-2 py-1 rounded-md text-xs font-medium">
-                      موظف
+                      مخصص
                     </span>
                   )}
                 </td>

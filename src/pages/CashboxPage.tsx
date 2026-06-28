@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Plus, Minus, Wallet, HandCoins, Factory, NotebookPen, Users, UserRoundMinus } from "lucide-react";
+import { Plus, Minus, Wallet, HandCoins, NotebookPen, Users, UserRoundMinus } from "lucide-react";
 import { PageHeader } from "../components/layout/AppLayout";
 import { Card, CardBody, CardHeader } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -20,9 +20,9 @@ import { formatCurrency, formatDate, PAYMENT_METHOD_LABELS } from "../lib/format
 import { hasPermission } from "../lib/permissions";
 
 export function CashboxPage() {
-  const { customers, suppliers } = useCatalog();
-  const { cashEntries, salesInvoices, purchaseInvoices, addCashEntry, currentCashBalance } = useInvoicing();
-  const { customerBalance, supplierBalance } = useReporting();
+  const { customers } = useCatalog();
+  const { cashEntries, salesInvoices, addCashEntry, currentCashBalance } = useInvoicing();
+  const { customerBalance } = useReporting();
   const { currentUser } = useAuth();
   const { settings, updateSettings } = useSettings();
   const toast = useToast();
@@ -46,10 +46,6 @@ export function CashboxPage() {
         .reduce((a, s) => a + s.amountReceived + (s.overpayment ?? 0), 0),
     [salesInvoices]
   );
-  const totalPurchasePayments = useMemo(
-    () => purchaseInvoices.reduce((a, s) => a + s.amountPaid + (s.overpayment ?? 0), 0),
-    [purchaseInvoices]
-  );
   const receivables = useMemo(
     () => customers.reduce((a, c) => a + Math.max(0, customerBalance(c.id)), 0),
     [customers, customerBalance]
@@ -57,10 +53,6 @@ export function CashboxPage() {
   const customerCredits = useMemo(
     () => customers.reduce((a, c) => a + Math.max(0, -customerBalance(c.id)), 0),
     [customers, customerBalance]
-  );
-  const payables = useMemo(
-    () => suppliers.reduce((a, s) => a + supplierBalance(s.id), 0),
-    [suppliers, supplierBalance]
   );
 
   function submit() {
@@ -145,10 +137,9 @@ export function CashboxPage() {
         }
       />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
         <Stat icon={<Wallet className="w-5 h-5" />} label="الرصيد الحالي" value={formatCurrency(currentCashBalance(), settings.currency)} tone="green" />
         <Stat icon={<HandCoins className="w-5 h-5" />} label="إجمالي المحصل" value={formatCurrency(totalReceived, settings.currency)} tone="blue" />
-        <Stat icon={<Factory className="w-5 h-5" />} label="مدفوعات الموردين" value={formatCurrency(totalPurchasePayments, settings.currency)} tone="amber" />
         <Stat icon={<Users className="w-5 h-5" />} label="مستحقات من العملاء" value={formatCurrency(receivables, settings.currency)} tone="rose" />
         <Stat icon={<UserRoundMinus className="w-5 h-5" />} label="فلوس علينا للعملاء" value={formatCurrency(customerCredits, settings.currency)} tone="violet" />
       </div>
@@ -156,7 +147,7 @@ export function CashboxPage() {
       <Card>
         <CardHeader
           title="دفتر الخزينة"
-          subtitle={`الرصيد الافتتاحي: ${formatCurrency(settings.openingBalance, settings.currency)} • مستحقات على الموردين: ${formatCurrency(payables, settings.currency)}`}
+          subtitle={`الرصيد الافتتاحي: ${formatCurrency(settings.openingBalance, settings.currency)} • تحصيلات ومصروفات المغسلة اليومية`}
         />
         <CardBody>
           {cashEntries.length === 0 ? (
@@ -277,8 +268,8 @@ export function CashboxPage() {
 }
 
 function TypeBadge({ type }: { type: CashEntryType }) {
-  if (type === "sales-receipt") return <Badge tone="green">تحصيل مبيعات</Badge>;
-  if (type === "purchase-payment") return <Badge tone="blue">سداد مشتريات</Badge>;
+  if (type === "sales-receipt") return <Badge tone="green">تحصيل غسيل</Badge>;
+  if (type === "purchase-payment") return <Badge tone="blue">دفعة تشغيل</Badge>;
   if (type === "manual-add") return <Badge tone="emerald">إضافة يدوية</Badge>;
   if (type === "manual-remove") return <Badge tone="rose">صرف يدوي</Badge>;
   return <Badge tone="amber">تسوية</Badge>;

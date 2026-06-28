@@ -30,6 +30,8 @@ export interface CarwashContextValue {
   ) => QueueTicket;
   updateQueueTicket: (id: string, patch: Partial<QueueTicket>) => void;
   setQueueStatus: (id: string, status: QueueStatus) => void;
+  reorderQueueTicket: (id: string, direction: "up" | "down") => void;
+  requeueTicket: (id: string) => void;
   receiveVehicleKey: (id: string) => void;
   deliverVehicleKey: (id: string) => void;
 }

@@ -27,6 +27,7 @@ export async function launchElectron(): Promise<ElectronHandle> {
     HW_E2E_DB_PATH: dbPath,
   };
   delete env.ELECTRON_RENDERER_URL;
+  delete env.ELECTRON_RUN_AS_NODE;
 
   const app = await electron.launch({
     args: [path.resolve("electron/main.cjs")],

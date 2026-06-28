@@ -120,6 +120,7 @@ describe("TC-PER-MATRIX-004 — normalizePermissions invariants", () => {
       fc.property(randomPermsArb, (rawPerms) => {
         const normalized = normalizePermissions(rawPerms);
         for (const group of PERMISSION_GROUPS) {
+          if (!group.actions.some((a) => a.key === "view")) continue;
           const groupPerms = normalized[group.key] as Record<string, boolean>;
           const hasNonView = group.actions.some(
             (a) => a.key !== "view" && groupPerms[a.key]
@@ -137,6 +138,7 @@ describe("TC-PER-MATRIX-004 — normalizePermissions invariants", () => {
       fc.property(randomPermsArb, (rawPerms) => {
         const normalized = normalizePermissions(rawPerms);
         for (const group of PERMISSION_GROUPS) {
+          if (!group.actions.some((a) => a.key === "view")) continue;
           const groupPerms = normalized[group.key] as Record<string, boolean>;
           if (!groupPerms.view) {
             for (const action of group.actions) {

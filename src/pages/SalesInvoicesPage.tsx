@@ -55,7 +55,6 @@ export function SalesInvoicesPage() {
         (s) =>
           s.invoiceNumber.toLowerCase().includes(t) ||
           s.customerName.toLowerCase().includes(t) ||
-          (s.driverName ?? "").toLowerCase().includes(t) ||
           (customerCodeMap.get(s.customerId) ?? "").includes(t) ||
           (customerPhoneMap.get(s.customerId) ?? "").includes(t)
       );
@@ -84,13 +83,13 @@ export function SalesInvoicesPage() {
   return (
     <>
       <PageHeader
-        title="فواتير المبيعات"
-        description={`إدارة فواتير العملاء (${salesInvoices.length})`}
+        title="فواتير الغسيل"
+        description={`متابعة فواتير الغسيل والتحصيل (${salesInvoices.length})`}
         actions={
           canAddSalesInvoice ? (
-            <Button onClick={() => navigate("/sales/new")}>
+            <Button onClick={() => navigate("/carwash/new")}>
               <Plus className="w-4 h-4" />
-              فاتورة جديدة
+              فاتورة غسيل جديدة
             </Button>
           ) : null
         }
@@ -170,11 +169,11 @@ export function SalesInvoicesPage() {
             <EmptyState
               icon={<Receipt className="w-5 h-5" />}
               title="لا توجد فواتير"
-              description="لم تُنشَأ أي فاتورة مبيعات بعد."
+              description="لم تُنشَأ أي فاتورة غسيل بعد."
               action={
                 canAddSalesInvoice ? (
-                  <Button onClick={() => navigate("/sales/new")}>
-                    <Plus className="w-4 h-4" /> إنشاء فاتورة
+                  <Button onClick={() => navigate("/carwash/new")}>
+                    <Plus className="w-4 h-4" /> إنشاء فاتورة غسيل
                   </Button>
                 ) : undefined
               }
@@ -186,7 +185,6 @@ export function SalesInvoicesPage() {
                   <TH>الرقم</TH>
                   <TH>التاريخ</TH>
                   <TH>العميل</TH>
-                  <TH>السائق</TH>
                   <TH className="text-end">الإجمالي</TH>
                   <TH className="text-end">المستلم</TH>
                   <TH className="text-end">المتبقي</TH>
@@ -205,7 +203,6 @@ export function SalesInvoicesPage() {
                     </TD>
                     <TD>{formatDate(s.date)}</TD>
                     <TD className="font-medium text-slate-900">{s.customerName}</TD>
-                    <TD className="text-slate-600 text-xs">{s.driverName ?? "—"}</TD>
                     <TD className="text-end">{formatCurrency(s.total, settings.currency)}</TD>
                     <TD className="text-end text-emerald-700">
                       {formatCurrency(s.amountReceived, settings.currency)}
@@ -295,7 +292,7 @@ export function SalesInvoicesPage() {
           else toast.error("تعذر الحذف", "الفواتير المرتبطة بمرتجعات لا يمكن حذفها");
           setToDelete(null);
         }}
-        title="حذف فاتورة المبيعات"
+        title="حذف فاتورة الغسيل"
         message={`هل أنت متأكد من حذف الفاتورة ${toDelete?.invoiceNumber ?? ""}؟ لا يمكن التراجع عن هذا الإجراء.`}
         confirmText="حذف"
         variant="danger"

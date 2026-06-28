@@ -6,6 +6,13 @@ import { AppProvider } from "./store/AppContext";
 import { ToastProvider } from "./components/ui/Toast";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { loadStorageCache } from "./lib/storage";
+import "@fontsource/cairo/400.css";
+import "@fontsource/cairo/500.css";
+import "@fontsource/cairo/600.css";
+import "@fontsource/cairo/700.css";
+import "@fontsource/tajawal/400.css";
+import "@fontsource/tajawal/500.css";
+import "@fontsource/tajawal/700.css";
 import "./index.css";
 
 // useBlocker (unsaved-changes guard on the invoice/quotation pages) only works
@@ -38,4 +45,3 @@ loadStorageCache().then(() => {
     </StrictMode>
   );
 });
-

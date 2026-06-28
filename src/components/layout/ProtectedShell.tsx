@@ -2,7 +2,7 @@ import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../store/AuthContext";
 import { AppLayout } from "./AppLayout";
 import { useToast } from "../ui/Toast";
-import { hasPermission } from "../../lib/permissions";
+import { hasPermission, hasPermissionKey, type PermissionKey } from "../../lib/permissions";
 import { useFeatures } from "../../lib/useFeatures";
 import type { FeatureKey } from "../../lib/features";
 import type { UserPermissions } from "../../types";
@@ -11,12 +11,14 @@ export function ProtectedShell({
   children,
   permission,
   permissionAction = "view",
+  permissionKey,
   ownerOnly,
   feature,
 }: {
   children: React.ReactNode;
   permission?: keyof UserPermissions;
   permissionAction?: string;
+  permissionKey?: PermissionKey;
   ownerOnly?: boolean;
   feature?: FeatureKey;
 }) {
@@ -38,6 +40,10 @@ export function ProtectedShell({
   if (currentUser.role !== "owner") {
     if (ownerOnly) {
       setTimeout(() => toast.error("ليس لديك صلاحية", "هذه الصفحة مخصصة للمدير فقط"), 0);
+      return <Navigate to="/" replace />;
+    }
+    if (permissionKey && !hasPermissionKey(currentUser, permissionKey)) {
+      setTimeout(() => toast.error("ليس لديك صلاحية", "لا تملك صلاحية لفتح هذه الصفحة"), 0);
       return <Navigate to="/" replace />;
     }
     if (permission && !hasPermission(currentUser, permission, permissionAction)) {

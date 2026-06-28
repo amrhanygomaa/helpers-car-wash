@@ -17,8 +17,8 @@ test("@smoke app boots with fresh DB and renders first-run setup page", async ()
     // The owner-creation heading must be visible within the timeout.
     await expect(screen.heading()).toBeVisible();
 
-    // The submit button must be present (not disabled by default).
-    await expect(screen.submitButton()).toBeVisible();
+    // The first step can proceed once the owner PIN is entered.
+    await expect(screen.nextButton()).toBeVisible();
   } finally {
     await closeElectron(handle);
   }

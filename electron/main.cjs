@@ -8,6 +8,7 @@ const Database = require("better-sqlite3-multiple-ciphers");
 const argon2 = require("argon2");
 const { machineIdSync } = require("node-machine-id");
 const { z } = require("zod");
+const { createSyncEngine } = require("./sync.cjs");
 
 let LICENSE_PUBLIC_KEY;
 try {
@@ -100,7 +101,7 @@ const permissionTemplate = {
   products: { view: true, add: true, edit: true, delete: true },
   inventory: { view: true, adjust: true },
   purchaseInvoices: { view: true, add: true, edit: true, pay: true, delete: true },
-  salesInvoices: { view: true, add: true, receive: true, cancel: true, delete: true },
+  salesInvoices: { view: true, add: true, edit: true, receive: true, cancel: true, delete: true },
   customers: { view: true, add: true, edit: true, delete: true },
   suppliers: { view: true, add: true, edit: true, delete: true, commissions: true },
   drivers: { view: true, add: true, edit: true, delete: true },
@@ -108,6 +109,14 @@ const permissionTemplate = {
   alerts: { view: true },
   cashbox: { view: true, add: true, spend: true, editOpeningBalance: true },
   reports: { view: true },
+  vehicles: { view: true, add: true, edit: true, delete: true },
+  washServices: { view: true, add: true, edit: true, delete: true },
+  queue: { view: true, add: true, edit: true, cancel: true },
+  pricing: { override: true },
+  payroll: { view: true, manage: true },
+  workers: { view: true, manage: true },
+  settings: { view: true, manage: true },
+  users: { view: true, manage: true },
 };
 
 if (process.platform === "win32") {
@@ -239,12 +248,16 @@ function getDbKey() {
   return sha256(`${APP_SALT}:db:${getMachineMaterial()}`);
 }
 
+function getDatabasePath() {
+  return HW_E2E && process.env.HW_E2E_DB_PATH
+    ? process.env.HW_E2E_DB_PATH
+    : path.join(app.getPath("userData"), "helpers-inventory.secure.sqlite");
+}
+
 function openDatabase() {
   if (db) return db;
 
-  const dbPath = HW_E2E && process.env.HW_E2E_DB_PATH
-    ? process.env.HW_E2E_DB_PATH
-    : path.join(app.getPath("userData"), "helpers-inventory.secure.sqlite");
+  const dbPath = getDatabasePath();
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
   const existed = fs.existsSync(dbPath);
 
@@ -273,11 +286,87 @@ function openDatabase() {
   return db;
 }
 
+// ── Car Wash migration runner ─────────────────────────────────────────────
+// Reads SQL files from electron/migrations/ and applies any that haven't run yet.
+// Tracked in __carwash_migrations so each file executes exactly once.
+function runCarwashMigrations() {
+  const database = openDatabase();
+
+  database.prepare(`CREATE TABLE IF NOT EXISTS __carwash_migrations (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       TEXT NOT NULL UNIQUE,
+    applied_at TEXT NOT NULL
+  )`).run();
+
+  const migrationsDir = path.join(__dirname, "migrations");
+  if (!fs.existsSync(migrationsDir)) {
+    console.warn("[db] migrations directory not found:", migrationsDir);
+    return;
+  }
+
+  const applied = new Set(
+    database.prepare("SELECT name FROM __carwash_migrations").all().map((r) => r.name)
+  );
+
+  const files = fs.readdirSync(migrationsDir)
+    .filter((f) => f.endsWith(".sql"))
+    .sort();
+
+  for (const file of files) {
+    if (applied.has(file)) continue;
+    const sql = fs.readFileSync(path.join(migrationsDir, file), "utf-8");
+    try {
+      database.exec(sql);
+      database
+        .prepare("INSERT INTO __carwash_migrations (name, applied_at) VALUES (?, ?)")
+        .run(file, new Date().toISOString());
+      console.log("[db] migration applied:", file);
+    } catch (err) {
+      console.error("[db] migration failed:", file, err.message);
+      throw err;
+    }
+  }
+}
+
+// ── Cloud sync engine (Phase 9) — lazy singleton, runs in main only ───────────
+let _syncEngine = null;
+let _syncTimer = null;
+function getSyncEngine() {
+  if (!_syncEngine) {
+    _syncEngine = createSyncEngine({
+      db: openDatabase(),
+      deviceId: () => { try { return machineIdSync(true); } catch { return ""; } },
+      log: (...a) => console.log(...a),
+    });
+  }
+  return _syncEngine;
+}
+function startSyncScheduler() {
+  if (_syncTimer) return;
+  // Background, non-blocking: only acts when the owner enabled + configured sync.
+  _syncTimer = setInterval(() => {
+    try {
+      const engine = getSyncEngine();
+      if (engine.getConfig().enabled) engine.runSync().catch((e) => console.warn("[sync] tick", e?.message));
+    } catch (e) {
+      console.warn("[sync] scheduler", e?.message);
+    }
+  }, 5 * 60 * 1000);
+  if (_syncTimer.unref) _syncTimer.unref();
+}
+
 // Cached prepared statements — created once after DB is first opened.
 let _stmtGet = null;
 let _stmtSet = null;
 let _stmtRemove = null;
 let _stmtClearPrefix = null;
+
+function resetPreparedStatements() {
+  _stmtGet = null;
+  _stmtSet = null;
+  _stmtRemove = null;
+  _stmtClearPrefix = null;
+}
 
 function getStmtGet() {
   if (!_stmtGet) _stmtGet = openDatabase().prepare("SELECT value FROM kv_store WHERE key = ?");
@@ -461,7 +550,7 @@ async function verifyPassword(storedHash, password) {
 
 async function createOwner(username, password) {
   const cleanUsername = normalizeUsername(username);
-  if (!cleanUsername || !isPasswordLengthAllowed(password, 6)) {
+  if (!cleanUsername || !isPasswordLengthAllowed(password, 4)) {
     return { ok: false, error: "invalid_input" };
   }
 
@@ -479,6 +568,7 @@ async function createOwner(username, password) {
     username: cleanUsername,
     passwordHash: await hashPassword(password),
     role: "owner",
+    roleId: "owner",
     permissions: permissionTemplate,
     createdAt: new Date().toISOString(),
   };
@@ -523,7 +613,7 @@ async function login(username, password) {
 
 async function changePassword({ userId, currentPassword, newPassword }) {
   const cleanUserId = String(userId || "").trim();
-  if (!cleanUserId || !isPasswordLengthAllowed(newPassword, 6)) {
+  if (!cleanUserId || !isPasswordLengthAllowed(newPassword, 4)) {
     return { ok: false, error: "invalid_input" };
   }
 
@@ -550,7 +640,7 @@ async function updateOwnProfile({ userId, name, currentPassword, newPassword }) 
   if (!cleanUserId || !cleanName) {
     return { ok: false, error: "invalid_input" };
   }
-  if (wantsPasswordChange && !isPasswordLengthAllowed(newPassword, 6)) {
+  if (wantsPasswordChange && !isPasswordLengthAllowed(newPassword, 4)) {
     return { ok: false, error: "invalid_input" };
   }
 
@@ -602,7 +692,7 @@ async function resetOwnerPassword({ supportCode, username, password }) {
   if (!owner) return { ok: false, error: "owner_missing" };
 
   const cleanUsername = normalizeUsername(username || owner.username);
-  if (!cleanUsername || !isPasswordLengthAllowed(password, 6)) {
+  if (!cleanUsername || !isPasswordLengthAllowed(password, 4)) {
     return { ok: false, error: "invalid_input" };
   }
 
@@ -802,22 +892,37 @@ function getInvoicePrintMeta(route) {
   };
 }
 
-function getInvoicePrintOptions() {
+function printDeviceName(settings) {
+  const name = String(settings.printerName || "").trim();
+  return name ? name : undefined;
+}
+
+function receiptPageSize(settings) {
+  const widthMm = Math.min(110, Math.max(58, Number(settings.receiptWidthMm) || 80));
+  return { width: Math.round(widthMm * 1000), height: 220000 };
+}
+
+function getInvoicePrintOptions(documentName = "") {
+  const settings = getPrintSettings();
+  const isReceipt = String(documentName).startsWith("test-80mm");
   return {
     silent: false,
     printBackground: true,
     landscape: false,
-    pageSize: "A4",
-    margins: { marginType: "default" },
+    ...(printDeviceName(settings) ? { deviceName: printDeviceName(settings) } : {}),
+    pageSize: isReceipt ? receiptPageSize(settings) : settings.printPaperSize || "A4",
+    margins: { marginType: isReceipt ? "none" : "default" },
   };
 }
 
-function getInvoicePdfOptions() {
+function getInvoicePdfOptions(documentName = "") {
+  const settings = getPrintSettings();
+  const isReceipt = String(documentName).startsWith("test-80mm");
   return {
     printBackground: true,
     landscape: false,
-    pageSize: "A4",
-    margins: { marginType: "default" },
+    pageSize: isReceipt ? receiptPageSize(settings) : settings.printPaperSize || "A4",
+    margins: { marginType: isReceipt ? "none" : "default" },
     preferCSSPageSize: true,
   };
 }
@@ -827,7 +932,13 @@ function getPrintSettings() {
     companyName: "Helpers Technology",
     companyNameAr: "شركة هيلبيرز تيكنولوجي",
     invoiceFooter: "",
-    currency: "ج.م",
+    currency: "EGP",
+    pricingMode: "variable",
+    printerName: "",
+    receiptWidthMm: 80,
+    printPaperSize: "A4",
+    lowStockAlertWindowDays: 7,
+    timezone: "Africa/Cairo",
     arabicLabels: true,
     logoText: "HT",
     logoImage: "./helpers_tech_logo.png",
@@ -1432,7 +1543,61 @@ function buildInvoicePrintHtml(route) {
 </html>`;
 }
 
-function printRoute(route) {
+function buildTestReceiptHtml(settings) {
+  const companyName = settings.arabicLabels ? settings.companyNameAr : settings.companyName;
+  const widthMm = Math.min(110, Math.max(58, Number(settings.receiptWidthMm) || 80));
+  const now = new Date();
+  return `<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'none'; connect-src 'none'; base-uri 'none'; form-action 'none';" />
+  <title>اختبار طباعة 80mm</title>
+  <style>
+    @page { size: ${widthMm}mm auto; margin: 4mm; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #f1f5f9; color: #111827; font-family: Tahoma, Arial, sans-serif; direction: rtl; }
+    .print-toolbar { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; justify-content: flex-start; gap: 8px; padding: 10px 14px; background: #241f62; color: white; box-shadow: 0 2px 10px rgba(15,23,42,.18); }
+    .print-toolbar button { border: 0; border-radius: 6px; padding: 8px 14px; background: white; color: #241f62; font-family: inherit; font-weight: 700; cursor: pointer; }
+    .print-toolbar .secondary { background: rgba(255,255,255,.14); color: white; border: 1px solid rgba(255,255,255,.32); }
+    .print-status { min-width: 150px; color: rgba(255,255,255,.82); font-size: 11px; }
+    .receipt { width: ${widthMm}mm; margin: 18px auto; padding: 4mm; background: white; box-shadow: 0 10px 28px rgba(15,23,42,.16); font-size: 12px; line-height: 1.45; }
+    .center { text-align: center; }
+    .brand { font-weight: 800; font-size: 16px; }
+    .muted { color: #64748b; font-size: 10px; }
+    .row { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px dashed #cbd5e1; padding: 5px 0; }
+    .total { font-weight: 800; font-size: 14px; border-bottom: 0; border-top: 1px solid #111827; margin-top: 4px; }
+    .barcode { letter-spacing: 2px; font-family: Consolas, monospace; font-size: 18px; margin: 8px 0 2px; }
+    @media print { body { background: white; } .print-toolbar { display: none; } .receipt { margin: 0; box-shadow: none; } }
+  </style>
+</head>
+<body>
+  <div class="print-toolbar">
+    <button type="button" id="print-now-button">طباعة</button>
+    <button type="button" id="save-pdf-button">حفظ PDF</button>
+    <button type="button" class="secondary" id="close-window-button">إغلاق</button>
+    <span id="print-status" class="print-status"></span>
+  </div>
+  <main class="receipt">
+    <div class="center">
+      <div class="brand">${escapeHtml(companyName || "Top Gear Car Wash")}</div>
+      <div class="muted">اختبار طباعة إيصال ${widthMm}mm</div>
+      <div class="muted">${escapeHtml(now.toLocaleString("ar-EG"))}</div>
+    </div>
+    <div class="row"><span>غسيل خارجي</span><strong>120.00</strong></div>
+    <div class="row"><span>إضافة معطر</span><strong>30.00</strong></div>
+    <div class="row"><span>خصم اختبار</span><strong>-10.00</strong></div>
+    <div class="row total"><span>الإجمالي</span><strong>140.00 ${escapeHtml(settings.currency || "EGP")}</strong></div>
+    <div class="center">
+      <div class="barcode">*123456789*</div>
+      <div class="muted">إذا ظهر هذا الإيصال بعرض صحيح فالطابعة جاهزة.</div>
+    </div>
+  </main>
+</body>
+</html>`;
+}
+
+function openPrintHtml({ html, windowTitle, fileBaseName }) {
   return new Promise((resolve) => {
     let printWindow = null;
     let resolved = false;
@@ -1444,14 +1609,12 @@ function printRoute(route) {
     };
     try {
       const isDev = Boolean(process.env.ELECTRON_RENDERER_URL);
-      const meta = getInvoicePrintMeta(route);
-      const html = buildInvoicePrintHtml(route);
       printWindow = new BrowserWindow({
         width: 900,
         height: 1100,
         show: true,
         autoHideMenuBar: true,
-        title: meta.windowTitle,
+        title: windowTitle,
         icon: getAppIconPath(),
         webPreferences: {
           preload: path.join(__dirname, "print-preload.cjs"),
@@ -1464,7 +1627,7 @@ function printRoute(route) {
         },
       });
       const webContentsId = printWindow.webContents.id;
-      printDocumentNames.set(webContentsId, meta.fileBaseName);
+      printDocumentNames.set(webContentsId, fileBaseName);
       printWindow.webContents.on("will-navigate", (event) => {
         event.preventDefault();
       });
@@ -1499,6 +1662,24 @@ function printRoute(route) {
       }
       finish({ ok: false, error: error instanceof Error ? error.message : "print_failed" });
     }
+  });
+}
+
+function printRoute(route) {
+  const meta = getInvoicePrintMeta(route);
+  return openPrintHtml({
+    html: buildInvoicePrintHtml(route),
+    windowTitle: meta.windowTitle,
+    fileBaseName: meta.fileBaseName,
+  });
+}
+
+function printTestReceipt() {
+  const settings = getPrintSettings();
+  return openPrintHtml({
+    html: buildTestReceiptHtml(settings),
+    windowTitle: "اختبار طباعة 80mm",
+    fileBaseName: "test-80mm-receipt",
   });
 }
 
@@ -1556,7 +1737,7 @@ function registerIpc() {
           name: String(user?.name || cleanUsername).trim(),
           username: cleanUsername,
           passwordHash,
-          role: user?.role === "owner" ? "owner" : "employee",
+          role: user?.role === "owner" ? "owner" : user?.role === "cashier" ? "cashier" : "employee",
         };
       })
     );
@@ -1632,6 +1813,73 @@ function registerIpc() {
     } catch {
       return false;
     }
+  });
+
+  // ── Car Wash relational data bridge (Drizzle sqlite-proxy) ────────────
+  // The renderer builds typed queries with Drizzle; the generated SQL+params
+  // execute here against the encrypted DB. SECURITY: auth/license/kv secrets
+  // are NOT reachable through this bridge — protected tables and any DDL are
+  // rejected, and better-sqlite3's prepare() blocks stacked statements.
+  const PROTECTED_SQL_TABLES = /\b(users|kv_store|__carwash_migrations|sqlite_[a-z0-9_]*)\b/i;
+  const ALLOWED_SQL_LEAD = /^\s*(?:select|insert|update|delete|with)\b/i;
+
+  function assertRendererSqlAllowed(sql) {
+    const text = String(sql || "");
+    if (!ALLOWED_SQL_LEAD.test(text)) throw new Error("sql_statement_not_allowed");
+    if (PROTECTED_SQL_TABLES.test(text)) throw new Error("sql_table_protected");
+  }
+
+  function runRendererSql(sql, params, method) {
+    assertRendererSqlAllowed(sql);
+    const stmt = openDatabase().prepare(String(sql));
+    const args = Array.isArray(params) ? params : [];
+    if (method === "run") {
+      stmt.run(...args);
+      return { rows: [] };
+    }
+    if (method === "get") {
+      const row = stmt.raw().get(...args);
+      return { rows: row ?? [] };
+    }
+    // 'all' | 'values'
+    return { rows: stmt.raw().all(...args) };
+  }
+
+  ipcMain.handle("db:query", (event, payload) => {
+    if (!canReadRendererStorage(event)) throw new Error("not_authorized");
+    const { sql, params, method } = payload || {};
+    // Writes require a real authenticated session (not just first-run).
+    if (method === "run" && !getSession(event)) throw new Error("not_authorized");
+    return runRendererSql(sql, params, method);
+  });
+
+  ipcMain.handle("db:batch", (event, queries) => {
+    // Atomic multi-statement writes (e.g. finalize invoice) — owner/cashier session required.
+    if (!getSession(event)) throw new Error("not_authorized");
+    if (!Array.isArray(queries)) return [];
+    const tx = openDatabase().transaction((items) =>
+      items.map((q) => runRendererSql(q.sql, q.params, q.method))
+    );
+    return tx(queries);
+  });
+
+  // ── Cloud sync (Phase 9) — status/config/manual; engine lives in main ───────
+  ipcMain.handle("sync:status", (event) => {
+    if (!canReadRendererStorage(event)) throw new Error("not_authorized");
+    return getSyncEngine().status();
+  });
+  ipcMain.handle("sync:get-config", (event) => {
+    if (!hasOwnerSession(event)) throw new Error("not_authorized");
+    return getSyncEngine().getConfig();
+  });
+  ipcMain.handle("sync:set-config", (event, cfg) => {
+    if (!hasOwnerSession(event)) throw new Error("not_authorized");
+    getSyncEngine().setConfig(cfg || {});
+    return getSyncEngine().status();
+  });
+  ipcMain.handle("sync:now", async (event) => {
+    if (!hasOwnerSession(event)) throw new Error("not_authorized");
+    return getSyncEngine().runSync();
   });
 
   ipcMain.handle("storage:export", (event) => {
@@ -1750,9 +1998,14 @@ function registerIpc() {
     if (!getSession(event)) return { ok: false, error: "not_authenticated" };
     return printRoute(route);
   });
+  ipcMain.handle("print:test-receipt", (event) => {
+    if (!getSession(event)) return { ok: false, error: "not_authenticated" };
+    return printTestReceipt();
+  });
   ipcMain.handle("print:current-window", async (event) => {
     try {
-      const printOpts = getInvoicePrintOptions();
+      const documentName = printDocumentNames.get(event.sender.id) || "";
+      const printOpts = getInvoicePrintOptions(documentName);
       return new Promise((resolve) => {
         event.sender.print(printOpts, (success, failureReason) => {
           if (success) {
@@ -1788,7 +2041,8 @@ function registerIpc() {
     }
 
     const pdfPath = ensurePdfExtension(result.filePath);
-    const pdf = await event.sender.printToPDF(getInvoicePdfOptions());
+    const documentName = printDocumentNames.get(event.sender.id) || "";
+    const pdf = await event.sender.printToPDF(getInvoicePdfOptions(documentName));
     fs.writeFileSync(pdfPath, pdf);
     shell.showItemInFolder(pdfPath);
     return { ok: true, path: pdfPath };
@@ -1849,6 +2103,96 @@ function registerIpc() {
       return { ok: false, error: "write_failed" };
     }
   });
+
+  ipcMain.handle("backup:export-database", async (event) => {
+    if (!hasOwnerSession(event)) return { ok: false, error: "not_authorized" };
+    try {
+      const ownerWindow = BrowserWindow.fromWebContents(event.sender);
+      const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+      const defaultPath = path.join(app.getPath("documents"), `topgear-db-backup-${stamp}.sqlite`);
+      const options = {
+        title: "تصدير نسخة قاعدة البيانات",
+        defaultPath,
+        filters: [
+          { name: "SQLite Database", extensions: ["sqlite", "db"] },
+          { name: "All Files", extensions: ["*"] },
+        ],
+      };
+      const result = ownerWindow
+        ? await dialog.showSaveDialog(ownerWindow, options)
+        : await dialog.showSaveDialog(options);
+      if (result.canceled || !result.filePath) return { ok: false, error: "cancelled" };
+
+      const source = getDatabasePath();
+      openDatabase().pragma("wal_checkpoint(TRUNCATE)");
+      fs.copyFileSync(source, result.filePath);
+      return { ok: true, path: result.filePath };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : "export_failed" };
+    }
+  });
+
+  ipcMain.handle("backup:import-database", async (event) => {
+    if (!hasOwnerSession(event)) return { ok: false, error: "not_authorized" };
+    const ownerWindow = BrowserWindow.fromWebContents(event.sender);
+    const options = {
+      title: "استعادة قاعدة البيانات",
+      properties: ["openFile"],
+      filters: [
+        { name: "SQLite Database", extensions: ["sqlite", "db"] },
+        { name: "All Files", extensions: ["*"] },
+      ],
+    };
+    const pick = ownerWindow
+      ? await dialog.showOpenDialog(ownerWindow, options)
+      : await dialog.showOpenDialog(options);
+    if (pick.canceled || pick.filePaths.length === 0) return { ok: false, error: "cancelled" };
+
+    const source = pick.filePaths[0];
+    const target = getDatabasePath();
+    try {
+      if (!fs.existsSync(source) || !fs.statSync(source).isFile()) {
+        return { ok: false, error: "path_not_found" };
+      }
+
+      const validationDb = new Database(source);
+      try {
+        validationDb.pragma(`key="x'${getDbKey()}'"`);
+        validationDb.prepare("SELECT name FROM sqlite_master LIMIT 1").get();
+      } finally {
+        validationDb.close();
+      }
+
+      try { db?.pragma("wal_checkpoint(TRUNCATE)"); } catch { /* ignore */ }
+      try { db?.close(); } catch { /* ignore */ }
+      db = null;
+      resetPreparedStatements();
+
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      if (fs.existsSync(target)) {
+        const backupBeforeRestore = `${target}.before-restore-${Date.now()}.bak`;
+        fs.copyFileSync(target, backupBeforeRestore);
+      }
+      fs.copyFileSync(source, target);
+
+      openDatabase();
+      runCarwashMigrations();
+
+      setTimeout(() => {
+        app.relaunch();
+        app.exit(0);
+      }, 750);
+
+      return { ok: true, restartRequired: true };
+    } catch (error) {
+      try {
+        openDatabase();
+      } catch {
+        // If reopening fails, surface the original restore error to the renderer.
+      }
+      return { ok: false, error: error instanceof Error ? error.message : "import_failed" };
+    }
+  });
 }
 
 app.whenReady().then(() => {
@@ -1856,8 +2200,8 @@ app.whenReady().then(() => {
   const isDev = Boolean(process.env.ELECTRON_RENDERER_URL);
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     const cspDirectives = isDev
-      ? "default-src 'self' 'unsafe-inline' 'unsafe-eval'; img-src 'self' data: blob:; font-src 'self' https://fonts.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;"
-      : "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self';";
+      ? "default-src 'self' 'unsafe-inline' 'unsafe-eval'; img-src 'self' data: blob:; font-src 'self'; style-src 'self' 'unsafe-inline';"
+      : "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self';";
     callback({
       responseHeaders: {
         ...details.responseHeaders,
@@ -1874,6 +2218,8 @@ app.whenReady().then(() => {
 
   registerIpc();
   openDatabase();
+  runCarwashMigrations();
+  startSyncScheduler();
 
   if (isSmokeTestRun()) {
     // SECURITY: Removed console.log of license status

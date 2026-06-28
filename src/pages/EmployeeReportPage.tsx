@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useRef, useMemo, useState, type ReactNode } from "react";
 import { ArrowRight, Sparkles, Target, TrendingUp, UserRound } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { PageHeader } from "../components/layout/AppLayout";
@@ -15,6 +15,16 @@ import { useFeatures } from "../lib/useFeatures";
 import { employeeServiceStats } from "../store/_pure";
 import { formatCurrency } from "../lib/format";
 import { localISODate, MONTH_NAMES_AR } from "../lib/utils";
+
+function ProgressBar({ pct, achieved }: { pct: number; achieved: boolean }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    ref.current?.style.setProperty("--pct", `${Math.min(100, pct)}%`);
+  }, [pct]);
+  return (
+    <div className={`progress-fill h-2 rounded-full transition-all ${achieved ? "bg-emerald-500" : "bg-amber-400"}`} ref={ref} />
+  );
+}
 
 function monthRange(month: string): { from: string; to: string } {
   const [y, m] = month.split("-").map(Number);
@@ -75,6 +85,7 @@ export function EmployeeReportPage() {
             <select
               value={month}
               onChange={(e) => setMonth(e.target.value)}
+              aria-label="الشهر"
               className="w-52 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-500"
             >
               {monthOptions.map((opt) => (
@@ -169,10 +180,7 @@ export function EmployeeReportPage() {
                         </div>
                       </div>
                       <div className="w-full bg-slate-100 rounded-full h-2">
-                        <div
-                          className={`h-2 rounded-full transition-all ${achieved ? "bg-emerald-500" : "bg-amber-400"}`}
-                          style={{ width: `${targetPct ?? 0}%` }}
-                        />
+                        <ProgressBar pct={targetPct ?? 0} achieved={achieved} />
                       </div>
                       <div className="text-xs text-slate-400 text-end">{targetPct ?? 0}%</div>
                     </div>

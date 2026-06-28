@@ -5,9 +5,10 @@ import { Dialog } from "../../components/ui/Dialog";
 import { Field, Input, Select, Textarea } from "../../components/ui/Input";
 import { useToast } from "../../components/ui/Toast";
 import { useCarwash } from "../../store/CarwashContext";
-import { useCatalog } from "../../store/CatalogContext";
+import { hasDb } from "../../db/client";
+import { listActiveRawMaterials, type RawMaterial } from "../../features/materials/queries";
 import { uid } from "../../lib/utils";
-import type { ServiceMaterial, WashService, WashServiceCategory } from "../../types";
+import type { ServiceMaterial, WashService, WashServiceCategory, WashType } from "../../types";
 
 type FormState = Omit<WashService, "id" | "createdAt">;
 
@@ -15,7 +16,10 @@ const EMPTY: FormState = {
   name: "",
   category: "wash",
   defaultPrice: 0,
+  hasCommission: false,
+  pricingMode: "variable",
   active: true,
+  washType: undefined,
   materials: [],
   notes: "",
 };
@@ -30,10 +34,16 @@ export function ServiceFormDialog({
   editing?: WashService | null;
 }) {
   const { addWashService, updateWashService } = useCarwash();
-  const { products } = useCatalog();
   const toast = useToast();
   const [form, setForm] = useState<FormState>(EMPTY);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [dbMaterials, setDbMaterials] = useState<RawMaterial[]>([]);
+
+  useEffect(() => {
+    if (open && hasDb()) {
+      listActiveRawMaterials().then(setDbMaterials).catch(() => {});
+    }
+  }, [open]);
 
   useEffect(() => {
     if (editing) {
@@ -54,12 +64,12 @@ export function ServiceFormDialog({
   const materials = form.materials ?? [];
 
   function addMaterialRow() {
-    const firstProduct = products[0];
-    if (!firstProduct) {
-      toast.error("لا توجد منتجات في المخزون لربطها");
+    const firstMaterial = dbMaterials[0];
+    if (!firstMaterial) {
+      toast.error("لا توجد خامات في المخزون لربطها — أضف خامات من صفحة خامات الغسيل");
       return;
     }
-    const row: ServiceMaterial = { id: uid("mat"), productId: firstProduct.id, quantity: 1 };
+    const row: ServiceMaterial = { id: uid("mat"), materialId: firstMaterial.id, quantity: 1 };
     set("materials", [...materials, row]);
   }
 
@@ -88,7 +98,7 @@ export function ServiceFormDialog({
       ...form,
       name: form.name.trim(),
       notes: form.notes?.trim(),
-      materials: materials.filter((m) => m.productId && m.quantity > 0),
+      materials: materials.filter((m) => m.materialId && m.quantity > 0),
     };
     if (editing) {
       updateWashService(editing.id, payload);
@@ -131,10 +141,20 @@ export function ServiceFormDialog({
             onChange={(e) => set("category", e.target.value as WashServiceCategory)}
           >
             <option value="wash">خدمة غسيل</option>
+            <option value="chemical">كيماوي</option>
             <option value="extra">خدمة إضافية</option>
           </Select>
         </Field>
 
+        <Field label="وضع التسعير">
+          <Select
+            value={form.pricingMode ?? "variable"}
+            onChange={(e) => set("pricingMode", e.target.value as "variable" | "fixed")}
+          >
+            <option value="variable">يدوي كل مرة</option>
+            <option value="fixed">سعر ثابت افتراضي</option>
+          </Select>
+        </Field>
         <Field label="السعر الافتراضي" required error={errors.defaultPrice}>
           <Input
             type="number"
@@ -142,7 +162,47 @@ export function ServiceFormDialog({
             step="0.01"
             value={form.defaultPrice}
             onChange={(e) => set("defaultPrice", Number(e.target.value))}
-          />
+            />
+        </Field>
+        <Field label="تصنيف الغسيل في التقارير">
+          <Select
+            value={form.washType ?? ""}
+            onChange={(e) => set("washType", (e.target.value || undefined) as WashType | undefined)}
+          >
+            <option value="">غير محدد (يُحدَّد من الاسم)</option>
+            <option value="exterior">خارجي فقط</option>
+            <option value="interior">داخلي فقط</option>
+            <option value="full">خارجي + داخلي</option>
+            <option value="none">لا علاقة له بالغسيل</option>
+          </Select>
+        </Field>
+        <Field label="عمولة صنايعي">
+          <div className="flex items-center gap-3 h-9 flex-wrap">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={Boolean(form.hasCommission)}
+                onChange={(e) => set("hasCommission", e.target.checked)}
+              />
+              تدخل في العمولة
+            </label>
+            {form.hasCommission && (
+              <label className="flex items-center gap-1.5 text-sm">
+                <span className="text-slate-500">نسبة:</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={0.5}
+                  placeholder="0"
+                  className="w-20 h-7 px-2 text-sm rounded border border-slate-300 focus:outline-none focus:ring-1 focus:ring-brand-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  value={form.commissionPct ?? ""}
+                  onChange={(e) => set("commissionPct", e.target.value ? Number(e.target.value) : undefined)}
+                />
+                <span className="text-slate-500">%</span>
+              </label>
+            )}
+          </div>
         </Field>
         <Field label="الحالة">
           <div className="flex items-center gap-3 h-9">
@@ -167,26 +227,26 @@ export function ServiceFormDialog({
               <Plus className="w-4 h-4" /> إضافة خامة
             </Button>
           </div>
-          {materials.length === 0 ? (
+          {dbMaterials.length === 0 ? (
             <div className="text-xs text-slate-400 border border-dashed border-slate-200 rounded-lg p-3 text-center">
-              لا توجد خامات مرتبطة — يمكن إضافة الشامبو والواكس وغيرها لخصمها عند الفوترة.
+              لا توجد خامات في المخزون — أضف الشامبو والواكس وغيرها من صفحة "خامات الغسيل" أولاً.
+            </div>
+          ) : materials.length === 0 ? (
+            <div className="text-xs text-slate-400 border border-dashed border-slate-200 rounded-lg p-3 text-center">
+              لا توجد خامات مرتبطة — اربط الخامات لتُخصم من المخزون تلقائياً عند الفوترة.
             </div>
           ) : (
             <div className="space-y-2">
               {materials.map((m) => {
-                const product = products.find((p) => p.id === m.productId);
-                const hasPieces = Boolean(product?.piecesPerUnit);
-                const unitLabel = m.isRetailUnit
-                  ? product?.retailUnit ?? "قطعة"
-                  : product?.unit ?? "";
+                const material = dbMaterials.find((p) => p.id === m.materialId);
                 return (
                   <div key={m.id} className="flex items-center gap-2">
                     <Select
-                      value={m.productId}
-                      onChange={(e) => updateMaterial(m.id, { productId: e.target.value })}
+                      value={m.materialId}
+                      onChange={(e) => updateMaterial(m.id, { materialId: e.target.value })}
                       className="flex-1"
                     >
-                      {products.map((p) => (
+                      {dbMaterials.map((p) => (
                         <option key={p.id} value={p.id}>
                           {p.name}
                         </option>
@@ -200,17 +260,7 @@ export function ServiceFormDialog({
                       onChange={(e) => updateMaterial(m.id, { quantity: Number(e.target.value) })}
                       className="w-24"
                     />
-                    <span className="text-xs text-slate-500 w-16 shrink-0">{unitLabel}</span>
-                    {hasPieces ? (
-                      <label className="flex items-center gap-1 text-xs text-slate-600 shrink-0">
-                        <input
-                          type="checkbox"
-                          checked={Boolean(m.isRetailUnit)}
-                          onChange={(e) => updateMaterial(m.id, { isRetailUnit: e.target.checked })}
-                        />
-                        بالقطعة
-                      </label>
-                    ) : null}
+                    <span className="text-xs text-slate-500 w-16 shrink-0">{material?.unit ?? ""}</span>
                     <button
                       type="button"
                       onClick={() => removeMaterial(m.id)}

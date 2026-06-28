@@ -5,6 +5,7 @@ import { Button } from "../components/ui/Button";
 import { Field, Input, Select, Textarea } from "../components/ui/Input";
 import { Dialog } from "../components/ui/Dialog";
 import { useApp } from "../store/AppContext";
+import { SyncSettingsCard } from "../features/sync/SyncSettingsCard";
 import { useToast } from "../components/ui/Toast";
 import { lsGet } from "../lib/storage";
 import { FEATURES, defaultFeatureState, isAllowedByLicense, type FeatureKey } from "../lib/features";
@@ -18,6 +19,14 @@ const PLAN_LABELS: Record<string, string> = {
   full: "الباقة الكاملة",
   custom: "باقة مخصّصة",
 };
+
+const TOP_GEAR_HIDDEN_FEATURES = new Set<FeatureKey>([
+  "products",
+  "inventory",
+  "stocktakes",
+  "alerts",
+  "dues",
+]);
 
 function subscriptionDurationLabel(type: string, months: number): string {
   if (type === "lifetime") return "مدى الحياة";
@@ -68,7 +77,7 @@ export function SettingsPage() {
         ? "بدون ضمان"
         : Math.max(0, getRemainingDays(form.warrantyStartDate, form.warrantyMonths)) + " يوم";
     return [
-      "طلب تجديد / ترقية ترخيص — Helpers Warehouse System",
+      "طلب تجديد / ترقية ترخيص — Top Gear Car Wash System",
       "العميل: " + (form.companyNameAr || form.companyName || "—"),
       "كود الجهاز: " + code,
       "مدة الاشتراك: " + sub,
@@ -134,6 +143,56 @@ export function SettingsPage() {
     toast.error("فشل النسخ الاحتياطي", messages[result.error ?? ""] ?? "حدث خطأ غير متوقع");
   }
 
+  async function exportDatabaseBackup() {
+    const result = await window.desktopAPI?.backup?.exportDatabase?.();
+    if (!result) {
+      toast.error("متاح في تطبيق سطح المكتب فقط");
+      return;
+    }
+    if (result.ok) {
+      toast.success("تم تصدير قاعدة البيانات", result.path ?? "");
+      return;
+    }
+    if (result.error !== "cancelled") {
+      toast.error("فشل تصدير قاعدة البيانات", result.error ?? "حدث خطأ غير متوقع");
+    }
+  }
+
+  async function importDatabaseBackup() {
+    const confirmed = window.confirm(
+      "استعادة قاعدة بيانات SQLite ستستبدل البيانات الحالية ويعاد تشغيل التطبيق. هل تريد المتابعة؟"
+    );
+    if (!confirmed) return;
+    const result = await window.desktopAPI?.backup?.importDatabase?.();
+    if (!result) {
+      toast.error("متاح في تطبيق سطح المكتب فقط");
+      return;
+    }
+    if (result.ok) {
+      toast.success("تمت الاستعادة", "سيتم إعادة تشغيل التطبيق لتطبيق قاعدة البيانات المستعادة");
+      return;
+    }
+    if (result.error !== "cancelled") {
+      toast.error("فشل استعادة قاعدة البيانات", result.error ?? "حدث خطأ غير متوقع");
+    }
+  }
+
+  async function testReceiptPrinter() {
+    if (form !== settings) {
+      updateSettings(form);
+    }
+    const result = await window.desktopAPI?.print?.testReceipt?.();
+    if (!result) {
+      toast.error("متاح في تطبيق سطح المكتب فقط");
+      return;
+    }
+    if (result.ok) {
+      toast.success("تم فتح اختبار الطباعة", "استخدم زر الطباعة داخل نافذة الاختبار");
+    } else {
+      toast.error("تعذر فتح اختبار الطباعة", result.error ?? "حدث خطأ غير متوقع");
+    }
+  }
+
   const license = licenseStatus?.license ?? null;
   const featureChecked = (key: FeatureKey) => form.features?.[key] ?? defaultFeatureState(key, license);
   const toggleFeature = (key: FeatureKey, value: boolean) =>
@@ -180,6 +239,7 @@ export function SettingsPage() {
                 {form.logoImage && (
                   <button
                     onClick={() => setForm({ ...form, logoImage: "" })}
+                    aria-label="حذف الشعار"
                     className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full shadow-md flex items-center justify-center opacity-0 group-hover/logo:opacity-100 transition-opacity"
                   >
                     <Trash2 className="w-3 h-3" />
@@ -194,6 +254,7 @@ export function SettingsPage() {
                     <input
                       type="file"
                       accept="image/*"
+                      aria-label="اختر صورة للشعار"
                       className="absolute inset-0 opacity-0 cursor-pointer"
                       onChange={(e) => {
                         const file = e.target.files?.[0];
@@ -259,6 +320,7 @@ export function SettingsPage() {
                 value={form.currency}
                 onChange={(e) => setForm({ ...form, currency: e.target.value })}
               >
+                <option value="EGP">جنيه مصري (EGP)</option>
                 <option value="ج.م">جنيه مصري (ج.م)</option>
                 <option value="ر.س">ريال سعودي (ر.س)</option>
                 <option value="د.إ">درهم إماراتي (د.إ)</option>
@@ -266,9 +328,20 @@ export function SettingsPage() {
                 <option value="$">دولار أمريكي ($)</option>
               </Select>
             </Field>
+            <Field label="طريقة تسعير الخدمات" hint="الوضع الافتراضي عند إضافة خدمة للفاتورة">
+              <Select
+                value={form.pricingMode ?? "variable"}
+                onChange={(e) =>
+                  setForm({ ...form, pricingMode: e.target.value as "variable" | "fixed" })
+                }
+              >
+                <option value="variable">يدوي — السعر يتكتب كل مرة</option>
+                <option value="fixed">ثابت — يبدأ من السعر الافتراضي</option>
+              </Select>
+            </Field>
             <Field
-              label="الحد الأدنى الافتراضي للمخزون"
-              hint="يُستخدم كقيمة افتراضية عند إضافة منتج جديد"
+              label="حد تنبيه الإضافات والخامات"
+              hint="يُستخدم للتنبيه قبل نفاد الفوّاحات والخامات المستخدمة في الغسيل"
             >
               <Input
                 type="number"
@@ -280,8 +353,21 @@ export function SettingsPage() {
               />
             </Field>
             <Field
+              label="نافذة تنبيه الكميات"
+              hint="عدد الأيام المستخدمة للتنبيه المبكر بجانب حد الكمية"
+            >
+              <Input
+                type="number"
+                min={0}
+                value={form.lowStockAlertWindowDays ?? 7}
+                onChange={(e) =>
+                  setForm({ ...form, lowStockAlertWindowDays: Number(e.target.value) })
+                }
+              />
+            </Field>
+            <Field
               label="مدة تنبيه تأخر السداد"
-              hint="المدة التي يُعتبر بعدها المورد متأخراً في السداد فتظهر تنبيهاته"
+              hint="المدة التي تُعتبر بعدها فاتورة العميل الآجلة متأخرة"
             >
               <Select
                 value={String(form.paymentTermDays ?? 7)}
@@ -292,6 +378,14 @@ export function SettingsPage() {
                 <option value="30">شهر (30 يوم)</option>
                 <option value="60">شهرين (60 يوم)</option>
                 <option value="90">ثلاثة أشهر (90 يوم)</option>
+              </Select>
+            </Field>
+            <Field label="المنطقة الزمنية">
+              <Select
+                value={form.timezone ?? "Africa/Cairo"}
+                onChange={(e) => setForm({ ...form, timezone: e.target.value })}
+              >
+                <option value="Africa/Cairo">القاهرة — Africa/Cairo</option>
               </Select>
             </Field>
             <Field label="واجهة عربية">
@@ -332,7 +426,7 @@ export function SettingsPage() {
           />
           <CardBody>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-              {FEATURES.map((f) => {
+              {FEATURES.filter((f) => !TOP_GEAR_HIDDEN_FEATURES.has(f.key)).map((f) => {
                 const allowed = isAllowedByLicense(f.key, license);
                 const checked = allowed && featureChecked(f.key);
                 return (
@@ -374,8 +468,61 @@ export function SettingsPage() {
         </Card>
 
         <Card className="lg:col-span-2">
+          <CardHeader title="برنامج الولاء" subtitle="نقاط يكسبها العميل عند كل غسلة ويستبدلها كخصم" />
+          <CardBody className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <Field label="تفعيل برنامج الولاء">
+              <label className="flex items-center gap-2 h-9 text-sm">
+                <input
+                  type="checkbox"
+                  checked={Boolean(form.loyaltyEnabled)}
+                  onChange={(e) => setForm({ ...form, loyaltyEnabled: e.target.checked })}
+                />
+                العملاء يكسبون نقاط ولاء
+              </label>
+            </Field>
+            <Field label="جنيه لكل نقطة (الكسب)" hint="مثال: 10 = نقطة لكل 10 جنيه">
+              <Input
+                type="number"
+                min={1}
+                value={form.loyaltyEgpPerPoint ?? 10}
+                disabled={!form.loyaltyEnabled}
+                onChange={(e) => setForm({ ...form, loyaltyEgpPerPoint: Number(e.target.value) })}
+              />
+            </Field>
+            <Field label="قيمة النقطة (الاستبدال)" hint="قيمة النقطة الواحدة بالجنيه عند الخصم">
+              <Input
+                type="number"
+                min={0}
+                step="0.01"
+                value={form.loyaltyPointValue ?? 1}
+                disabled={!form.loyaltyEnabled}
+                onChange={(e) => setForm({ ...form, loyaltyPointValue: Number(e.target.value) })}
+              />
+            </Field>
+          </CardBody>
+        </Card>
+
+        <SyncSettingsCard defaultBranchId={form.currentBranchId || "branch-main"} />
+
+        <Card className="lg:col-span-2">
           <CardHeader title="إعدادات الطباعة" subtitle="تنسيق الفاتورة المطبوعة" />
           <CardBody className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <Field label="اسم الطابعة">
+              <Input
+                value={form.printerName ?? ""}
+                onChange={(e) => setForm({ ...form, printerName: e.target.value })}
+                placeholder="اتركه فارغاً للطابعة الافتراضية"
+              />
+            </Field>
+            <Field label="عرض الإيصال (مم)">
+              <Input
+                type="number"
+                min={58}
+                max={110}
+                value={form.receiptWidthMm ?? 80}
+                onChange={(e) => setForm({ ...form, receiptWidthMm: Number(e.target.value) })}
+              />
+            </Field>
             <Field label="مقاس الورق">
               <Select
                 value={form.printPaperSize}
@@ -393,6 +540,11 @@ export function SettingsPage() {
                 يتم إرسال الفاتورة للطباعة من داخل التطبيق مباشرة عند الضغط على زر "طباعة".
               </div>
             </div>
+            <Field label="اختبار الطابعة">
+              <Button type="button" variant="outline" onClick={testReceiptPrinter} className="w-full justify-center">
+                <Printer className="w-4 h-4" /> اختبار إيصال 80mm
+              </Button>
+            </Field>
             <Field label="مجلد حفظ الفواتير (PDF)" className="md:col-span-3">
               <div className="flex gap-2">
                 <Input
@@ -698,6 +850,7 @@ export function SettingsPage() {
                 <input
                   type="file"
                   accept=".json"
+                  aria-label="استيراد نسخة احتياطية"
                   className="absolute inset-0 opacity-0 cursor-pointer"
                   onChange={async (e) => {
                     const file = e.target.files?.[0];
@@ -712,9 +865,15 @@ export function SettingsPage() {
                   <Upload className="w-4 h-4" /> استيراد نسخة احتياطية (Restore)
                 </Button>
               </div>
+              <Button onClick={exportDatabaseBackup} variant="outline" className="w-full justify-start">
+                <Database className="w-4 h-4" /> تصدير قاعدة البيانات SQLite
+              </Button>
+              <Button onClick={importDatabaseBackup} variant="outline" className="w-full justify-start">
+                <Upload className="w-4 h-4" /> استعادة قاعدة بيانات SQLite
+              </Button>
             </div>
             <p className="text-[11px] text-slate-500">
-              يتم تصدير ملف بصيغة JSON يحتوي على كافة الفواتير، المنتجات، والعملاء.
+              يمكن تصدير نسخة JSON للتبادل، أو نسخة SQLite كاملة قابلة للاستعادة كقاعدة بيانات محلية.
             </p>
             <div className="pt-2 border-t border-slate-100">
               <Button
@@ -740,22 +899,13 @@ export function SettingsPage() {
         </Card>
 
         <Card className="lg:col-span-1">
-          <CardHeader title="تصدير البيانات (Excel)" subtitle="تصدير جداول البيانات إلى ملفات Excel منفصلة" />
+          <CardHeader title="تصدير بيانات المغسلة (Excel)" subtitle="تصدير بيانات العملاء وفواتير الغسيل" />
           <CardBody className="grid grid-cols-2 gap-2">
-            <Button onClick={() => exportToExcel("products")} variant="outline" size="sm" className="justify-start">
-              <FileSpreadsheet className="w-4 h-4" /> المنتجات
-            </Button>
             <Button onClick={() => exportToExcel("customers")} variant="outline" size="sm" className="justify-start">
               <FileSpreadsheet className="w-4 h-4" /> العملاء
             </Button>
-            <Button onClick={() => exportToExcel("suppliers")} variant="outline" size="sm" className="justify-start">
-              <FileSpreadsheet className="w-4 h-4" /> الموردين
-            </Button>
             <Button onClick={() => exportToExcel("sales")} variant="outline" size="sm" className="justify-start">
-              <FileSpreadsheet className="w-4 h-4" /> المبيعات
-            </Button>
-            <Button onClick={() => exportToExcel("purchases")} variant="outline" size="sm" className="justify-start">
-              <FileSpreadsheet className="w-4 h-4" /> المشتريات
+              <FileSpreadsheet className="w-4 h-4" /> فواتير الغسيل
             </Button>
           </CardBody>
         </Card>

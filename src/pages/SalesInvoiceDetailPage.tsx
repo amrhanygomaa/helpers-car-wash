@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowRight, Ban, HandCoins, MessageCircle, Pencil, Printer, Trash2 } from "lucide-react";
+import { ArrowRight, Ban, HandCoins, MessageCircle, Printer, Trash2 } from "lucide-react";
 import { PageHeader } from "../components/layout/AppLayout";
 import { Card, CardBody, CardHeader } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -11,37 +11,34 @@ import { useCatalog } from "../store/CatalogContext";
 import { useAuth } from "../store/AuthContext";
 import { useSettings } from "../store/SettingsContext";
 import { useReporting } from "../store/ReportingContext";
+import { lineWorkers } from "../store/_pure";
 import { useToast } from "../components/ui/Toast";
 import { formatCurrency, formatDate, PAYMENT_METHOD_LABELS } from "../lib/format";
 import { ConfirmDialog, Dialog } from "../components/ui/Dialog";
 import { Field, Input, Select, Textarea } from "../components/ui/Input";
 import type { PaymentMethod } from "../types";
-import { SalesReturnDialog } from "../features/returns/SalesReturnDialog";
-import { printAppRoute } from "../lib/print";
+import { printServiceInvoice } from "../lib/print";
 import { hasPermission } from "../lib/permissions";
 
 export function SalesInvoiceDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const toast = useToast();
-  const { salesInvoices, salesReturns, recordSalesReceipt, cancelSalesInvoice, deleteSalesInvoice } = useInvoicing();
+  const { salesInvoices, recordSalesReceipt, cancelSalesInvoice, deleteSalesInvoice } = useInvoicing();
   const { customers } = useCatalog();
   const { currentUser } = useAuth();
   const { settings } = useSettings();
   const { customerBalance } = useReporting();
   const inv = salesInvoices.find((s) => s.id === id);
-  const canEditSales = hasPermission(currentUser, "salesInvoices", "edit");
   const canReceiveSales = hasPermission(currentUser, "salesInvoices", "receive");
   const canCancelSales = hasPermission(currentUser, "salesInvoices", "cancel");
   const canDeleteSales = hasPermission(currentUser, "salesInvoices", "delete");
-  const canAddReturn = hasPermission(currentUser, "returns", "add");
   const [payOpen, setPayOpen] = useState(false);
   const [payAmount, setPayAmount] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
   const [payNotes, setPayNotes] = useState("");
   const [cancelOpen, setCancelOpen] = useState(false);
   const [delOpen, setDelOpen] = useState(false);
-  const [returnOpen, setReturnOpen] = useState(false);
 
   if (!inv) {
     return (
@@ -61,10 +58,6 @@ export function SalesInvoiceDetailPage() {
   const customer = customers.find((c) => c.id === inv.customerId);
   const totalCustomerBalance = customerBalance(inv.customerId);
   const totalCollected = inv.amountReceived + (inv.overpayment ?? 0);
-  const linkedReturns = salesReturns.filter((r) => r.originalInvoiceId === inv.id);
-  const totalReturns = linkedReturns.reduce((a, r) => a + r.total, 0);
-  const canCreateReturn = canAddReturn && !inv.cancelled && totalReturns < inv.total;
-  const priceTypeLabel = inv.priceType === "retail" ? "تجزئة" : "جملة";
   const dueDatePassed = (() => {
     if (!inv.paymentDueDate || inv.remaining <= 0) return false;
     const today = new Date();
@@ -77,7 +70,7 @@ export function SalesInvoiceDetailPage() {
   return (
     <>
       <PageHeader
-        title={`فاتورة مبيعات ${inv.invoiceNumber}`}
+        title={`فاتورة غسيل ${inv.invoiceNumber}`}
         description={`${inv.customerName} • ${formatDate(inv.date)}`}
         actions={
           <>
@@ -85,15 +78,14 @@ export function SalesInvoiceDetailPage() {
               <ArrowRight className="w-4 h-4" />
               رجوع
             </Button>
-            {!inv.cancelled && !inv.invoiceKind && canEditSales ? (
-              <Button variant="outline" onClick={() => navigate(`/sales/${inv.id}/edit`)}>
-                <Pencil className="w-4 h-4" /> تعديل
-              </Button>
-            ) : null}
             <Button
               variant="outline"
-              onClick={async () => {
-                const result = await printAppRoute(`/sales/${inv.id}/print`);
+              onClick={() => {
+                const result = printServiceInvoice({
+                  invoice: inv,
+                  businessName: settings.companyName ?? "Top Gear",
+                  currency: settings.currency,
+                });
                 if (!result.ok && result.error !== "cancelled") {
                   toast.error("تعذر الطباعة", "تأكد من إعدادات الطابعة وحاول مرة أخرى");
                 }
@@ -110,7 +102,7 @@ export function SalesInvoiceDetailPage() {
                   const msg = [
                     `مرحباً ${inv.customerName}،`,
                     ``,
-                    `نود إحاطتكم بتفاصيل الفاتورة رقم *${inv.invoiceNumber}*:`,
+                    `تفاصيل فاتورة الغسيل رقم *${inv.invoiceNumber}*:`,
                     `📅 التاريخ: ${formatDate(inv.date)}`,
                     `💰 الإجمالي: ${formatCurrency(inv.total, settings.currency)}`,
                     inv.remaining > 0 ? `⏳ المتبقي: ${formatCurrency(inv.remaining, settings.currency)}` : `✅ الفاتورة مسددة بالكامل`,
@@ -129,19 +121,10 @@ export function SalesInvoiceDetailPage() {
                 <HandCoins className="w-4 h-4" /> تسجيل دفعة
               </Button>
             ) : null}
-            {!inv.cancelled && (canAddReturn || canCancelSales) ? (
-              <>
-                {canCreateReturn ? (
-                  <Button variant="outline" onClick={() => setReturnOpen(true)}>
-                    <ArrowRight className="w-4 h-4" /> إنشاء مرتجع
-                  </Button>
-                ) : null}
-                {canCancelSales ? (
-                  <Button variant="outline" onClick={() => setCancelOpen(true)}>
-                    <Ban className="w-4 h-4" /> إلغاء
-                  </Button>
-                ) : null}
-              </>
+            {!inv.cancelled && canCancelSales ? (
+              <Button variant="outline" onClick={() => setCancelOpen(true)}>
+                <Ban className="w-4 h-4" /> إلغاء
+              </Button>
             ) : null}
             {canDeleteSales ? (
               <Button variant="danger" onClick={() => setDelOpen(true)}>
@@ -154,7 +137,7 @@ export function SalesInvoiceDetailPage() {
 
       {inv.cancelled ? (
         <div className="bg-slate-100 border border-slate-200 rounded-lg p-3 text-sm text-slate-700">
-          هذه الفاتورة ملغاة — تم إرجاع الكميات إلى المخزون.
+          هذه الفاتورة ملغاة.
         </div>
       ) : null}
 
@@ -170,22 +153,11 @@ export function SalesInvoiceDetailPage() {
         {inv.discount && inv.discount > 0 ? (
           <Stat label="الإجمالي بعد الخصم" value={formatCurrency(inv.total, settings.currency)} />
         ) : null}
-        {/* 2. Amount paid */}
         <Stat label="المبلغ المدفوع" value={formatCurrency(inv.amountReceived, settings.currency)} tone="green" />
-        {/* 3. Returns */}
-        {totalReturns > 0 && (
-          <Stat label="المرتجعات" value={`- ${formatCurrency(totalReturns, settings.currency)}`} tone="red" />
-        )}
-        {totalReturns > 0 && (
-          <Stat label="صافي بعد المرتجع" value={formatCurrency(Math.max(0, inv.total - totalReturns), settings.currency)} />
-        )}
-        {/* 4. Remaining */}
-        <Stat label="المتبقي على هذه الفاتورة" value={formatCurrency(inv.remaining, settings.currency)} tone={inv.remaining > 0 ? "amber" : "slate"} />
-        {/* 5. Credit balance — prominent when return creates credit */}
+        <Stat label="المتبقي" value={formatCurrency(inv.remaining, settings.currency)} tone={inv.remaining > 0 ? "amber" : "slate"} />
         {(inv.overpayment ?? 0) > 0 ? (
-          <Stat label="رصيد دائن للعميل (من هذه الفاتورة)" value={formatCurrency(inv.overpayment!, settings.currency)} tone="blue" />
+          <Stat label="رصيد دائن للعميل" value={formatCurrency(inv.overpayment!, settings.currency)} tone="blue" />
         ) : null}
-        {/* Status / type / due date */}
         <Stat
           label="الحالة"
           value={
@@ -203,7 +175,6 @@ export function SalesInvoiceDetailPage() {
             : "red"
           }
         />
-        <Stat label="نوع السعر" value={priceTypeLabel} />
         {inv.paymentDueDate ? (
           <Stat
             label="تاريخ الاستحقاق"
@@ -263,7 +234,7 @@ export function SalesInvoiceDetailPage() {
             <THead>
               <TR>
                 <TH className="w-10">#</TH>
-                <TH>المنتج</TH>
+                <TH>الخدمة / المنتج</TH>
                 <TH>الوحدة</TH>
                 <TH className="text-end">الكمية</TH>
                 <TH className="text-end">السعر</TH>
@@ -276,9 +247,18 @@ export function SalesInvoiceDetailPage() {
                   <TD>{idx + 1}</TD>
                   <TD className="font-medium text-slate-900">
                     {l.productName}
-                    {l.employeeName ? (
-                      <span className="block text-xs font-normal text-slate-500">الفني: {l.employeeName}</span>
-                    ) : null}
+                    {(() => {
+                      const workers = lineWorkers(l);
+                      if (workers.length === 0) return null;
+                      return (
+                        <span className="block text-xs font-normal text-slate-500">
+                          {workers.length === 1 ? "الصنايعي: " : "الصنايعية: "}
+                          {workers
+                            .map((w) => `${w.workerName ?? "صنايعي"}${w.commissionAmount ? ` (${formatCurrency(w.commissionAmount, settings.currency)})` : ""}`)
+                            .join("، ")}
+                        </span>
+                      );
+                    })()}
                   </TD>
                   <TD>{l.unit}</TD>
                   <TD className="text-end">{l.quantity}</TD>
@@ -292,55 +272,6 @@ export function SalesInvoiceDetailPage() {
           </Table>
         </CardBody>
       </Card>
-
-      {linkedReturns.length > 0 ? (
-        <Card>
-          <CardHeader title="المرتجعات المرتبطة بهذه الفاتورة" />
-          <CardBody>
-            <Table>
-              <THead>
-                <TR>
-                  <TH>رقم المرتجع</TH>
-                  <TH>التاريخ</TH>
-                  <TH>الأصناف</TH>
-                  <TH className="text-end">قيمة المرتجع</TH>
-                  <TH>طريقة الرد</TH>
-                </TR>
-              </THead>
-              <TBody>
-                {linkedReturns.map((r) => (
-                  <TR key={r.id}>
-                    <TD className="font-mono text-xs text-slate-600">{r.returnNumber}</TD>
-                    <TD>{formatDate(r.date)}</TD>
-                    <TD>
-                      <ul className="space-y-0.5">
-                        {r.lines.map((l) => (
-                          <li key={l.id} className="text-xs text-slate-700">
-                            {l.productName} × {l.quantity} {l.unit}
-                          </li>
-                        ))}
-                      </ul>
-                    </TD>
-                    <TD className="text-end font-semibold text-rose-700">
-                      {formatCurrency(r.total, settings.currency)}
-                    </TD>
-                    <TD>
-                      <Badge tone={r.refundCash ? "emerald" : "indigo"}>
-                        {r.refundCash ? "رد نقدي" : "خصم من الرصيد"}
-                      </Badge>
-                    </TD>
-                  </TR>
-                ))}
-              </TBody>
-            </Table>
-            <div className="mt-3 flex justify-end">
-              <div className="text-sm font-semibold text-rose-700">
-                إجمالي المرتجعات: {formatCurrency(linkedReturns.reduce((a, r) => a + r.total, 0), settings.currency)}
-              </div>
-            </div>
-          </CardBody>
-        </Card>
-      ) : null}
 
       {inv.paymentLog && inv.paymentLog.length > 0 ? (
         <Card>
@@ -451,7 +382,7 @@ export function SalesInvoiceDetailPage() {
                 onClick={() => {
                   cancelSalesInvoice(inv.id, "cash");
                   setCancelOpen(false);
-                  toast.success("تم إلغاء الفاتورة", "تمت إعادة الكميات للمخزون وردّ النقدية");
+                  toast.success("تم إلغاء الفاتورة", "تم ردّ النقدية للعميل");
                 }}
               >
                 ردّ نقدي
@@ -480,10 +411,10 @@ export function SalesInvoiceDetailPage() {
           onConfirm={() => {
             cancelSalesInvoice(inv.id);
             setCancelOpen(false);
-            toast.success("تم إلغاء الفاتورة", "تمت إعادة الكميات للمخزون");
+            toast.success("تم إلغاء الفاتورة");
           }}
           title="إلغاء الفاتورة"
-          message="هل أنت متأكد من إلغاء الفاتورة؟ ستُعاد الكميات إلى المخزون."
+          message="هل أنت متأكد من إلغاء هذه الفاتورة؟"
           variant="danger"
           confirmText="تأكيد الإلغاء"
         />
@@ -497,7 +428,7 @@ export function SalesInvoiceDetailPage() {
           if (ok) {
             toast.success("تم الحذف");
             navigate("/sales");
-          } else toast.error("تعذر الحذف", "الفواتير المرتبطة بمرتجعات لا يمكن حذفها");
+          } else toast.error("تعذر الحذف");
         }}
         title="حذف نهائي"
         message="هذا الإجراء لا يمكن التراجع عنه. متابعة؟"
@@ -505,13 +436,6 @@ export function SalesInvoiceDetailPage() {
         confirmText="حذف نهائي"
       />
 
-      {returnOpen && (
-        <SalesReturnDialog
-          open={returnOpen}
-          onClose={() => setReturnOpen(false)}
-          invoice={inv}
-        />
-      )}
     </>
   );
 }

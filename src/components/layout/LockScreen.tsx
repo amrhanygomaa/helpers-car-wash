@@ -25,7 +25,7 @@ export function LockScreen() {
       setError(
         result.error === "rate_limited"
           ? `محظور مؤقتاً — انتظر ${result.remainSeconds} ثانية`
-          : "اسم المستخدم أو كلمة المرور غير صحيحة"
+          : "اسم المستخدم أو الـ PIN غير صحيح"
       );
       setPassword("");
     }
@@ -50,9 +50,10 @@ export function LockScreen() {
               autoComplete="username"
             />
           </Field>
-          <Field label="كلمة المرور">
+          <Field label="PIN">
             <Input
               type="password"
+              inputMode="numeric"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               autoComplete="current-password"

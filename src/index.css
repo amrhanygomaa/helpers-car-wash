@@ -1,5 +1,3 @@
-@import url("https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap");
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -14,16 +12,20 @@ body,
   height: 100%;
 }
 
+html {
+  direction: rtl;
+}
+
 body {
   background-color: #f8fafc;
   color: #1e293b;
-  font-family: 'Cairo', sans-serif !important;
+  font-family: 'Cairo', 'Tajawal', sans-serif !important;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 input, button, select, textarea {
-  font-family: 'Cairo', sans-serif !important;
+  font-family: 'Cairo', 'Tajawal', sans-serif !important;
 }
 
 /* Scrollbar */
@@ -43,6 +45,11 @@ input, button, select, textarea {
 .rtl {
   direction: rtl;
   text-align: right;
+}
+
+/* Dynamic progress bar — width driven by --pct CSS variable set via JS */
+.progress-fill {
+  width: var(--pct, 0%);
 }
 
 /* Focus ring default */
@@ -80,4 +87,180 @@ input, button, select, textarea {
 
 .print-only {
   display: none;
+}
+
+@keyframes queueCardIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes queueWashCar {
+  0% {
+    left: 8%;
+    transform: translateY(0) rotate(0deg);
+  }
+  35% {
+    left: 38%;
+    transform: translateY(-2px) rotate(-1deg);
+  }
+  70% {
+    left: 66%;
+    transform: translateY(0) rotate(1deg);
+  }
+  100% {
+    left: 88%;
+    transform: translateY(-1px) rotate(0deg);
+  }
+}
+
+@keyframes queueWashWater {
+  0% {
+    transform: translateX(-16%);
+    opacity: 0.2;
+  }
+  50% {
+    opacity: 0.55;
+  }
+  100% {
+    transform: translateX(16%);
+    opacity: 0.2;
+  }
+}
+
+@keyframes queueWashDrop {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.9);
+  }
+  35% {
+    opacity: 0.75;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-18px) scale(1.15);
+  }
+}
+
+.queue-board-column {
+  min-height: 260px;
+}
+
+.queue-board-column.is-drop-target {
+  transform: translateY(-2px);
+}
+
+.queue-ticket-card {
+  animation: queueCardIn 220ms ease-out both;
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease,
+    border-color 160ms ease,
+    background-color 160ms ease,
+    opacity 160ms ease;
+}
+
+.queue-ticket-card:hover {
+  border-color: #bfdbfe;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+  transform: translateY(-2px);
+}
+
+.queue-ticket-card.is-dragging {
+  opacity: 0.44;
+  transform: scale(0.98);
+}
+
+.queue-wash-strip {
+  background:
+    linear-gradient(135deg, rgba(239, 246, 255, 0.94), rgba(255, 255, 255, 0.94) 46%, rgba(240, 253, 250, 0.9)),
+    repeating-linear-gradient(90deg, rgba(148, 163, 184, 0.16) 0 1px, transparent 1px 44px);
+}
+
+.queue-wash-track {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.queue-wash-track::before {
+  content: "";
+  position: absolute;
+  left: 4%;
+  right: 4%;
+  top: 50%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(37, 99, 235, 0.26), rgba(16, 185, 129, 0.28), transparent);
+}
+
+.queue-wash-water {
+  position: absolute;
+  left: 18%;
+  top: 22%;
+  width: 48%;
+  height: 56%;
+  background:
+    linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.18), transparent),
+    repeating-linear-gradient(100deg, transparent 0 10px, rgba(14, 165, 233, 0.16) 10px 12px);
+  transform: skewX(-12deg);
+  animation: queueWashWater 2.8s ease-in-out infinite;
+}
+
+.queue-wash-car {
+  position: absolute;
+  left: 8%;
+  top: calc(50% - 16px);
+  display: grid;
+  width: 46px;
+  height: 34px;
+  place-items: center;
+  border: 1px solid rgba(37, 99, 235, 0.22);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.88);
+  color: #1d4ed8;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
+  animation: queueWashCar 7s cubic-bezier(0.45, 0, 0.2, 1) infinite;
+}
+
+.queue-wash-drop {
+  position: absolute;
+  color: rgba(14, 165, 233, 0.58);
+  animation: queueWashDrop 2.1s ease-in-out infinite;
+}
+
+.queue-wash-drop-a {
+  left: 39%;
+  top: 58%;
+}
+
+.queue-wash-drop-b {
+  left: 48%;
+  top: 38%;
+  animation-delay: 0.4s;
+}
+
+.queue-wash-drop-c {
+  left: 57%;
+  top: 56%;
+  animation-delay: 0.85s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .queue-ticket-card,
+  .queue-wash-car,
+  .queue-wash-water,
+  .queue-wash-drop {
+    animation: none !important;
+  }
+
+  .queue-ticket-card,
+  .queue-board-column {
+    transition: none !important;
+  }
 }

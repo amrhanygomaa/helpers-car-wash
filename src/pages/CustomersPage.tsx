@@ -1,5 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Pencil, Plus, Trash2, Eye, Users, Search, ScrollText, Archive, ArchiveRestore } from "lucide-react";
+import {
+  Car,
+  Eye,
+  Pencil,
+  Plus,
+  Receipt,
+  Search,
+  ScrollText,
+  Archive,
+  ArchiveRestore,
+  Trash2,
+  Users,
+  WalletCards,
+} from "lucide-react";
 import { PageHeader } from "../components/layout/AppLayout";
 import { Card, CardBody, CardHeader } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -10,23 +23,30 @@ import { ConfirmDialog, Dialog } from "../components/ui/Dialog";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Drawer } from "../components/ui/Drawer";
 import { useCatalog } from "../store/CatalogContext";
+import { useCarwash } from "../store/CarwashContext";
 import { useInvoicing } from "../store/InvoicingContext";
 import { useReporting } from "../store/ReportingContext";
 import { useAuth } from "../store/AuthContext";
 import { useSettings } from "../store/SettingsContext";
 import { useToast } from "../components/ui/Toast";
 import { formatCurrency, formatDate } from "../lib/format";
-import type { Customer } from "../types";
-import { Link } from "react-router-dom";
+import { hasDb } from "../db/client";
+import { todayISO } from "../lib/utils";
+import { subscriptionStatusLabel } from "../lib/subscriptions";
+import { listSubscriptionsForCustomer, type CustomerSubscription } from "../features/subscriptions/queries";
+import type { Customer, SalesInvoice, Vehicle } from "../types";
+import { Link, useNavigate } from "react-router-dom";
 import { hasPermission } from "../lib/permissions";
 
 export function CustomersPage() {
   const { customers, addCustomer, updateCustomer, deleteCustomer, archiveCustomer, nextCustomerCode } = useCatalog();
+  const { vehicles } = useCarwash();
   const { salesInvoices } = useInvoicing();
   const { customerBalance } = useReporting();
   const { currentUser } = useAuth();
   const { settings } = useSettings();
   const toast = useToast();
+  const navigate = useNavigate();
   const canAddCustomer = hasPermission(currentUser, "customers", "add");
   const canEditCustomer = hasPermission(currentUser, "customers", "edit");
   const canDeleteCustomer = hasPermission(currentUser, "customers", "delete");
@@ -60,16 +80,60 @@ export function CustomersPage() {
 
   const archivedCount = useMemo(() => customers.filter((c) => c.archived).length, [customers]);
 
+  const customerInsights = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        vehicles: Vehicle[];
+        invoices: SalesInvoice[];
+        lastInvoice?: SalesInvoice;
+        totalSpent: number;
+      }
+    >();
+
+    for (const customer of customers) {
+      const customerVehicles = vehicles
+        .filter((vehicle) => vehicle.customerId === customer.id && !vehicle.archived)
+        .sort((a, b) => a.plateNumber.localeCompare(b.plateNumber));
+      const customerInvoices = salesInvoices
+        .filter((invoice) => invoice.customerId === customer.id && !invoice.cancelled)
+        .sort((a, b) => b.date.localeCompare(a.date) || b.invoiceNumber.localeCompare(a.invoiceNumber));
+      map.set(customer.id, {
+        vehicles: customerVehicles,
+        invoices: customerInvoices,
+        lastInvoice: customerInvoices[0],
+        totalSpent: customerInvoices.reduce((sum, invoice) => sum + invoice.total, 0),
+      });
+    }
+
+    return map;
+  }, [customers, vehicles, salesInvoices]);
+
+  const overview = useMemo(() => {
+    const activeCustomers = customers.filter((customer) => !customer.archived);
+    return {
+      activeCustomers: activeCustomers.length,
+      vehicles: vehicles.filter((vehicle) => !vehicle.archived).length,
+      dueCustomers: activeCustomers.filter((customer) => customerBalance(customer.id) > 0).length,
+      washInvoices: salesInvoices.filter((invoice) => invoice.invoiceKind === "service" && !invoice.cancelled).length,
+    };
+  }, [customers, vehicles, salesInvoices, customerBalance]);
+
   const filtered = useMemo(() => {
     const active = customers.filter((c) => !c.archived);
     if (!q.trim()) return active;
     const t = q.trim().toLowerCase();
-    return active.filter(
-      (c) =>
+    return active.filter((c) => {
+      const insights = customerInsights.get(c.id);
+      const plates = insights?.vehicles.map((vehicle) => vehicle.plateNumber.toLowerCase()).join(" ") ?? "";
+      return (
         c.name.toLowerCase().includes(t) ||
-        (c.phone ?? "").toLowerCase().includes(t)
-    );
-  }, [q, customers]);
+        (c.code ?? "").toLowerCase().includes(t) ||
+        (c.phone ?? "").toLowerCase().includes(t) ||
+        plates.includes(t)
+      );
+    });
+  }, [q, customers, customerInsights]);
 
   function openNew() {
     setEditing(null);
@@ -93,16 +157,8 @@ export function CustomersPage() {
       toast.error("اسم العميل مطلوب");
       return;
     }
-    if (!form.phone?.trim()) {
-      toast.error("رقم الهاتف مطلوب");
-      return;
-    }
-    if (!form.address?.trim()) {
-      toast.error("العنوان مطلوب");
-      return;
-    }
-    if (!form.shippingDirection) {
-      toast.error("اتجاه الشحن مطلوب");
+    if (form.phone && form.phone.trim().replace(/\D/g, "").length < 11) {
+      toast.error("رقم الهاتف غير صحيح", "اكتب رقم موبايل صحيح أو اتركه فارغاً");
       return;
     }
     if (editing) {
@@ -130,11 +186,20 @@ export function CustomersPage() {
     ? salesInvoices.filter((s) => s.customerId === viewing.id)
     : [];
 
+  const [viewingSubs, setViewingSubs] = useState<CustomerSubscription[]>([]);
+  useEffect(() => {
+    if (viewing && hasDb()) {
+      listSubscriptionsForCustomer(viewing.id).then(setViewingSubs).catch(() => setViewingSubs([]));
+    } else {
+      setViewingSubs([]);
+    }
+  }, [viewing]);
+
   return (
     <>
       <PageHeader
         title="العملاء"
-        description={`إدارة العملاء وأرصدتهم (${customers.length})`}
+        description={`ملفات العملاء، السيارات، آخر غسلة، والأرصدة (${customers.length})`}
         actions={
           canAddCustomer ? (
             <Button onClick={openNew}>
@@ -144,6 +209,13 @@ export function CustomersPage() {
           ) : null
         }
       />
+
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+        <CustomerStat icon={<Users className="h-5 w-5" />} label="عملاء نشطون" value={String(overview.activeCustomers)} tone="blue" />
+        <CustomerStat icon={<Car className="h-5 w-5" />} label="سيارات مسجلة" value={String(overview.vehicles)} tone="slate" />
+        <CustomerStat icon={<WalletCards className="h-5 w-5" />} label="عملاء عليهم مستحق" value={String(overview.dueCustomers)} tone="amber" />
+        <CustomerStat icon={<Receipt className="h-5 w-5" />} label="فواتير غسيل" value={String(overview.washInvoices)} tone="green" />
+      </div>
 
       <Card>
         <CardHeader
@@ -167,7 +239,7 @@ export function CustomersPage() {
               ref={searchRef}
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="بحث بالاسم أو الهاتف (/ أو Ctrl+F)"
+              placeholder="بحث بالاسم أو الهاتف أو اللوحة"
               className="pe-9"
             />
           </div>
@@ -189,7 +261,8 @@ export function CustomersPage() {
                   <TH>الكود</TH>
                   <TH>اسم العميل</TH>
                   <TH>الهاتف</TH>
-                  <TH>الاتجاه</TH>
+                  <TH>السيارات</TH>
+                  <TH>آخر غسلة</TH>
                   <TH className="text-end">الرصيد الحالي</TH>
                   <TH className="text-end">إجراءات</TH>
                 </TR>
@@ -197,20 +270,30 @@ export function CustomersPage() {
               <TBody>
                 {filtered.map((c) => {
                   const bal = customerBalance(c.id);
+                  const insights = customerInsights.get(c.id);
                   return (
                     <TR key={c.id}>
                       <TD className="text-slate-500 font-mono text-xs">{c.code ?? "—"}</TD>
-                      <TD className="font-medium text-slate-900">{c.name}</TD>
+                      <TD className="font-medium text-slate-900">
+                        {c.name}
+                        {settings.loyaltyEnabled && (c.loyaltyPoints ?? 0) > 0 ? (
+                          <span className="ms-2 inline-flex items-center text-[11px] font-normal text-amber-600">⭐ {c.loyaltyPoints}</span>
+                        ) : null}
+                      </TD>
                       <TD className="text-slate-600">{c.phone ?? "—"}</TD>
                       <TD>
-                        {c.shippingDirection === "qibli" ? (
-                          <Badge tone="amber">قبلي</Badge>
-                        ) : c.shippingDirection === "bahri" ? (
-                          <Badge tone="blue">بحري</Badge>
+                        {insights?.vehicles.length ? (
+                          <div className="flex flex-wrap gap-1">
+                            {insights.vehicles.slice(0, 2).map((vehicle) => (
+                              <Badge key={vehicle.id} tone="blue">{vehicle.plateNumber}</Badge>
+                            ))}
+                            {insights.vehicles.length > 2 ? <Badge tone="slate">+{insights.vehicles.length - 2}</Badge> : null}
+                          </div>
                         ) : (
-                          <span className="text-slate-400 text-xs">—</span>
+                          <span className="text-xs text-slate-400">لا توجد سيارة</span>
                         )}
                       </TD>
+                      <TD className="text-slate-600">{insights?.lastInvoice ? formatDate(insights.lastInvoice.date) : "—"}</TD>
                       <TD className="text-end">
                         {bal > 0 ? (
                           <Badge tone="amber">عليه {formatCurrency(bal, settings.currency)}</Badge>
@@ -257,6 +340,7 @@ export function CustomersPage() {
                     <TD className="text-slate-400 font-mono text-xs">{c.code ?? "—"}</TD>
                     <TD className="text-slate-500 line-through">{c.name}</TD>
                     <TD className="text-slate-400">{c.phone ?? "—"}</TD>
+                    <TD />
                     <TD />
                     <TD />
                     <TD className="text-end">
@@ -318,19 +402,19 @@ export function CustomersPage() {
               onChange={(e) => setForm({ ...form, name: e.target.value })}
             />
           </Field>
-          <Field label="الهاتف" required>
+          <Field label="الهاتف">
             <Input
               value={form.phone ?? ""}
               onChange={(e) => setForm({ ...form, phone: e.target.value })}
             />
           </Field>
-          <Field label="العنوان" required>
+          <Field label="المنطقة / العنوان">
             <Input
               value={form.address ?? ""}
               onChange={(e) => setForm({ ...form, address: e.target.value })}
             />
           </Field>
-          <Field label="اتجاه الشحن" required className="col-span-2">
+          <Field label="منطقة العميل" className="col-span-2">
             <Select
               value={form.shippingDirection ?? ""}
               onChange={(e) =>
@@ -341,8 +425,8 @@ export function CustomersPage() {
               }
             >
               <option value="">— غير محدد —</option>
-              <option value="qibli">قبلي (جنوب)</option>
-              <option value="bahri">بحري (شمال)</option>
+              <option value="qibli">قبلي</option>
+              <option value="bahri">بحري</option>
             </Select>
           </Field>
           <Field label="ملاحظات" className="col-span-2">
@@ -364,9 +448,30 @@ export function CustomersPage() {
       >
         {viewing ? (
           <div className="space-y-4">
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <Button
+                size="sm"
+                onClick={() => {
+                  navigate(`/carwash/new?customerId=${viewing.id}`);
+                  setViewing(null);
+                }}
+              >
+                <Receipt className="h-4 w-4" /> فاتورة غسيل
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  navigate("/queue");
+                  setViewing(null);
+                }}
+              >
+                <Car className="h-4 w-4" /> فتح الدور
+              </Button>
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <Info label="الهاتف">{viewing.phone ?? "—"}</Info>
-              <Info label="العنوان">{viewing.address ?? "—"}</Info>
+              <Info label="المنطقة / العنوان">{viewing.address ?? "—"}</Info>
               <Info label="الرصيد الحالي">
                 {(() => {
                   const b = customerBalance(viewing.id);
@@ -381,13 +486,70 @@ export function CustomersPage() {
                   );
                 })()}
               </Info>
-              <Info label="عدد الفواتير">{viewingInvoices.length}</Info>
+              <Info label="عدد الفواتير">{customerInsights.get(viewing.id)?.invoices.length ?? viewingInvoices.length}</Info>
+              <Info label="عدد السيارات">{customerInsights.get(viewing.id)?.vehicles.length ?? 0}</Info>
+              <Info label="إجمالي التعامل">
+                {formatCurrency(customerInsights.get(viewing.id)?.totalSpent ?? 0, settings.currency)}
+              </Info>
+              {settings.loyaltyEnabled ? (
+                <Info label="نقاط الولاء">
+                  <span className="font-semibold text-amber-700">
+                    {viewing.loyaltyPoints ?? 0} نقطة
+                    {(viewing.loyaltyPoints ?? 0) > 0 && settings.loyaltyPointValue ? (
+                      <span className="text-xs font-normal text-slate-500">
+                        {" "}≈ {formatCurrency((viewing.loyaltyPoints ?? 0) * settings.loyaltyPointValue, settings.currency)}
+                      </span>
+                    ) : null}
+                  </span>
+                </Info>
+              ) : null}
               {viewing.notes ? (
                 <Info label="ملاحظات" className="col-span-2">
                   {viewing.notes}
                 </Info>
               ) : null}
             </div>
+            <div>
+              <div className="text-sm font-medium mb-2">سيارات العميل</div>
+              {customerInsights.get(viewing.id)?.vehicles.length ? (
+                <div className="grid grid-cols-1 gap-2">
+                  {customerInsights.get(viewing.id)!.vehicles.map((vehicle) => (
+                    <div key={vehicle.id} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                      <div>
+                        <div className="font-medium text-slate-900">{vehicle.plateNumber}</div>
+                        <div className="text-xs text-slate-500">
+                          {[vehicle.brand, vehicle.model, vehicle.color].filter(Boolean).join(" • ") || "بدون تفاصيل"}
+                        </div>
+                      </div>
+                      <Car className="h-4 w-4 text-slate-400" />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <EmptyState icon={<Car className="h-5 w-5" />} title="لا توجد سيارات مسجلة" />
+              )}
+            </div>
+            {viewingSubs.length > 0 ? (
+              <div>
+                <div className="text-sm font-medium mb-2">الاشتراكات والباقات</div>
+                <div className="grid grid-cols-1 gap-2">
+                  {viewingSubs.map((s) => {
+                    const label = subscriptionStatusLabel(s, todayISO());
+                    return (
+                      <div key={s.id} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                        <div>
+                          <div className="font-medium text-slate-900">{s.packageName}</div>
+                          <div className="text-xs text-slate-500">
+                            {s.kind === "count" ? `متبقي ${s.remainingWashes ?? 0} من ${s.totalWashes ?? 0} غسلة` : `حتى ${s.endDate ? formatDate(s.endDate) : "—"}`}
+                          </div>
+                        </div>
+                        <Badge tone={label === "فعّال" ? "green" : label === "ملغي" ? "red" : "slate"}>{label}</Badge>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
             <div>
               <div className="text-sm font-medium mb-2">سجل الفواتير</div>
               {viewingInvoices.length === 0 ? (
@@ -472,6 +634,37 @@ function Info({
     >
       <div className="text-[11px] text-slate-500">{label}</div>
       <div className="text-sm text-slate-900 mt-1">{children}</div>
+    </div>
+  );
+}
+
+function CustomerStat({
+  icon,
+  label,
+  value,
+  tone,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  tone: "blue" | "green" | "amber" | "slate";
+}) {
+  const tones: Record<typeof tone, string> = {
+    blue: "bg-blue-50 text-blue-700",
+    green: "bg-emerald-50 text-emerald-700",
+    amber: "bg-amber-50 text-amber-700",
+    slate: "bg-slate-100 text-slate-700",
+  };
+
+  return (
+    <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white p-4">
+      <div className={`grid h-10 w-10 place-items-center rounded-lg ${tones[tone]}`}>
+        {icon}
+      </div>
+      <div>
+        <div className="text-xs text-slate-500">{label}</div>
+        <div className="text-lg font-semibold text-slate-900">{value}</div>
+      </div>
     </div>
   );
 }

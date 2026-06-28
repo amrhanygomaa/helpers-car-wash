@@ -1,20 +1,9 @@
 import { createContext, useContext } from "react";
-import type { CommissionType, ID } from "../types";
+import type { ID } from "../types";
 
 export interface ReportingContextValue {
   customerBalance: (customerId: string) => number;
   customerCredit: (customerId: string) => number;
-  supplierBalance: (supplierId: string) => number;
-  supplierCredit: (supplierId: string) => number;
-  calculateSupplierCommission: (supplierId: string) => {
-    tierId: string;
-    threshold: number;
-    periodDays: number;
-    totalPurchases: number;
-    earned: number;
-    commissionType: CommissionType;
-    commissionValue: number;
-  }[];
   employeeSalesStats: (
     userId: ID,
     month: string
@@ -27,17 +16,7 @@ export interface ReportingContextValue {
     totalEarnings: number;
     monthLabel: string;
   };
-  exportToExcel: (
-    dataType:
-      | "products"
-      | "customers"
-      | "suppliers"
-      | "sales"
-      | "purchases"
-      | "stock"
-      | "supplierDues"
-      | "commissions"
-  ) => void;
+  exportToExcel: (dataType: "customers" | "sales") => void;
 }
 
 export const ReportingContext = createContext<ReportingContextValue | null>(null);

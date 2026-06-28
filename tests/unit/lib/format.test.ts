@@ -3,11 +3,11 @@ import { formatCurrency, formatNumber, formatDate, formatDateTime } from "../../
 
 describe("formatCurrency", () => {
   it("formats a positive integer with two decimal places and default currency", () => {
-    expect(formatCurrency(1000)).toBe("1,000.00 ج.م");
+    expect(formatCurrency(1000)).toBe("1,000.00 EGP");
   });
 
   it("formats a decimal value correctly", () => {
-    expect(formatCurrency(99.5)).toBe("99.50 ج.م");
+    expect(formatCurrency(99.5)).toBe("99.50 EGP");
   });
 
   it("accepts a custom currency symbol", () => {
@@ -15,20 +15,20 @@ describe("formatCurrency", () => {
   });
 
   it("formats zero as 0.00", () => {
-    expect(formatCurrency(0)).toBe("0.00 ج.م");
+    expect(formatCurrency(0)).toBe("0.00 EGP");
   });
 
   it("formats negative amounts (refunds / overpayments)", () => {
-    expect(formatCurrency(-250)).toBe("-250.00 ج.م");
+    expect(formatCurrency(-250)).toBe("-250.00 EGP");
   });
 
   it("treats NaN and Infinity as zero defensively", () => {
-    expect(formatCurrency(Number.NaN)).toBe("0.00 ج.م");
-    expect(formatCurrency(Number.POSITIVE_INFINITY)).toBe("0.00 ج.م");
+    expect(formatCurrency(Number.NaN)).toBe("0.00 EGP");
+    expect(formatCurrency(Number.POSITIVE_INFINITY)).toBe("0.00 EGP");
   });
 
   it("uses thousands separator for large amounts", () => {
-    expect(formatCurrency(1_234_567.89)).toBe("1,234,567.89 ج.م");
+    expect(formatCurrency(1_234_567.89)).toBe("1,234,567.89 EGP");
   });
 });
 

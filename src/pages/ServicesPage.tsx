@@ -13,7 +13,7 @@ import { Input, Select } from "../components/ui/Input";
 import { useToast } from "../components/ui/Toast";
 import { EmptyState } from "../components/ui/EmptyState";
 import { ServiceFormDialog } from "../features/services/ServiceFormDialog";
-import type { WashService } from "../types";
+import type { WashService, WashServiceCategory } from "../types";
 import { formatCurrency } from "../lib/format";
 import { hasPermission } from "../lib/permissions";
 
@@ -30,7 +30,7 @@ export function ServicesPage() {
   const [editing, setEditing] = useState<WashService | null>(null);
   const [delId, setDelId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState<"" | "wash" | "extra">("");
+  const [categoryFilter, setCategoryFilter] = useState<"" | WashServiceCategory>("");
   const [activeFilter, setActiveFilter] = useState<"" | "active" | "inactive">("");
 
   const filtered = useMemo(() => {
@@ -41,8 +41,14 @@ export function ServicesPage() {
       if (activeFilter === "inactive" && s.active) return false;
       if (q && !s.name.toLowerCase().includes(q)) return false;
       return true;
-    });
+    }).sort((a, b) => (a.sortOrder ?? 999) - (b.sortOrder ?? 999));
   }, [washServices, search, categoryFilter, activeFilter]);
+
+  function categoryLabel(category: WashServiceCategory) {
+    if (category === "chemical") return "كيماوي";
+    if (category === "extra") return "إضافية";
+    return "غسيل";
+  }
 
   return (
     <>
@@ -76,10 +82,11 @@ export function ServicesPage() {
         <Select
           className="w-40"
           value={categoryFilter}
-          onChange={(e) => setCategoryFilter(e.target.value as "" | "wash" | "extra")}
+          onChange={(e) => setCategoryFilter(e.target.value as "" | WashServiceCategory)}
         >
           <option value="">كل الأنواع</option>
           <option value="wash">خدمات غسيل</option>
+          <option value="chemical">كيماوي</option>
           <option value="extra">خدمات إضافية</option>
         </Select>
         <Select
@@ -110,6 +117,7 @@ export function ServicesPage() {
                   <TH>الخدمة</TH>
                   <TH>النوع</TH>
                   <TH className="text-end">السعر الافتراضي</TH>
+                  <TH>العمولة</TH>
                   <TH>الخامات</TH>
                   <TH>الحالة</TH>
                   <TH className="w-20"></TH>
@@ -120,11 +128,20 @@ export function ServicesPage() {
                   <TR key={s.id}>
                     <TD className="font-medium text-slate-900">{s.name}</TD>
                     <TD>
-                      <Badge tone={s.category === "extra" ? "indigo" : "blue"}>
-                        {s.category === "extra" ? "إضافية" : "غسيل"}
+                      <Badge tone={s.category === "chemical" ? "amber" : s.category === "extra" ? "indigo" : "blue"}>
+                        {categoryLabel(s.category)}
                       </Badge>
                     </TD>
-                    <TD className="text-end font-medium">{formatCurrency(s.defaultPrice, settings.currency)}</TD>
+                    <TD className="text-end font-medium">
+                      {(s.pricingMode ?? "variable") === "variable" && s.defaultPrice <= 0
+                        ? "يدوي"
+                        : formatCurrency(s.defaultPrice, settings.currency)}
+                    </TD>
+                    <TD>
+                      <Badge tone={s.hasCommission ? "green" : "slate"}>
+                        {s.hasCommission ? "نعم" : "لا"}
+                      </Badge>
+                    </TD>
                     <TD>{s.materials?.length ? `${s.materials.length} خامة` : "—"}</TD>
                     <TD>
                       {canEdit ? (

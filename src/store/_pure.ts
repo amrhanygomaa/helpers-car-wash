@@ -1,6 +1,7 @@
 import type {
   Product,
   InvoiceLine,
+  LineWorker,
   SalesInvoice,
   PurchaseInvoice,
   SalesReturn,
@@ -44,9 +45,9 @@ export function applyPieceAddition(p: Product, pieces: number): Partial<Product>
   };
 }
 
-/** A net inventory deduction caused by performing service lines on an invoice. */
+/** A net raw-material deduction caused by performing service lines on an invoice. */
 export interface MaterialConsumption {
-  productId: ID;
+  materialId: ID;
   /** Total quantity to consume, already multiplied by each service line's quantity. */
   quantity: number;
   /** When true, quantity is in pieces (piece-aware deduction); else in base units. */
@@ -54,10 +55,10 @@ export interface MaterialConsumption {
 }
 
 /**
- * Expands the service lines of an invoice into the aggregated inventory
+ * Expands the service lines of an invoice into the aggregated raw-material
  * consumption from each service's linked materials (BOM). Product lines and
  * services without materials contribute nothing. Quantities are summed per
- * (product, unit-mode) so a material shared by two services is deducted once.
+ * (material, unit-mode) so a material shared by two services is deducted once.
  * Pure + side-effect free so it can be unit-tested in isolation (Car Wash —
  * feature 7).
  */
@@ -72,15 +73,98 @@ export function expandServiceMaterials(
     if (!svc?.materials?.length) continue;
     const lineQty = line.quantity > 0 ? line.quantity : 1;
     for (const m of svc.materials) {
-      if (!m.productId || m.quantity <= 0) continue;
-      const key = `${m.productId}__${m.isRetailUnit ? "piece" : "unit"}`;
+      if (!m.materialId || m.quantity <= 0) continue;
+      const key = `${m.materialId}__${m.isRetailUnit ? "piece" : "unit"}`;
       const qty = m.quantity * lineQty;
       const existing = byKey.get(key);
       if (existing) existing.quantity += qty;
-      else byKey.set(key, { productId: m.productId, quantity: qty, isRetailUnit: m.isRetailUnit });
+      else byKey.set(key, { materialId: m.materialId, quantity: qty, isRetailUnit: m.isRetailUnit });
     }
   }
   return [...byKey.values()];
+}
+
+/**
+ * The صنايعية credited for a service line, with their commission shares.
+ * Prefers the multi-worker {@link InvoiceLine.workers} list; falls back to the
+ * legacy single `employeeId`/`commissionAmount` fields so historical invoices
+ * keep working. Returns [] for unmanned lines.
+ */
+export function lineWorkers(
+  line: Pick<InvoiceLine, "workers" | "employeeId" | "employeeName" | "commissionAmount">,
+): LineWorker[] {
+  if (line.workers && line.workers.length > 0) return line.workers;
+  if (line.employeeId) {
+    return [
+      {
+        workerId: line.employeeId,
+        workerName: line.employeeName,
+        commissionAmount: line.commissionAmount ?? 0,
+      },
+    ];
+  }
+  return [];
+}
+
+/**
+ * Splits a total commission (EGP) as evenly as possible among `count` workers,
+ * rounded to 2 decimals, with any rounding remainder added to the first share
+ * so the parts always sum back to `total`. Pure + testable.
+ */
+export function splitCommissionEvenly(total: number, count: number): number[] {
+  if (count <= 0) return [];
+  if (count === 1) return [Math.round(total * 100) / 100];
+  const totalCents = Math.round(total * 100);
+  const base = Math.floor(totalCents / count);
+  const remainder = totalCents - base * count;
+  return Array.from({ length: count }, (_, i) => (base + (i < remainder ? 1 : 0)) / 100);
+}
+
+/**
+ * Loyalty points earned on a finalized service invoice: 1 point per
+ * `egpPerPoint` EGP of the invoice total, floored. Returns 0 when loyalty is
+ * disabled or misconfigured. Pure + testable.
+ */
+export function computeLoyaltyEarned(
+  total: number,
+  opts: { enabled?: boolean; egpPerPoint?: number },
+): number {
+  if (!opts.enabled) return 0;
+  const per = opts.egpPerPoint ?? 0;
+  if (per <= 0 || total <= 0) return 0;
+  return Math.floor(total / per);
+}
+
+/** EGP value of redeeming `points` loyalty points (each worth `pointValue` EGP). */
+export function loyaltyRedemptionValue(points: number, pointValue: number | undefined): number {
+  if (points <= 0 || !pointValue || pointValue <= 0) return 0;
+  return Math.round(points * pointValue * 100) / 100;
+}
+
+/** Aggregate visit history for a customer or vehicle, derived from invoices. */
+export interface VisitHistory {
+  visits: number;
+  totalSpent: number;
+  lastVisit?: string;
+}
+
+/**
+ * Summarises a customer's or vehicle's non-cancelled service invoices: number of
+ * visits, total spent, and the most recent visit date. Pure + testable.
+ */
+export function visitHistory(
+  invoices: Pick<SalesInvoice, "date" | "cancelled" | "invoiceKind" | "total">[],
+): VisitHistory {
+  let visits = 0;
+  let totalSpent = 0;
+  let lastVisit: string | undefined;
+  for (const inv of invoices) {
+    if (inv.cancelled || inv.invoiceKind !== "service") continue;
+    visits += 1;
+    totalSpent += inv.total;
+    if (!lastVisit || inv.date > lastVisit) lastVisit = inv.date;
+  }
+  return { visits, totalSpent, lastVisit };
 }
 
 /** Per-employee service performance over a date range (Car Wash — features 5 + 8). */
@@ -91,12 +175,12 @@ export interface EmployeeServiceStats {
 }
 
 /**
- * Sums the work a single employee performed on car-wash service invoices in
- * [from, to] (inclusive). A "car washed" is a distinct non-cancelled service
- * invoice on which the employee performed at least one line; "services
- * performed" counts the service lines (× their quantity); "attributed revenue"
- * sums those lines' subtotals — the base for that employee's commission. Pure +
- * testable.
+ * Sums the work a single worker performed on car-wash service invoices in
+ * [from, to] (inclusive), multi-worker aware. A "car washed" is a distinct
+ * non-cancelled service invoice on which the worker performed at least one line;
+ * "services performed" counts those service lines (× quantity); "attributed
+ * revenue" sums the worker's *share* of each line's subtotal (split equally
+ * among the line's workers) — the base for that worker's commission. Pure.
  */
 export function employeeServiceStats(
   invoices: Pick<SalesInvoice, "id" | "date" | "cancelled" | "invoiceKind" | "lines">[],
@@ -113,10 +197,12 @@ export function employeeServiceStats(
     if (inv.date < from || inv.date > to) continue;
     let touchedThisInvoice = false;
     for (const line of inv.lines) {
-      if (line.kind !== "service" || line.employeeId !== userId) continue;
+      if (line.kind !== "service") continue;
+      const workers = lineWorkers(line);
+      if (!workers.some((w) => w.workerId === userId)) continue;
       touchedThisInvoice = true;
       servicesPerformed += line.quantity > 0 ? line.quantity : 1;
-      attributedRevenue += line.subtotal;
+      attributedRevenue += line.subtotal / workers.length;
     }
     if (touchedThisInvoice) carsWashed += 1;
   }

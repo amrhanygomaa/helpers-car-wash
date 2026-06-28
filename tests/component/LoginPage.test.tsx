@@ -39,7 +39,7 @@ function setup() {
   return {
     user,
     usernameInput: () => screen.getByPlaceholderText("Login username"),
-    passwordInput: () => screen.getByPlaceholderText("••••••••"),
+    passwordInput: () => screen.getByPlaceholderText("أدخل PIN"),
     submitButton: () => screen.getByRole("button", { name: "تسجيل الدخول" }),
   };
 }
@@ -63,7 +63,7 @@ describe("LoginPage — TC-COMP-LOGIN", () => {
   it("TC-COMP-LOGIN-001 — renders the login form with all required inputs", () => {
     setup();
     expect(screen.getByPlaceholderText("Login username")).toBeInTheDocument();
-    expect(screen.getByPlaceholderText("••••••••")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("أدخل PIN")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "تسجيل الدخول" })).toBeInTheDocument();
   });
 

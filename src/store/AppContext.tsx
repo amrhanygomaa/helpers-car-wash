@@ -37,6 +37,7 @@ import type {
   WashService,
   QueueTicket,
   QueueStatus,
+  DiscountCode,
 } from "../types";
 import { lsClearAll, lsGet, lsRemove, lsSet, lsSetBatch, reloadStorageCache } from "../lib/storage";
 import { hashPassword, verifyFallbackPassword } from "../lib/auth";
@@ -54,6 +55,7 @@ import {
   seedSuppliers,
   seedUsers,
   seedWashServices,
+  seedDiscountCodes,
 } from "../data/seed";
 import { localISODate, todayISO, uid } from "../lib/utils";
 import { buildXlsx } from "../lib/xlsx";
@@ -66,8 +68,7 @@ import {
   settlePurchaseInvoiceReturn,
   quotationConversionFields,
   employeeCollectedCash,
-  expandServiceMaterials,
-  type MaterialConsumption,
+  computeLoyaltyEarned,
 } from "./_pure";
 import { SettingsContext } from "./SettingsContext";
 import { AuditLogContext } from "./AuditLogContext";
@@ -103,6 +104,7 @@ interface AppState {
   auditLogs: AuditLog[];
   quotations: Quotation[];
   stocktakes: Stocktake[];
+  discountCodes: DiscountCode[];
 }
 
 interface AppActions {
@@ -362,12 +364,167 @@ function normalizeSettings(s: Settings): Settings {
     vehicles: seedSettings.features?.vehicles ?? true,
     washServices: seedSettings.features?.washServices ?? true,
   };
+  const legacyWarehouseOverrides = {
+    products: false,
+    inventory: false,
+    stocktakes: false,
+    dues: false,
+    alerts: false,
+  };
   const merged = {
     ...seedSettings.features,
     ...(s.features ?? {}),
     ...carwashOverrides, // always take seed values for car-wash keys
+    ...legacyWarehouseOverrides, // Top Gear should not feel like a warehouse system
   };
-  return { ...s, features: merged };
+  return { ...seedSettings, ...s, features: merged };
+}
+
+const legacySeedWashServiceIds = new Set([
+  "seed-svc-ext",
+  "seed-svc-full",
+  "seed-svc-deep",
+  "seed-svc-polish",
+  "seed-svc-fresh",
+  "seed-svc-engine",
+]);
+
+function normalizeWashServices(list: WashService[]): WashService[] {
+  if (!Array.isArray(list) || list.length === 0) return seedWashServices;
+
+  const looksLikeOldDemoCatalog =
+    list.length <= legacySeedWashServiceIds.size &&
+    list.every((service) => legacySeedWashServiceIds.has(service.id));
+  if (looksLikeOldDemoCatalog) return seedWashServices;
+
+  const existingIds = new Set(list.map((service) => service.id));
+  const existingNames = new Set(list.map((service) => service.name.trim()));
+  const normalized: WashService[] = list.map((service) => {
+    const category: WashService["category"] =
+      service.category === "chemical" ? "chemical" : service.category === "extra" ? "extra" : "wash";
+    return {
+      ...service,
+      category,
+      hasCommission: service.hasCommission ?? category !== "wash",
+      pricingMode: service.pricingMode ?? "variable",
+      defaultPrice: Number.isFinite(service.defaultPrice) ? service.defaultPrice : 0,
+      active: service.active ?? true,
+    };
+  });
+
+  for (const seed of seedWashServices) {
+    if (existingIds.has(seed.id) || existingNames.has(seed.name.trim())) continue;
+    normalized.push(seed);
+  }
+
+  return normalized.sort((a, b) => (a.sortOrder ?? 999) - (b.sortOrder ?? 999));
+}
+
+function normalizeQueueStatus(status: QueueStatus | "washing" | "completed" | string | undefined): QueueStatus {
+  if (status === "washing") return "in_progress";
+  if (status === "completed") return "done";
+  if (
+    status === "waiting" ||
+    status === "in_progress" ||
+    status === "done" ||
+    status === "delivered" ||
+    status === "cancelled"
+  ) {
+    return status;
+  }
+  return "waiting";
+}
+
+function dateFromTicket(ticket: Partial<QueueTicket>): string {
+  if (typeof ticket.businessDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(ticket.businessDate)) {
+    return ticket.businessDate;
+  }
+  const raw = ticket.arrivalTime ?? ticket.createdAt;
+  if (typeof raw === "string") {
+    const d = new Date(raw);
+    if (!Number.isNaN(d.getTime())) return localISODate(d);
+    if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0, 10);
+  }
+  return todayISO();
+}
+
+function isQueueActive(status: QueueStatus): boolean {
+  return status === "waiting" || status === "in_progress";
+}
+
+function queuePosition(ticket: QueueTicket): number {
+  return ticket.queuePosition ?? ticket.number;
+}
+
+function compactQueuePositions(list: QueueTicket[]): QueueTicket[] {
+  const active = [...list]
+    .filter((ticket) => isQueueActive(ticket.status))
+    .sort((a, b) => queuePosition(a) - queuePosition(b) || a.number - b.number);
+  const positionById = new Map(active.map((ticket, index) => [ticket.id, index + 1]));
+  return list.map((ticket) => {
+    const position = positionById.get(ticket.id);
+    return position ? { ...ticket, queuePosition: position } : { ...ticket, queuePosition: undefined };
+  });
+}
+
+function normalizeQueueTickets(list: QueueTicket[]): QueueTicket[] {
+  if (!Array.isArray(list)) return [];
+  const normalized = list.map((ticket) => {
+    const status = normalizeQueueStatus(ticket.status);
+    const businessDate = dateFromTicket(ticket);
+    const note = ticket.note ?? ticket.delayNote;
+    return {
+      ...ticket,
+      number: Number.isFinite(ticket.number) ? ticket.number : 0,
+      status,
+      businessDate,
+      serviceIds: Array.isArray(ticket.serviceIds) ? ticket.serviceIds : [],
+      serviceNames: Array.isArray(ticket.serviceNames) ? ticket.serviceNames : [],
+      keyReceived: ticket.keyReceived ?? Boolean(ticket.keyReceivedAt),
+      note,
+      delayNote: ticket.delayNote ?? note,
+      arrivalTime: ticket.arrivalTime || ticket.createdAt || new Date().toISOString(),
+      createdAt: ticket.createdAt || ticket.arrivalTime || new Date().toISOString(),
+    };
+  });
+  return compactQueuePositions(normalized);
+}
+
+function nextDailyQueueNumber(list: QueueTicket[], businessDate = todayISO()): number {
+  const max = list.reduce((current, ticket) => {
+    if (dateFromTicket(ticket) !== businessDate) return current;
+    return Math.max(current, ticket.number);
+  }, 0);
+  return max + 1;
+}
+
+function nextActiveQueuePosition(list: QueueTicket[]): number {
+  const max = list.reduce((current, ticket) => {
+    if (!isQueueActive(ticket.status)) return current;
+    return Math.max(current, queuePosition(ticket));
+  }, 0);
+  return max + 1;
+}
+
+// If the ticket has a requested pickup time, suggest inserting it early enough
+// so it is likely done before that time. Uses 30 min/car estimate. Returns 1
+// (front) when pickup is already past or very soon. Falls back to end-of-queue
+// when no pickup time is given.
+function pickupAwareQueuePosition(list: QueueTicket[], requestedPickupAt?: string): number {
+  const active = [...list]
+    .filter((t) => isQueueActive(t.status))
+    .sort((a, b) => queuePosition(a) - queuePosition(b) || a.number - b.number);
+  const endPos = active.length + 1;
+  if (!requestedPickupAt) return endPos;
+  const pickupMs = new Date(requestedPickupAt).getTime();
+  if (Number.isNaN(pickupMs)) return endPos;
+  const remainingMs = pickupMs - Date.now();
+  if (remainingMs <= 0) return 1;
+  const AVG_MS_PER_CAR = 30 * 60 * 1000;
+  // We need (carsAhead + 1) * avgTime <= remainingMs
+  // => carsAhead <= remainingMs/avgTime - 1
+  const maxCarsAhead = Math.max(0, Math.floor(remainingMs / AVG_MS_PER_CAR) - 1);
+  return Math.min(maxCarsAhead + 1, endPos);
 }
 
 function normalizeProduct(product: LegacyProduct): Product {
@@ -443,6 +600,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [cashEntries, setCashEntries] = useState<CashEntry[]>(() =>
     lsGet<CashEntry[]>("cashEntries", seedCashEntries)
   );
+  const [discountCodes, setDiscountCodes] = useState<DiscountCode[]>(() =>
+    lsGet<DiscountCode[]>("discountCodes", seedDiscountCodes)
+  );
   const [nextProductCode, setNextProductCode] = useState<number>(() =>
     lsGet<number>("nextProductCode", 1000)
   );
@@ -471,9 +631,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [stocktakes, setStocktakes] = useState<Stocktake[]>(() => lsGet<Stocktake[]>("stocktakes", []));
   // ── Car Wash collections ──
   const [vehicles, setVehicles] = useState<Vehicle[]>(() => lsGet<Vehicle[]>("vehicles", []));
-  const [washServices, setWashServices] = useState<WashService[]>(() => lsGet<WashService[]>("washServices", seedWashServices));
-  const [queueTickets, setQueueTickets] = useState<QueueTicket[]>(() => lsGet<QueueTicket[]>("queueTickets", []));
-  const [nextQueueNumber, setNextQueueNumber] = useState<number>(() => lsGet<number>("nextQueueNumber", 1));
+  const [washServices, setWashServices] = useState<WashService[]>(() =>
+    normalizeWashServices(lsGet<WashService[]>("washServices", seedWashServices))
+  );
+  const [queueTickets, setQueueTickets] = useState<QueueTicket[]>(() =>
+    normalizeQueueTickets(lsGet<QueueTicket[]>("queueTickets", []))
+  );
+  const [nextQueueNumber, setNextQueueNumber] = useState<number>(() => {
+    const tickets = normalizeQueueTickets(lsGet<QueueTicket[]>("queueTickets", []));
+    return nextDailyQueueNumber(tickets);
+  });
   const currentUserRef = useRef<AppUser | null>(null);
   // BUG-01: code counters mirrored in refs so several add* calls inside ONE
   // event handler (CSV bulk import) each get a distinct code — the state value
@@ -527,6 +694,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     );
     setStockMovements(lsGet<StockMovement[]>("stockMovements", seedStockMovements));
     setCashEntries(lsGet<CashEntry[]>("cashEntries", seedCashEntries));
+    setDiscountCodes(lsGet<DiscountCode[]>("discountCodes", seedDiscountCodes));
     setNextProductCode(lsGet<number>("nextProductCode", 1000));
     setNextSupplierCode(
       Math.max(
@@ -543,9 +711,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setQuotations(lsGet<Quotation[]>("quotations", []));
     setStocktakes(lsGet<Stocktake[]>("stocktakes", []));
     setVehicles(lsGet<Vehicle[]>("vehicles", []));
-    setWashServices(lsGet<WashService[]>("washServices", seedWashServices));
-    setQueueTickets(lsGet<QueueTicket[]>("queueTickets", []));
-    setNextQueueNumber(lsGet<number>("nextQueueNumber", 1));
+    setWashServices(normalizeWashServices(lsGet<WashService[]>("washServices", seedWashServices)));
+    const tickets = normalizeQueueTickets(lsGet<QueueTicket[]>("queueTickets", []));
+    setQueueTickets(tickets);
+    setNextQueueNumber(nextDailyQueueNumber(tickets));
   }, [licenseStatus]);
 
   const clearDesktopRendererState = useCallback(() => {
@@ -557,6 +726,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSalesInvoices(seedSalesInvoices.map(normalizeSalesInvoice));
     setStockMovements(seedStockMovements);
     setCashEntries(seedCashEntries);
+    setDiscountCodes(seedDiscountCodes);
     setNextProductCode(1000);
     setNextSupplierCode(nextSupplierCodeFromExisting(seedSuppliers));
     setNextCustomerCode(1);
@@ -610,7 +780,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // being listed as a dependency (avoids re-scheduling the interval on every change).
   const liveStateRef = useRef({
     settings, products, suppliers, customers, purchaseInvoices, salesInvoices,
-    stockMovements, cashEntries, nextProductCode, nextSupplierCode, nextCustomerCode, users,
+    stockMovements, cashEntries, discountCodes, nextProductCode, nextSupplierCode, nextCustomerCode, users,
     salesReturns, purchaseReturns, drivers, auditLogs, quotations, stocktakes,
     vehicles, washServices, queueTickets, nextQueueNumber,
   });
@@ -621,12 +791,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     liveStateRef.current = {
       settings, products, suppliers, customers, purchaseInvoices, salesInvoices,
-      stockMovements, cashEntries, nextProductCode, nextSupplierCode, nextCustomerCode, users,
+      stockMovements, cashEntries, discountCodes, nextProductCode, nextSupplierCode, nextCustomerCode, users,
       salesReturns, purchaseReturns, drivers, auditLogs, quotations, stocktakes,
       vehicles, washServices, queueTickets, nextQueueNumber,
     };
     unflushedChangesRef.current = true;
-  }, [settings, products, suppliers, customers, purchaseInvoices, salesInvoices, stockMovements, cashEntries, nextProductCode, nextSupplierCode, nextCustomerCode, users, salesReturns, purchaseReturns, drivers, auditLogs, quotations, stocktakes, vehicles, washServices, queueTickets, nextQueueNumber]);
+  }, [settings, products, suppliers, customers, purchaseInvoices, salesInvoices, stockMovements, cashEntries, discountCodes, nextProductCode, nextSupplierCode, nextCustomerCode, users, salesReturns, purchaseReturns, drivers, auditLogs, quotations, stocktakes, vehicles, washServices, queueTickets, nextQueueNumber]);
 
   // --- Auto Backup Logic (timer-based — never blocks on state changes) ---
   useEffect(() => {
@@ -734,6 +904,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         salesInvoices,
         stockMovements,
         cashEntries,
+        discountCodes,
         nextProductCode,
         nextSupplierCode,
         nextCustomerCode,
@@ -752,7 +923,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       unflushedChangesRef.current = false;
     }, 2000);
     return () => window.clearTimeout(timer);
-  }, [isDesktop, auth.isAuthenticated, settings, products, suppliers, customers, purchaseInvoices, salesInvoices, stockMovements, cashEntries, nextProductCode, nextSupplierCode, nextCustomerCode, users, salesReturns, purchaseReturns, drivers, auditLogs, quotations, stocktakes, vehicles, washServices, queueTickets, nextQueueNumber]);
+  }, [isDesktop, auth.isAuthenticated, settings, products, suppliers, customers, purchaseInvoices, salesInvoices, stockMovements, cashEntries, discountCodes, nextProductCode, nextSupplierCode, nextCustomerCode, users, salesReturns, purchaseReturns, drivers, auditLogs, quotations, stocktakes, vehicles, washServices, queueTickets, nextQueueNumber]);
 
   const login = useCallback(async (username: string, passwordRaw: string) => {
     const attemptKey = loginAttemptKey(username);
@@ -973,7 +1144,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     let nextPasswordHash: string | undefined;
     const wantsPasswordChange = Boolean(newPassword);
     if (wantsPasswordChange) {
-      if (!newPassword || newPassword.length < 6) {
+      if (!newPassword || newPassword.length < 4) {
         return { ok: false, error: "password_too_short" };
       }
       if (window.desktopAPI?.auth.changePassword) {
@@ -1313,29 +1484,96 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const addQueueTicket = (
     t: Omit<QueueTicket, "id" | "number" | "createdAt" | "status"> & { status?: QueueStatus }
   ): QueueTicket => {
-    const number = nextQueueNumberRef.current;
-    nextQueueNumberRef.current = number + 1;
-    setNextQueueNumber(nextQueueNumberRef.current);
+    const existing = normalizeQueueTickets(queueTickets);
+    const now = new Date().toISOString();
+    const arrivalTime = t.arrivalTime || now;
+    const businessDate = t.businessDate ?? dateFromTicket({ arrivalTime });
+    const status = normalizeQueueStatus(t.status);
+    const number = nextDailyQueueNumber(existing, businessDate);
+    const desiredPos = isQueueActive(status)
+      ? pickupAwareQueuePosition(existing, t.requestedPickupAt)
+      : undefined;
+    // Shift active tickets at the insertion point up by 1 so the new ticket
+    // lands exactly at desiredPos (compactQueuePositions will renumber cleanly).
+    const shifted =
+      desiredPos !== undefined
+        ? existing.map((e) =>
+            isQueueActive(e.status) && queuePosition(e) >= desiredPos
+              ? { ...e, queuePosition: queuePosition(e) + 1 }
+              : e
+          )
+        : existing;
     const ticket: QueueTicket = {
       ...t,
       id: uid("queue"),
       number,
-      status: t.status ?? "waiting",
-      arrivalTime: t.arrivalTime || new Date().toISOString(),
-      createdAt: new Date().toISOString(),
+      businessDate,
+      queuePosition: desiredPos,
+      status,
+      keyReceived: t.keyReceived ?? Boolean(t.keyReceivedAt),
+      serviceIds: t.serviceIds ?? [],
+      serviceNames: t.serviceNames ?? [],
+      arrivalTime,
+      createdAt: now,
     };
-    setQueueTickets((list) => [ticket, ...list]);
+    const updated = compactQueuePositions([ticket, ...shifted]);
+    nextQueueNumberRef.current = nextDailyQueueNumber(updated);
+    setNextQueueNumber(nextQueueNumberRef.current);
+    setQueueTickets(updated);
     return ticket;
   };
   const updateQueueTicket = (id: string, patch: Partial<QueueTicket>) => {
     setQueueTickets((list) => list.map((t) => (t.id === id ? { ...t, ...patch } : t)));
   };
   const setQueueStatus = (id: string, status: QueueStatus) => {
-    setQueueTickets((list) => list.map((t) => (t.id === id ? { ...t, status } : t)));
+    const normalizedStatus = normalizeQueueStatus(status);
+    setQueueTickets((list) =>
+      compactQueuePositions(
+        list.map((t) =>
+          t.id === id
+            ? {
+                ...t,
+                status: normalizedStatus,
+                queuePosition: isQueueActive(normalizedStatus) ? t.queuePosition : undefined,
+              }
+            : t
+        )
+      )
+    );
     if (status === "cancelled") {
       const t = queueTickets.find((x) => x.id === id);
       logAudit("queue_ticket_cancelled", t ? `#${t.number} — ${t.customerName}` : id);
     }
+  };
+  const reorderQueueTicket = (id: string, direction: "up" | "down") => {
+    setQueueTickets((list) => {
+      const compacted = compactQueuePositions(normalizeQueueTickets(list));
+      const active = compacted
+        .filter((ticket) => isQueueActive(ticket.status))
+        .sort((a, b) => queuePosition(a) - queuePosition(b) || a.number - b.number);
+      const index = active.findIndex((ticket) => ticket.id === id);
+      const targetIndex = direction === "up" ? index - 1 : index + 1;
+      if (index < 0 || targetIndex < 0 || targetIndex >= active.length) return list;
+      const reordered = [...active];
+      [reordered[index], reordered[targetIndex]] = [reordered[targetIndex], reordered[index]];
+      const positionById = new Map(reordered.map((ticket, i) => [ticket.id, i + 1]));
+      return compacted.map((ticket) =>
+        positionById.has(ticket.id) ? { ...ticket, queuePosition: positionById.get(ticket.id)! } : ticket
+      );
+    });
+  };
+  const requeueTicket = (id: string) => {
+    setQueueTickets((list) => {
+      const compacted = compactQueuePositions(normalizeQueueTickets(list));
+      const nextPosition = nextActiveQueuePosition(compacted);
+      return compactQueuePositions(
+        compacted.map((ticket) =>
+          ticket.id === id
+            ? { ...ticket, status: "waiting", queuePosition: nextPosition, missedTurn: true }
+            : ticket
+        )
+      );
+    });
   };
   const receiveVehicleKey = (id: string) => {
     const user = currentUserRef.current;
@@ -1347,6 +1585,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
               keyReceivedBy: user?.id,
               keyReceivedByName: user?.name,
               keyReceivedAt: new Date().toISOString(),
+              keyReceived: true,
             }
           : t
       )
@@ -1355,15 +1594,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const deliverVehicleKey = (id: string) => {
     const user = currentUserRef.current;
     setQueueTickets((list) =>
-      list.map((t) =>
-        t.id === id
-          ? {
-              ...t,
-              keyDeliveredBy: user?.id,
-              keyDeliveredByName: user?.name,
-              keyDeliveredAt: new Date().toISOString(),
-            }
-          : t
+      compactQueuePositions(
+        list.map((t) =>
+          t.id === id
+            ? {
+                ...t,
+                status: "delivered",
+                queuePosition: undefined,
+                keyDeliveredBy: user?.id,
+                keyDeliveredByName: user?.name,
+                keyDeliveredAt: new Date().toISOString(),
+              }
+            : t
+        )
       )
     );
   };
@@ -1566,57 +1809,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // (feature 7). Shared by create (consume) / cancel + delete (restore). Movement
   // quantities are stored in base units (pieces ÷ piecesPerUnit when piece-based),
   // matching how adjustStock records fractional unit movements.
-  const applyMaterialConsumption = (
-    consumptions: MaterialConsumption[],
-    direction: "consume" | "restore",
-    refId: string,
-    refNumber: string,
-    date: string
-  ) => {
-    if (consumptions.length === 0) return;
-    setProducts((list) =>
-      list.map((p) => {
-        const rows = consumptions.filter((c) => c.productId === p.id);
-        if (rows.length === 0) return p;
-        let next = p;
-        for (const c of rows) {
-          if (direction === "consume") {
-            next =
-              c.isRetailUnit && next.piecesPerUnit
-                ? { ...next, ...applyPieceDeduction(next, c.quantity) }
-                : { ...next, quantity: Math.max(0, next.quantity - c.quantity) };
-          } else {
-            next =
-              c.isRetailUnit && next.piecesPerUnit
-                ? { ...next, ...applyPieceAddition(next, c.quantity) }
-                : { ...next, quantity: next.quantity + c.quantity };
-          }
-        }
-        return next;
-      })
-    );
-    const movements: StockMovement[] = consumptions.map((c, idx) => {
-      const prod = products.find((p) => p.id === c.productId);
-      const baseQty =
-        c.isRetailUnit && prod?.piecesPerUnit ? c.quantity / prod.piecesPerUnit : c.quantity;
-      return {
-        id: uid(`mov_mat_${direction}_${idx}`),
-        productId: c.productId,
-        productName: prod?.name ?? c.productId,
-        type: direction === "consume" ? "sale" : "return",
-        quantity: direction === "consume" ? -baseQty : baseQty,
-        reason:
-          direction === "consume"
-            ? `خامات خدمة — فاتورة ${refNumber}`
-            : `استرجاع خامات خدمة — فاتورة ${refNumber}`,
-        referenceId: refId,
-        referenceType: "sale",
-        date,
-      };
-    });
-    setStockMovements((list) => [...movements, ...list]);
-  };
-
   // Sales invoices
   const addSalesInvoice: AppActions["addSalesInvoice"] = (inv) => {
     const id = uid("sal");
@@ -1627,6 +1819,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const prod = products.find((p) => p.id === l.productId);
       return prod ? { ...l, costPrice: prod.purchasePrice } : l;
     });
+    // Loyalty: award points on finalized service invoices; net out any redeemed.
+    const loyaltyPointsEarned =
+      inv.invoiceKind === "service"
+        ? computeLoyaltyEarned(inv.total, {
+            enabled: settings.loyaltyEnabled,
+            egpPerPoint: settings.loyaltyEgpPerPoint,
+          })
+        : 0;
+    const loyaltyPointsRedeemed = inv.loyaltyPointsRedeemed ?? 0;
     const full: SalesInvoice = {
       ...inv,
       lines: enrichedLines,
@@ -1635,9 +1836,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
       createdByUserId: inv.createdByUserId ?? currentUser?.id,
       status,
       remaining,
+      loyaltyPointsEarned: loyaltyPointsEarned > 0 ? loyaltyPointsEarned : inv.loyaltyPointsEarned,
       createdAt: new Date().toISOString(),
     };
     setSalesInvoices((list) => [full, ...list]);
+    const pointsDelta = loyaltyPointsEarned - loyaltyPointsRedeemed;
+    if (inv.customerId && pointsDelta !== 0) {
+      setCustomers((list) =>
+        list.map((c) =>
+          c.id === inv.customerId
+            ? { ...c, loyaltyPoints: Math.max(0, (c.loyaltyPoints ?? 0) + pointsDelta) }
+            : c
+        )
+      );
+    }
     logAudit("invoice_sale_created", `${full.invoiceNumber} — ${full.customerName}`, `الإجمالي: ${full.total}`);
 
     // stock decrements
@@ -1667,14 +1879,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }));
     setStockMovements((list) => [...movements, ...list]);
 
-    // Car Wash: consume inventory linked to service lines (feature 7).
-    applyMaterialConsumption(
-      expandServiceMaterials(inv.lines, washServices),
-      "consume",
-      id,
-      inv.invoiceNumber,
-      inv.date
-    );
+    // Car Wash: BOM raw materials are consumed from the relational DB inventory in
+    // CarwashInvoiceNewPage (recordMaterialConsumption), not from the KV product store.
 
     const totalCashReceived = inv.amountReceived + (inv.overpayment ?? 0);
     if (totalCashReceived > 0) {
@@ -1843,6 +2049,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const cancelSalesInvoice: AppActions["cancelSalesInvoice"] = (id, refundMode) => {
     const inv = salesInvoices.find((i) => i.id === id);
     if (!inv || inv.cancelled) return;
+    // Loyalty: reverse the points this invoice moved (claw back earned, refund redeemed).
+    const loyaltyDelta = (inv.loyaltyPointsEarned ?? 0) - (inv.loyaltyPointsRedeemed ?? 0);
+    if (inv.customerId && loyaltyDelta !== 0) {
+      setCustomers((list) =>
+        list.map((c) =>
+          c.id === inv.customerId
+            ? { ...c, loyaltyPoints: Math.max(0, (c.loyaltyPoints ?? 0) - loyaltyDelta) }
+            : c
+        )
+      );
+    }
     // return stock
     setProducts((list) =>
       list.map((p) => {
@@ -1904,14 +2121,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }));
     setStockMovements((list) => [...cancelMovements, ...list]);
 
-    // Car Wash: restore inventory consumed by this invoice's service lines.
-    applyMaterialConsumption(
-      expandServiceMaterials(inv.lines, washServices),
-      "restore",
-      id,
-      inv.invoiceNumber,
-      cancelDate
-    );
+    // Car Wash: BOM raw materials physically consumed during the wash are NOT
+    // auto-restored on cancel — the soap/sprays were already used. Adjust from
+    // the materials page if a wash never actually happened.
   };
   const deleteSalesInvoice: AppActions["deleteSalesInvoice"] = (id) => {
     const inv = salesInvoices.find((i) => i.id === id);
@@ -1932,15 +2144,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           return { ...p, quantity: p.quantity + totalQty };
         })
       );
-      // Car Wash: restore service-material stock (cancelled invoices already
-      // had it restored at cancel time). Movements for this id are wiped below.
-      applyMaterialConsumption(
-        expandServiceMaterials(inv.lines, washServices),
-        "restore",
-        id,
-        inv.invoiceNumber,
-        todayISO()
-      );
+      // Car Wash: BOM raw materials are tracked in the relational DB and are not
+      // reversed here (they were physically consumed during the wash).
     }
     setSalesInvoices((list) => list.filter((i) => i.id !== id));
     setStockMovements((list) => list.filter((m) => m.referenceId !== id));
@@ -1985,14 +2190,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
             return { ...p, quantity: Math.max(0, p.quantity - totalQty) };
           })
         );
-        // Car Wash: re-consume service materials the delete had restored.
-        applyMaterialConsumption(
-          expandServiceMaterials(inv.lines, washServices),
-          "consume",
-          inv.id,
-          inv.invoiceNumber,
-          todayISO()
-        );
+        // Car Wash: BOM raw materials live in the relational DB and are not
+        // re-applied on restore (KV product store no longer tracks them).
       }
     } else {
       const inv = snap.invoice as PurchaseInvoice;
@@ -2621,11 +2820,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       timestamp: new Date().toISOString(),
       state: {
         settings, products, suppliers, customers, purchaseInvoices, salesInvoices,
-        stockMovements, cashEntries, nextProductCode, nextSupplierCode, nextCustomerCode, users: safeUsers, salesReturns, purchaseReturns, drivers, auditLogs, quotations, stocktakes,
+        stockMovements, cashEntries, discountCodes, nextProductCode, nextSupplierCode, nextCustomerCode, users: safeUsers, salesReturns, purchaseReturns, drivers, auditLogs, quotations, stocktakes,
         vehicles, washServices, queueTickets, nextQueueNumber,
       }
     };
-  }, [settings, products, suppliers, customers, purchaseInvoices, salesInvoices, stockMovements, cashEntries, nextProductCode, nextSupplierCode, nextCustomerCode, users, salesReturns, purchaseReturns, drivers, auditLogs, quotations, stocktakes, vehicles, washServices, queueTickets, nextQueueNumber]);
+  }, [settings, products, suppliers, customers, purchaseInvoices, salesInvoices, stockMovements, cashEntries, discountCodes, nextProductCode, nextSupplierCode, nextCustomerCode, users, salesReturns, purchaseReturns, drivers, auditLogs, quotations, stocktakes, vehicles, washServices, queueTickets, nextQueueNumber]);
 
   const exportBackup: AppActions["exportBackup"] = useCallback(() => {
     const blob = new Blob([JSON.stringify(buildBackupData(), null, 2)], { type: "application/json" });
@@ -2717,6 +2916,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       if (Array.isArray(s.stockMovements)) setStockMovements(s.stockMovements);
       if (Array.isArray(s.cashEntries)) setCashEntries(s.cashEntries);
+      if (Array.isArray(s.discountCodes)) setDiscountCodes(s.discountCodes);
       const importedProducts: Product[] = Array.isArray(s.products) ? s.products : [];
       if (typeof s.nextProductCode === "number") {
         setNextProductCode(s.nextProductCode);
@@ -2757,17 +2957,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (Array.isArray(s.quotations)) setQuotations(s.quotations);
       if (Array.isArray(s.stocktakes)) setStocktakes(s.stocktakes);
       if (Array.isArray(s.vehicles)) setVehicles(s.vehicles);
-      if (Array.isArray(s.washServices)) setWashServices(s.washServices);
-      if (Array.isArray(s.queueTickets)) setQueueTickets(s.queueTickets);
-      if (typeof s.nextQueueNumber === "number") {
+      if (Array.isArray(s.washServices)) setWashServices(normalizeWashServices(s.washServices));
+      if (Array.isArray(s.queueTickets)) {
+        const tickets = normalizeQueueTickets(s.queueTickets);
+        setQueueTickets(tickets);
+        setNextQueueNumber(nextDailyQueueNumber(tickets));
+      } else if (typeof s.nextQueueNumber === "number") {
         setNextQueueNumber(s.nextQueueNumber);
-      } else if (Array.isArray(s.queueTickets) && s.queueTickets.length > 0) {
-        const maxNum = s.queueTickets.reduce(
-          (max: number, t: Record<string, unknown>) =>
-            typeof t.number === "number" ? Math.max(max, t.number) : max,
-          0
-        );
-        setNextQueueNumber(maxNum + 1);
       }
 
       return true;
@@ -2878,6 +3074,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       salesInvoices,
       stockMovements,
       cashEntries,
+      discountCodes,
       nextProductCode,
       nextSupplierCode,
       nextCustomerCode,
@@ -2967,6 +3164,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       salesInvoices,
       stockMovements,
       cashEntries,
+      discountCodes,
+      discountCodes,
       nextProductCode,
       nextSupplierCode,
       nextCustomerCode,
@@ -3060,6 +3259,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     () => ({
       quotations, addQuotation, updateQuotation, convertQuotation, deleteQuotation,
       salesInvoices, purchaseInvoices, salesReturns, purchaseReturns, cashEntries, stockMovements,
+      discountCodes,
       addSalesInvoice, updateSalesInvoice, recordSalesReceipt, cancelSalesInvoice,
       deleteSalesInvoice, applyCustomerCredit, settleAllDues, settleSupplierDues,
       addPurchaseInvoice, updatePurchaseInvoice, recordPurchasePayment, deletePurchaseInvoice,
@@ -3071,7 +3271,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // (Cashbox "الرصيد الحالي", Dashboard) holding a stale balance closure until the next
     // cash entry or a restart. Other actions are plain functions and stay omitted by design.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [quotations, salesInvoices, purchaseInvoices, salesReturns, purchaseReturns, cashEntries, stockMovements, currentCashBalance]
+    [quotations, salesInvoices, purchaseInvoices, salesReturns, purchaseReturns, cashEntries, stockMovements, discountCodes, currentCashBalance]
   );
 
   // F3-6: Catalog slice — products / suppliers / customers / drivers + their CRUD actions.
@@ -3100,7 +3300,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       vehicles, addVehicle, updateVehicle, deleteVehicle, archiveVehicle,
       washServices, addWashService, updateWashService, deleteWashService,
       queueTickets, nextQueueNumber,
-      addQueueTicket, updateQueueTicket, setQueueStatus, receiveVehicleKey, deliverVehicleKey,
+      addQueueTicket, updateQueueTicket, setQueueStatus, reorderQueueTicket, requeueTicket,
+      receiveVehicleKey, deliverVehicleKey,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [vehicles, washServices, queueTickets, nextQueueNumber]

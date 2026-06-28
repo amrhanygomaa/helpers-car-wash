@@ -109,8 +109,8 @@ export function EmployeeProfilePage() {
 
     if (!profileName.trim()) nextErrors.name = "الاسم مطلوب";
     if (changingPassword) {
-      if (!currentPassword) nextErrors.currentPassword = "أدخل كلمة المرور الحالية";
-      if (newPassword.length < 6) nextErrors.newPassword = "كلمة المرور لا تقل عن 6 حروف";
+      if (!currentPassword) nextErrors.currentPassword = "أدخل PIN الحالي";
+      if (newPassword.length < 4) nextErrors.newPassword = "PIN لا يقل عن 4 أرقام";
       if (newPassword !== confirmPassword) nextErrors.confirmPassword = "كلمتا المرور غير متطابقتين";
     }
 
@@ -139,8 +139,8 @@ export function EmployeeProfilePage() {
     const errorMap: Record<NonNullable<typeof result.error>, string> = {
       not_authenticated: "سجل الدخول مرة أخرى",
       invalid_name: "الاسم مطلوب",
-      invalid_current_password: "كلمة المرور الحالية غير صحيحة",
-      password_too_short: "كلمة المرور لا تقل عن 6 حروف",
+      invalid_current_password: "PIN الحالي غير صحيح",
+      password_too_short: "PIN لا يقل عن 4 أرقام",
       user_missing: "تعذر العثور على حسابك",
     };
     if (result.error === "invalid_current_password") {
@@ -223,23 +223,26 @@ export function EmployeeProfilePage() {
             </Field>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-            <Field label="كلمة المرور الحالية" error={profileErrors.currentPassword}>
+            <Field label="PIN الحالي" error={profileErrors.currentPassword}>
               <Input
                 type="password"
+                inputMode="numeric"
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
               />
             </Field>
-            <Field label="كلمة المرور الجديدة" error={profileErrors.newPassword}>
+            <Field label="PIN الجديد" error={profileErrors.newPassword}>
               <Input
                 type="password"
+                inputMode="numeric"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
               />
             </Field>
-            <Field label="تأكيد كلمة المرور" error={profileErrors.confirmPassword}>
+            <Field label="تأكيد PIN" error={profileErrors.confirmPassword}>
               <Input
                 type="password"
+                inputMode="numeric"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
               />

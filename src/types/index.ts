@@ -10,7 +10,7 @@ export type LoginResult = {
   attemptsRemaining?: number;
 };
 
-export type UserRole = "owner" | "employee";
+export type UserRole = "owner" | "cashier" | "employee";
 export type ActivationState =
   | "inactive"
   | "active"
@@ -62,6 +62,11 @@ export interface UserPermissions {
   vehicles: { view: boolean; add: boolean; edit: boolean; delete: boolean };
   washServices: { view: boolean; add: boolean; edit: boolean; delete: boolean };
   queue: { view: boolean; add: boolean; edit: boolean; cancel: boolean };
+  pricing: { override: boolean };
+  payroll: { view: boolean; manage: boolean };
+  workers: { view: boolean; manage: boolean };
+  settings: { view: boolean; manage: boolean };
+  users: { view: boolean; manage: boolean };
 }
 
 export interface MonthlyEmployeeConfig {
@@ -75,6 +80,7 @@ export interface AppUser {
   username: string;
   passwordHash: string;
   role: UserRole;
+  roleId?: "owner" | "cashier" | "custom";
   permissions: UserPermissions;
   monthlySalary?: number;
   salesCommissionPct?: number;
@@ -114,6 +120,8 @@ export interface Customer {
   address?: string;
   shippingDirection?: "qibli" | "bahri";
   notes?: string;
+  /** Loyalty points balance (Car Wash). Earned on finalized service invoices. */
+  loyaltyPoints?: number;
   archived?: boolean;
   createdAt: string;
 }
@@ -186,9 +194,41 @@ export interface InvoiceLine {
    */
   kind?: "product" | "service";
   serviceId?: ID;
-  /** Employee who performed this service (feature 5 — per-service attribution). */
+  /**
+   * Employee who performed this service (feature 5 — per-service attribution).
+   * Legacy single-worker field: kept for backward compatibility and display.
+   * When {@link InvoiceLine.workers} has entries it is the source of truth and
+   * `employeeId` mirrors the first worker.
+   */
   employeeId?: ID;
   employeeName?: string;
+  /**
+   * Multiple صنايعية who performed this service, each with their commission
+   * share. When present, this is authoritative for payroll/stats; the sum of
+   * shares equals {@link InvoiceLine.commissionAmount}.
+   */
+  workers?: LineWorker[];
+  /** Total Car Wash commission for the line (sum of all workers' shares), in EGP. */
+  commissionAmount?: number;
+  commissionInTotal?: boolean;
+}
+
+/** One صنايعي assigned to a service line and their commission share (EGP). */
+export interface LineWorker {
+  workerId: ID;
+  workerName?: string;
+  commissionAmount: number;
+}
+
+export type DiscountCodeType = "fixed_amount" | "percent" | "override";
+
+export interface DiscountCode {
+  id: ID;
+  code: string;
+  type: DiscountCodeType;
+  value: number;
+  active: boolean;
+  createdAt: string;
 }
 
 export interface PurchaseInvoice {
@@ -217,8 +257,13 @@ export interface SalesInvoice {
   driverId?: ID;
   driverName?: string;
   lines: InvoiceLine[];
+  subtotal?: number;
   total: number;
   discount?: number;
+  discountCodeId?: ID;
+  discountCode?: string;
+  discountCodeType?: DiscountCodeType;
+  discountCodeValue?: number;
   amountReceived: number;
   remaining: number;
   overpayment?: number;
@@ -243,12 +288,19 @@ export interface SalesInvoice {
   vehicleLabel?: string;
   /** Queue ticket this invoice was created from, if any. */
   queueId?: ID;
+  commissionInTotal?: boolean;
+  commissionTotal?: number;
+  /** Loyalty points awarded to the customer when this service invoice finalized. */
+  loyaltyPointsEarned?: number;
+  /** Loyalty points the customer redeemed on this invoice (applied as a discount). */
+  loyaltyPointsRedeemed?: number;
+  finalizedAt?: string;
   createdAt: string;
 }
 
 // ── Car Wash MVP ────────────────────────────────────────────────────────────
 
-export type WashServiceCategory = "wash" | "extra";
+export type WashServiceCategory = "wash" | "chemical" | "extra";
 
 /**
  * A material consumed when a wash service is performed (BOM line). Quantity is
@@ -257,7 +309,8 @@ export type WashServiceCategory = "wash" | "extra";
  */
 export interface ServiceMaterial {
   id: ID;
-  productId: ID;
+  /** References a raw material (rawMaterials.id) consumed when the service is performed. */
+  materialId: ID;
   quantity: number;
   isRetailUnit?: boolean;
 }
@@ -268,20 +321,30 @@ export interface ServiceMaterial {
  * plus extras (wax, trunk cleaning, polish). The default price can be overridden
  * per invoice line.
  */
+/** How this service contributes to the interior/exterior wash classification in reports. */
+export type WashType = "exterior" | "interior" | "full" | "none";
+
 export interface WashService {
   id: ID;
   code?: string;
   name: string;
   category: WashServiceCategory;
   defaultPrice: number;
+  hasCommission?: boolean;
+  /** Commission rate (%) auto-applied to the line and split across its workers. */
+  commissionPct?: number;
+  pricingMode?: "variable" | "fixed";
   active: boolean;
+  sortOrder?: number;
+  /** Explicit wash type for report classification. Overrides the name-based regex. */
+  washType?: WashType;
   /** Linked inventory materials consumed when the service is performed (feature 7). */
   materials?: ServiceMaterial[];
   notes?: string;
   createdAt: string;
 }
 
-export type QueueStatus = "waiting" | "washing" | "completed" | "cancelled";
+export type QueueStatus = "waiting" | "in_progress" | "done" | "delivered" | "cancelled";
 
 /**
  * A car in the wash queue (feature 1). Supports walk-ins (customerName without a
@@ -290,15 +353,29 @@ export type QueueStatus = "waiting" | "washing" | "completed" | "cancelled";
  */
 export interface QueueTicket {
   id: ID;
+  /** Daily ticket number, reset per businessDate. */
   number: number;
+  businessDate?: string;
+  queuePosition?: number;
   customerId?: ID;
   customerName: string;
   phone?: string;
   vehicleId?: ID;
+  vehicleBrand?: string;
   vehicleLabel?: string;
+  serviceIds?: ID[];
+  serviceNames?: string[];
   arrivalTime: string;
+  requestedPickupAt?: string;
+  note?: string;
   delayNote?: string;
   status: QueueStatus;
+  missedTurn?: boolean;
+  /** Pre-existing damage areas noted at intake (liability protection). */
+  damageAreas?: string[];
+  /** Free-text condition notes recorded at intake. */
+  conditionNotes?: string;
+  keyReceived?: boolean;
   // Key tracking
   keyReceivedBy?: ID;
   keyReceivedByName?: string;
@@ -446,6 +523,13 @@ export interface Settings {
   companyNameAr: string;
   invoiceFooter: string;
   currency: string;
+  pricingMode: "variable" | "fixed";
+  printerName: string;
+  receiptWidthMm: number;
+  branchName: string;
+  currentBranchId: string;
+  lowStockAlertWindowDays: number;
+  timezone: string;
   lowStockThreshold: number;
   arabicLabels: boolean;
   openingBalance: number;
@@ -470,6 +554,12 @@ export interface Settings {
   paymentTermDays: number;
   /** Take an automatic backup to the configured folder when the app closes. */
   backupOnClose: boolean;
+  /** Customer loyalty programme (Car Wash). */
+  loyaltyEnabled?: boolean;
+  /** Customer earns 1 point for each this-many EGP spent on a finalized service invoice. */
+  loyaltyEgpPerPoint?: number;
+  /** Redemption value: each point is worth this many EGP off a future invoice. */
+  loyaltyPointValue?: number;
   /**
    * Owner-controlled per-module visibility. Keys are FeatureKey (see
    * lib/features.ts). Missing key ⇒ that module's default state. This is the

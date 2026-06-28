@@ -129,10 +129,10 @@ export function AppLayout({ children }: { children: ReactNode }) {
               <span>نظام إدارة غسيل السيارات v{__APP_VERSION__}</span>
             </div>
             <div className="flex items-center gap-6">
-              <a href="https://wa.me/201118445625" target="_blank" rel="noreferrer" className="hover:text-emerald-600 flex items-center gap-1.5 transition-colors">
+              <a href="https://wa.me/201118445625" target="_blank" rel="noopener noreferrer" className="hover:text-emerald-600 flex items-center gap-1.5 transition-colors">
                 <span>واتساب الدعم: +201118445625</span>
               </a>
-              <a href="https://helpers-tech.com/" target="_blank" rel="noreferrer" className="hover:text-brand-600 flex items-center gap-1.5 transition-colors">
+              <a href="https://helpers-tech.com/" target="_blank" rel="noopener noreferrer" className="hover:text-brand-600 flex items-center gap-1.5 transition-colors">
                 <span>الموقع الرسمي: helpers-tech.com</span>
               </a>
             </div>

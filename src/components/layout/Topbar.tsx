@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from "react-router-dom";
-import { Search, Bell, ChevronDown, User, Lock, PanelRightClose, PanelRightOpen } from "lucide-react";
+import { Search, Bell, ChevronDown, User, Lock, PanelRightClose, PanelRightOpen, Building2 } from "lucide-react";
 import { useAuth } from "../../store/AuthContext";
 import { useSettings } from "../../store/SettingsContext";
 import { useCatalog } from "../../store/CatalogContext";
@@ -14,28 +14,25 @@ const TITLES: Record<string, string> = {
   "/": "لوحة التحكم",
   "/queue": "طابور الغسيل",
   "/carwash/new": "فاتورة غسيل جديدة",
+  "/carwash/products": "إضافات الغسيل",
+  "/carwash/materials": "خامات الغسيل",
+  "/carwash/packages": "الاشتراكات والباقات",
+  "/cashbox/shift": "وردية الخزنة",
+  "/reports/end-of-day": "تقرير نهاية اليوم",
+  "/workers/attendance": "حضور الصنايعية",
   "/carwash/reports": "تقارير الغسيل",
   "/vehicles": "المركبات",
   "/services": "خدمات الغسيل",
-  "/products": "المنتجات",
-  "/inventory": "المخزون",
-  "/stocktakes": "الجرد الدوري",
-  "/suppliers": "الموردين",
+  "/customers/marketing": "تسويق العملاء",
   "/customers": "العملاء",
-  "/drivers": "السائقين",
-  "/purchases": "فواتير المشتريات",
-  "/sales": "فواتير المبيعات",
-  "/quotations": "عروض الأسعار",
-  "/returns": "المرتجعات",
-  "/alerts": "التنبيهات",
+  "/sales": "فواتير الغسيل",
   "/cashbox": "الخزينة",
-  "/dues": "المستحقات",
+  "/payroll/day-close": "قفلة اليوم",
   "/reports/employees": "تقرير الموظفين",
-  "/reports": "التقارير",
-  "/import": "استيراد البيانات",
   "/users": "المستخدمين",
   "/audit-log": "سجل التدقيق",
   "/my-profile": "ملفي الشخصي",
+  "/branches": "الفروع",
   "/settings": "الإعدادات",
 };
 
@@ -50,29 +47,21 @@ export function Topbar({
   const navigate = useNavigate();
   const { auth, logout, lockSession, currentUser } = useAuth();
   const { settings } = useSettings();
-  const { products, customers, suppliers } = useCatalog();
-  const { purchaseInvoices, salesInvoices } = useInvoicing();
+  const { customers } = useCatalog();
+  const { salesInvoices } = useInvoicing();
   const { isEnabled } = useFeatures();
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
 
   const alertCount = useMemo(() => {
-    const outOfStock = products.filter((p) => p.quantity === 0).length;
-    const overdueAccounts = salesInvoices.filter((inv) => {
+    return salesInvoices.filter((inv) => {
       if (inv.paymentType !== "account" || inv.remaining <= 0 || inv.cancelled || !inv.paymentDueDate) return false;
       return new Date(inv.paymentDueDate) < new Date();
     }).length;
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - (settings.paymentTermDays ?? 7));
-    const overdueSuppliers = purchaseInvoices.filter((p) => p.remaining > 0 && new Date(p.date) < cutoff).length;
-    return outOfStock + overdueAccounts + overdueSuppliers;
-  }, [products, salesInvoices, purchaseInvoices, settings.paymentTermDays]);
+  }, [salesInvoices]);
 
-  const canSearchProducts = hasPermission(currentUser, "products");
   const canSearchCustomers = hasPermission(currentUser, "customers");
-  const canSearchSuppliers = hasPermission(currentUser, "suppliers");
   const canSearchSales = hasPermission(currentUser, "salesInvoices");
-  const canSearchPurchases = hasPermission(currentUser, "purchaseInvoices");
   const canViewAlerts = hasPermission(currentUser, "alerts") && isEnabled("alerts");
   const accountName = currentUser?.name || auth.username || "مدير";
 
@@ -87,25 +76,10 @@ export function Topbar({
     const term = q.trim().toLowerCase();
     if (!term) return [] as { label: string; sub: string; to: string }[];
     const out: { label: string; sub: string; to: string }[] = [];
-    if (canSearchProducts) {
-      products.forEach((p) => {
-        if (
-          p.name.toLowerCase().includes(term) ||
-          p.code.toLowerCase().includes(term)
-        )
-          out.push({ label: p.name, sub: `منتج — ${p.code}`, to: "/products" });
-      });
-    }
     if (canSearchCustomers) {
       customers.forEach((c) => {
         if (c.name.toLowerCase().includes(term))
           out.push({ label: c.name, sub: "عميل", to: "/customers" });
-      });
-    }
-    if (canSearchSuppliers) {
-      suppliers.forEach((s) => {
-        if (s.name.toLowerCase().includes(term))
-          out.push({ label: s.name, sub: "مورد", to: "/suppliers" });
       });
     }
     if (canSearchSales) {
@@ -113,34 +87,18 @@ export function Topbar({
         if (s.invoiceNumber.toLowerCase().includes(term))
           out.push({
             label: s.invoiceNumber,
-            sub: `فاتورة مبيعات — ${s.customerName}`,
+            sub: `فاتورة غسيل — ${s.customerName}`,
             to: `/sales/${s.id}`,
-          });
-      });
-    }
-    if (canSearchPurchases) {
-      purchaseInvoices.forEach((p) => {
-        if (p.invoiceNumber.toLowerCase().includes(term))
-          out.push({
-            label: p.invoiceNumber,
-            sub: `فاتورة مشتريات — ${p.supplierName}`,
-            to: `/purchases/${p.id}`,
           });
       });
     }
     return out.slice(0, 10);
   }, [
     q,
-    products,
     customers,
-    suppliers,
     salesInvoices,
-    purchaseInvoices,
-    canSearchProducts,
     canSearchCustomers,
-    canSearchSuppliers,
     canSearchSales,
-    canSearchPurchases,
   ]);
 
   return (
@@ -169,7 +127,7 @@ export function Topbar({
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="بحث سريع عن منتج، عميل، فاتورة..."
+            placeholder="بحث سريع عن عميل أو فاتورة غسيل..."
             className="w-full h-9 ps-3 pe-9 rounded-lg border border-slate-200 bg-slate-50 text-sm focus-ring"
           />
         </div>
@@ -192,9 +150,18 @@ export function Topbar({
         ) : null}
       </div>
       <div className="flex items-center gap-2 ms-auto">
+        {settings.branchName ? (
+          <div
+            className="hidden lg:flex h-8 max-w-48 items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2 text-xs text-slate-600"
+            title={settings.branchName}
+          >
+            <Building2 className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+            <span className="truncate">{settings.branchName}</span>
+          </div>
+        ) : null}
         {canViewAlerts ? (
           <button
-            onClick={() => navigate("/alerts")}
+            onClick={() => navigate("/cashbox")}
             className="relative w-9 h-9 rounded-lg hover:bg-slate-100 grid place-items-center text-slate-600"
           >
             <Bell className="w-4 h-4" />

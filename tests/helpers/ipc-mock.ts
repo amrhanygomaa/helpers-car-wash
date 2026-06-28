@@ -36,6 +36,7 @@ export function mockDesktopAPI(overrides: Record<string, unknown> = {}) {
     },
     print: {
       route: vi.fn().mockResolvedValue({ ok: true }),
+      testReceipt: vi.fn().mockResolvedValue({ ok: true }),
       currentWindow: vi.fn().mockResolvedValue({ ok: true }),
       saveCurrentPdf: vi.fn().mockResolvedValue({ ok: true }),
       closeCurrentWindow: vi.fn().mockResolvedValue({ ok: true }),

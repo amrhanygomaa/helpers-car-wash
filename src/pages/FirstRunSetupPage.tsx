@@ -23,30 +23,17 @@ import { Field, Input, Select } from "../components/ui/Input";
 import { useToast } from "../components/ui/Toast";
 import { hashPassword } from "../lib/auth";
 import {
-  createPermissions,
+  createCashierPermissions,
   setPermission,
   setPermissionGroup,
   areAllPermissionsEnabled,
-  PERMISSION_GROUPS,
+  CARWASH_PERMISSION_GROUPS,
+  areAllCarwashPermissionsEnabled,
+  setCarwashPermissionGroups,
 } from "../lib/permissions";
 
-// A sensible salesperson starter set the owner can refine in the wizard or
-// later from صفحة المستخدمين.
 function makeEmployeeDefaultPermissions() {
-  const p = createPermissions(false);
-  p.products.view = true;
-  p.inventory.view = true;
-  p.salesInvoices.view = true;
-  p.salesInvoices.add = true;
-  p.salesInvoices.receive = true;
-  p.customers.view = true;
-  p.customers.add = true;
-  p.returns.view = true;
-  p.returns.add = true;
-  p.alerts.view = true;
-  p.cashbox.view = true;
-  p.reports.view = true;
-  return p;
+  return createCashierPermissions();
 }
 
 // How long the welcome splash stays before the dashboard opens.
@@ -60,8 +47,8 @@ const STEPS = [
   },
   {
     icon: Building2,
-    title: "بيانات الشركة",
-    desc: "اسم شركتك وشعارها كما سيظهران في الفواتير وأعلى التطبيق.",
+    title: "بيانات المغسلة",
+    desc: "اسم المغسلة وشعارها كما سيظهران في الفواتير وأعلى التطبيق.",
   },
   {
     icon: Wallet,
@@ -116,7 +103,7 @@ export function FirstRunSetupPage() {
   const [employeePermissions, setEmployeePermissions] = useState(
     makeEmployeeDefaultPermissions
   );
-  const allEmployeePermissionsSelected = areAllPermissionsEnabled(employeePermissions);
+  const allEmployeePermissionsSelected = areAllCarwashPermissionsEnabled(employeePermissions);
 
   async function pickBackupFolder() {
     const dir = await window.desktopAPI?.backup?.selectDirectory();
@@ -132,11 +119,11 @@ export function FirstRunSetupPage() {
   function validateStep(s: number): string | null {
     if (s === 0) {
       if (!username.trim()) return "اسم الدخول مطلوب";
-      if (password.length < 6) return "كلمة المرور يجب ألا تقل عن 6 أحرف";
-      if (password !== confirmPassword) return "كلمتا المرور غير متطابقتين";
+      if (password.length < 4) return "PIN يجب ألا يقل عن 4 أرقام";
+      if (password !== confirmPassword) return "رقما PIN غير متطابقين";
     }
     if (s === 1) {
-      if (!companyNameAr.trim()) return "اسم الشركة بالعربية مطلوب";
+      if (!companyNameAr.trim()) return "اسم المغسلة بالعربية مطلوب";
     }
     if (s === 3) {
       if (!backupPath.trim()) return "اختر مجلد النسخ الاحتياطي التلقائي";
@@ -150,7 +137,7 @@ export function FirstRunSetupPage() {
     if (!employeeUsername.trim()) return "اسم دخول الموظف مطلوب";
     if (employeeUsername.trim() === username.trim())
       return "اسم دخول الموظف مطابق لاسم دخول المدير";
-    if (employeePassword.length < 6) return "كلمة مرور الموظف 6 أحرف على الأقل";
+    if (employeePassword.length < 4) return "PIN الموظف 4 أرقام على الأقل";
     return null;
   }
 
@@ -221,7 +208,8 @@ export function FirstRunSetupPage() {
         name: employeeName.trim(),
         username: employeeUsername.trim(),
         passwordHash: await hashPassword(employeePassword),
-        role: "employee",
+        role: "cashier",
+        roleId: "cashier",
         permissions: employeePermissions,
       });
     }
@@ -398,16 +386,18 @@ export function FirstRunSetupPage() {
                 <Field label="اسم الدخول" required>
                   <Input value={username} onChange={(e) => setUsername(e.target.value)} />
                 </Field>
-                <Field label="كلمة المرور" required hint="6 أحرف على الأقل">
+                <Field label="PIN المدير" required hint="4 أرقام على الأقل">
                   <Input
                     type="password"
+                    inputMode="numeric"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                   />
                 </Field>
-                <Field label="تأكيد كلمة المرور" required>
+                <Field label="تأكيد PIN" required>
                   <Input
                     type="password"
+                    inputMode="numeric"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                   />
@@ -433,7 +423,7 @@ export function FirstRunSetupPage() {
                   </div>
                   <div className="flex-1 space-y-2">
                     <div className="text-sm font-bold text-slate-900">
-                      شعار الشركة{" "}
+                      شعار المغسلة{" "}
                       <span className="text-slate-400 font-normal">(اختياري)</span>
                     </div>
                     <div className="flex items-center gap-2">
@@ -471,21 +461,21 @@ export function FirstRunSetupPage() {
                   </div>
                 </div>
 
-                <Field label="اسم الشركة بالعربية" required>
+                <Field label="اسم المغسلة بالعربية" required>
                   <Input
                     value={companyNameAr}
                     onChange={(e) => setCompanyNameAr(e.target.value)}
-                    placeholder="مثال: شركة النور للتجارة"
+                    placeholder="مثال: مغسلة توب جير"
                   />
                 </Field>
                 <Field
-                  label="اسم الشركة بالإنجليزية"
+                  label="اسم المغسلة بالإنجليزية"
                   hint="اختياري — يظهر أسفل الاسم العربي في الفواتير"
                 >
                   <Input
                     value={companyName}
                     onChange={(e) => setCompanyName(e.target.value)}
-                    placeholder="Optional — e.g. Al Noor Trading"
+                    placeholder="Optional — e.g. Top Gear Car Wash"
                     dir="ltr"
                   />
                 </Field>
@@ -512,8 +502,8 @@ export function FirstRunSetupPage() {
                   </div>
                 </Field>
                 <Field
-                  label="الحد الأدنى الافتراضي للمخزون"
-                  hint="عند وصول كمية أي منتج لهذا الحد يظهر تنبيه نقص"
+                  label="حد تنبيه الإضافات والخامات"
+                  hint="عند وصول رصيد أي إضافة أو خامة لهذا الحد يظهر تنبيه نقص"
                 >
                   <Input
                     type="number"
@@ -524,7 +514,7 @@ export function FirstRunSetupPage() {
                 </Field>
                 <Field
                   label="مدة تنبيه تأخر السداد"
-                  hint="المدة التي يُعتبر بعدها المورد متأخراً في السداد فتظهر تنبيهاته"
+                  hint="المدة التي تُعتبر بعدها فاتورة العميل الآجلة متأخرة"
                 >
                   <Select
                     value={String(paymentTermDays)}
@@ -611,9 +601,10 @@ export function FirstRunSetupPage() {
                     placeholder="employee"
                   />
                 </Field>
-                <Field label="كلمة مرور الموظف" hint="6 أحرف على الأقل">
+                <Field label="PIN الموظف" hint="4 أرقام على الأقل">
                   <Input
                     type="password"
+                    inputMode="numeric"
                     value={employeePassword}
                     onChange={(e) => setEmployeePassword(e.target.value)}
                   />
@@ -629,7 +620,9 @@ export function FirstRunSetupPage() {
                         type="checkbox"
                         checked={allEmployeePermissionsSelected}
                         onChange={(e) =>
-                          setEmployeePermissions(createPermissions(e.target.checked))
+                          setEmployeePermissions((current) =>
+                            setCarwashPermissionGroups(current, e.target.checked)
+                          )
                         }
                       />
                       اختيار الكل
@@ -637,7 +630,7 @@ export function FirstRunSetupPage() {
                   </div>
 
                   <div className="max-h-56 overflow-y-auto rounded-lg border border-slate-200 divide-y divide-slate-100">
-                    {PERMISSION_GROUPS.map((group) => {
+                    {CARWASH_PERMISSION_GROUPS.map((group) => {
                       const groupSelected = areAllPermissionsEnabled(
                         employeePermissions,
                         group.key

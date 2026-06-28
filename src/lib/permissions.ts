@@ -1,6 +1,58 @@
 import type { AppUser, UserPermissions } from "../types";
 
 export type PermissionModule = keyof UserPermissions;
+export type PermissionKey =
+  | "queue.manage"
+  | "invoice.create"
+  | "invoice.finalize"
+  | "pricing.override"
+  | "products.view"
+  | "products.manage"
+  | "materials.view"
+  | "materials.manage"
+  | "treasury.manage"
+  | "payroll.manage"
+  | "reports.view"
+  | "customers.view"
+  | "workers.manage"
+  | "settings.manage"
+  | "users.manage";
+
+export const PERMISSION_KEYS: { key: PermissionKey; label: string }[] = [
+  { key: "queue.manage", label: "إدارة الدور" },
+  { key: "invoice.create", label: "إنشاء فاتورة" },
+  { key: "invoice.finalize", label: "تأكيد الفاتورة" },
+  { key: "pricing.override", label: "تعديل الأسعار" },
+  { key: "products.view", label: "عرض إضافات الغسيل" },
+  { key: "products.manage", label: "إدارة إضافات الغسيل" },
+  { key: "materials.view", label: "عرض خامات الغسيل" },
+  { key: "materials.manage", label: "إدارة خامات الغسيل" },
+  { key: "treasury.manage", label: "إدارة الخزينة" },
+  { key: "payroll.manage", label: "إدارة الرواتب" },
+  { key: "reports.view", label: "عرض التقارير" },
+  { key: "customers.view", label: "عرض العملاء" },
+  { key: "workers.manage", label: "إدارة الصنايعية" },
+  { key: "settings.manage", label: "إدارة الإعدادات" },
+  { key: "users.manage", label: "إدارة المستخدمين" },
+];
+
+const permissionKeyMap: Record<PermissionKey, { module: PermissionModule; actions: string[] }> = {
+  "queue.manage": { module: "queue", actions: ["view", "add", "edit", "cancel"] },
+  "invoice.create": { module: "salesInvoices", actions: ["view", "add"] },
+  "invoice.finalize": { module: "salesInvoices", actions: ["view", "receive"] },
+  "pricing.override": { module: "pricing", actions: ["override"] },
+  "products.view": { module: "products", actions: ["view"] },
+  "products.manage": { module: "products", actions: ["view", "add", "edit", "delete"] },
+  "materials.view": { module: "inventory", actions: ["view"] },
+  "materials.manage": { module: "inventory", actions: ["view", "adjust"] },
+  "treasury.manage": { module: "cashbox", actions: ["view", "add", "spend", "editOpeningBalance"] },
+  "payroll.manage": { module: "payroll", actions: ["view", "manage"] },
+  "reports.view": { module: "reports", actions: ["view"] },
+  "customers.view": { module: "customers", actions: ["view"] },
+  "workers.manage": { module: "workers", actions: ["view", "manage"] },
+  "settings.manage": { module: "settings", actions: ["view", "manage"] },
+  "users.manage": { module: "users", actions: ["view", "manage"] },
+};
 
 export const PERMISSION_GROUPS: {
   key: PermissionModule;
@@ -10,8 +62,8 @@ export const PERMISSION_GROUPS: {
 }[] = [
   {
     key: "products",
-    label: "المنتجات",
-    description: "قائمة المنتجات وبيانات الأسعار",
+    label: "إضافات الغسيل",
+    description: "فوّاحات ومعطرات وأي إضافة تُباع مع الغسيل",
     actions: [
       { key: "view", label: "عرض" },
       { key: "add", label: "إضافة" },
@@ -21,17 +73,17 @@ export const PERMISSION_GROUPS: {
   },
   {
     key: "inventory",
-    label: "المخزون",
-    description: "كميات المنتجات وحركات المخزون",
+    label: "خامات الغسيل",
+    description: "رصيد الخامات والاستهلاك اليومي",
     actions: [
       { key: "view", label: "عرض" },
-      { key: "adjust", label: "تسوية" },
+      { key: "adjust", label: "تعديل الكميات" },
     ],
   },
   {
     key: "purchaseInvoices",
-    label: "فواتير المشتريات",
-    description: "مشتريات الموردين وسداد المستحقات",
+    label: "وحدة قديمة غير مستخدمة",
+    description: "مقفولة في نسخة إدارة مغسلة السيارات",
     actions: [
       { key: "view", label: "عرض" },
       { key: "add", label: "إضافة" },
@@ -42,8 +94,8 @@ export const PERMISSION_GROUPS: {
   },
   {
     key: "salesInvoices",
-    label: "فواتير المبيعات",
-    description: "مبيعات العملاء والتحصيل والإلغاء",
+    label: "فواتير الغسيل",
+    description: "فواتير الغسيل والتحصيل والإلغاء",
     actions: [
       { key: "view", label: "عرض" },
       { key: "add", label: "إضافة" },
@@ -66,8 +118,8 @@ export const PERMISSION_GROUPS: {
   },
   {
     key: "suppliers",
-    label: "الموردين",
-    description: "بيانات الموردين والبونص",
+    label: "وحدة قديمة غير مستخدمة",
+    description: "مقفولة في نسخة إدارة مغسلة السيارات",
     actions: [
       { key: "view", label: "عرض" },
       { key: "add", label: "إضافة" },
@@ -78,8 +130,8 @@ export const PERMISSION_GROUPS: {
   },
   {
     key: "drivers",
-    label: "السائقين",
-    description: "بيانات السائقين ورحلاتهم",
+    label: "وحدة قديمة غير مستخدمة",
+    description: "مقفولة في نسخة إدارة مغسلة السيارات",
     actions: [
       { key: "view", label: "عرض" },
       { key: "add", label: "إضافة" },
@@ -89,8 +141,8 @@ export const PERMISSION_GROUPS: {
   },
   {
     key: "returns",
-    label: "المرتجعات",
-    description: "مرتجعات البيع والشراء",
+    label: "وحدة قديمة غير مستخدمة",
+    description: "مقفولة في نسخة إدارة مغسلة السيارات",
     actions: [
       { key: "view", label: "عرض" },
       { key: "add", label: "إضافة" },
@@ -98,8 +150,8 @@ export const PERMISSION_GROUPS: {
   },
   {
     key: "alerts",
-    label: "التنبيهات",
-    description: "الصلاحية والمخزون والمديونيات",
+    label: "تنبيهات الغسيل",
+    description: "تنبيهات التحصيل والكميات المهمة",
     actions: [{ key: "view", label: "عرض" }],
   },
   {
@@ -152,7 +204,61 @@ export const PERMISSION_GROUPS: {
       { key: "cancel", label: "إلغاء" },
     ],
   },
+  {
+    key: "pricing",
+    label: "التسعير",
+    description: "تعديل الأسعار والخصومات اليدوية",
+    actions: [{ key: "override", label: "تعديل الأسعار" }],
+  },
+  {
+    key: "payroll",
+    label: "الرواتب",
+    description: "أجور الصنايعية والعمولات وتقفيل اليوم",
+    actions: [
+      { key: "view", label: "عرض" },
+      { key: "manage", label: "إدارة" },
+    ],
+  },
+  {
+    key: "workers",
+    label: "الصنايعية",
+    description: "بيانات الصنايعية ومن قام بكل خدمة",
+    actions: [
+      { key: "view", label: "عرض" },
+      { key: "manage", label: "إدارة" },
+    ],
+  },
+  {
+    key: "settings",
+    label: "الإعدادات",
+    description: "إعدادات النشاط والطباعة والنسخ الاحتياطي",
+    actions: [
+      { key: "view", label: "عرض" },
+      { key: "manage", label: "إدارة" },
+    ],
+  },
+  {
+    key: "users",
+    label: "المستخدمون والأدوار",
+    description: "إنشاء المستخدمين وتعديل الأدوار والصلاحيات",
+    actions: [
+      { key: "view", label: "عرض" },
+      { key: "manage", label: "إدارة" },
+    ],
+  },
 ];
+
+const TOP_GEAR_HIDDEN_PERMISSION_MODULES = new Set<PermissionModule>([
+  "purchaseInvoices",
+  "suppliers",
+  "drivers",
+  "returns",
+  "alerts",
+]);
+
+export const CARWASH_PERMISSION_GROUPS = PERMISSION_GROUPS.filter(
+  (group) => !TOP_GEAR_HIDDEN_PERMISSION_MODULES.has(group.key)
+);
 
 export function createPermissions(enabled = false): UserPermissions {
   return {
@@ -170,7 +276,39 @@ export function createPermissions(enabled = false): UserPermissions {
     vehicles: { view: enabled, add: enabled, edit: enabled, delete: enabled },
     washServices: { view: enabled, add: enabled, edit: enabled, delete: enabled },
     queue: { view: enabled, add: enabled, edit: enabled, cancel: enabled },
+    pricing: { override: enabled },
+    payroll: { view: enabled, manage: enabled },
+    workers: { view: enabled, manage: enabled },
+    settings: { view: enabled, manage: enabled },
+    users: { view: enabled, manage: enabled },
   };
+}
+
+export function createCashierPermissions(): UserPermissions {
+  let permissions = createPermissions(false);
+  permissions = setPermissionKey(permissions, "queue.manage", true);
+  permissions = setPermissionKey(permissions, "invoice.create", true);
+  permissions = setPermissionKey(permissions, "invoice.finalize", true);
+  return permissions;
+}
+
+export function setCarwashPermissionGroups(
+  permissions: UserPermissions,
+  value: boolean
+): UserPermissions {
+  return CARWASH_PERMISSION_GROUPS.reduce(
+    (next, group) => setPermissionGroup(next, group.key, value),
+    normalizePermissions(permissions)
+  );
+}
+
+export function areAllCarwashPermissionsEnabled(permissions: UserPermissions) {
+  const normalized = normalizePermissions(permissions);
+  return CARWASH_PERMISSION_GROUPS.every((group) =>
+    group.actions.every((action) =>
+      Boolean((normalized[group.key] as Record<string, boolean>)[action.key])
+    )
+  );
 }
 
 export function normalizePermissions(input?: Partial<UserPermissions> | null): UserPermissions {
@@ -253,9 +391,10 @@ export function normalizePermissions(input?: Partial<UserPermissions> | null): U
 
   for (const group of PERMISSION_GROUPS) {
     const nextGroup = permissions[group.key] as Record<string, boolean>;
+    const hasViewAction = group.actions.some((action) => action.key === "view");
     const hasAction = group.actions.some((action) => action.key !== "view" && nextGroup[action.key]);
-    if (hasAction) nextGroup.view = true;
-    if (!nextGroup.view) {
+    if (hasViewAction && hasAction) nextGroup.view = true;
+    if (hasViewAction && !nextGroup.view) {
       group.actions.forEach((action) => {
         if (action.key !== "view") nextGroup[action.key] = false;
       });
@@ -268,9 +407,12 @@ export function normalizePermissions(input?: Partial<UserPermissions> | null): U
 export function normalizeUser(user: AppUser): AppUser {
   const cleanUsername = String(user.username || "").trim();
   const cleanName = String(user.name || cleanUsername).trim();
+  const role = user.role === "owner" || user.role === "cashier" ? user.role : "employee";
 
   return {
     ...user,
+    role,
+    roleId: user.roleId ?? (role === "owner" || role === "cashier" ? role : "custom"),
     name: cleanName || cleanUsername,
     permissions: normalizePermissions(user.permissions),
   };
@@ -287,6 +429,39 @@ export function hasPermission(
   return Boolean((permissions[module] as Record<string, boolean> | undefined)?.[action]);
 }
 
+export function hasPermissionKey(user: AppUser | null | undefined, key: PermissionKey): boolean {
+  if (!user) return false;
+  if (user.role === "owner") return true;
+  const mapping = permissionKeyMap[key];
+  const permissions = normalizePermissions(user.permissions);
+  const group = permissions[mapping.module] as Record<string, boolean>;
+  return mapping.actions.every((action) => Boolean(group[action]));
+}
+
+export function setPermissionKey(
+  permissions: UserPermissions,
+  key: PermissionKey,
+  value: boolean
+): UserPermissions {
+  const mapping = permissionKeyMap[key];
+  let next = normalizePermissions(permissions);
+  for (const action of mapping.actions) {
+    next = setPermission(next, mapping.module, action, value);
+  }
+  return normalizePermissions(next);
+}
+
+export function enabledPermissionKeys(permissions: UserPermissions): PermissionKey[] {
+  return PERMISSION_KEYS
+    .filter(({ key }) => {
+      const mapping = permissionKeyMap[key];
+      const normalized = normalizePermissions(permissions);
+      const group = normalized[mapping.module] as Record<string, boolean>;
+      return mapping.actions.every((action) => Boolean(group[action]));
+    })
+    .map(({ key }) => key);
+}
+
 export function setPermission(
   permissions: UserPermissions,
   module: PermissionModule,
@@ -301,7 +476,8 @@ export function setPermission(
   } as Record<string, boolean>;
 
   if (action !== "view" && value) {
-    nextGroup.view = true;
+    const hasViewAction = group?.actions.some((item) => item.key === "view");
+    if (hasViewAction) nextGroup.view = true;
   }
   if (action === "view" && !value && group) {
     group.actions.forEach((item) => {

@@ -1,13 +1,19 @@
 import {
+  createContext,
   forwardRef,
+  useContext,
   useState,
   type ChangeEvent,
   type FocusEvent,
   type InputHTMLAttributes,
+  type ReactNode,
   type SelectHTMLAttributes,
   type TextareaHTMLAttributes,
 } from "react";
 import { cn } from "../../lib/utils";
+
+// Passes the Field label text down so form elements can set title= for accessibility.
+const FieldContext = createContext<string | null>(null);
 
 function isZeroLikeInputValue(value: InputHTMLAttributes<HTMLInputElement>["value"]) {
   if (value === 0) return true;
@@ -26,10 +32,12 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
       onChange,
       onFocus,
       onBlur,
+      title: titleProp,
       ...props
     },
     ref
   ) => {
+    const fieldLabel = useContext(FieldContext);
     const isControlledNumber = type === "number" && value !== undefined;
     const [draftValue, setDraftValue] = useState<string | null>(null);
     const showZeroAsPlaceholder = isControlledNumber && isZeroLikeInputValue(value);
@@ -60,6 +68,7 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
     return (
       <input
         ref={ref}
+        title={titleProp ?? fieldLabel ?? undefined}
         type={type}
         value={inputValue}
         placeholder={showZeroAsPlaceholder ? placeholder ?? "0" : placeholder}
@@ -84,35 +93,43 @@ Input.displayName = "Input";
 export const Textarea = forwardRef<
   HTMLTextAreaElement,
   TextareaHTMLAttributes<HTMLTextAreaElement>
->(({ className, ...props }, ref) => (
-  <textarea
-    ref={ref}
-    className={cn(
-      "w-full min-h-[80px] px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white",
-      "placeholder:text-slate-400 focus-ring",
-      className
-    )}
-    {...props}
-  />
-));
+>(({ className, title: titleProp, ...props }, ref) => {
+  const fieldLabel = useContext(FieldContext);
+  return (
+    <textarea
+      ref={ref}
+      title={titleProp ?? fieldLabel ?? undefined}
+      className={cn(
+        "w-full min-h-[80px] px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white",
+        "placeholder:text-slate-400 focus-ring",
+        className
+      )}
+      {...props}
+    />
+  );
+});
 Textarea.displayName = "Textarea";
 
 export const Select = forwardRef<
   HTMLSelectElement,
   SelectHTMLAttributes<HTMLSelectElement>
->(({ className, children, ...props }, ref) => (
-  <select
-    ref={ref}
-    className={cn(
-      "w-full h-9 px-3 text-sm rounded-lg border border-slate-300 bg-white",
-      "focus-ring",
-      className
-    )}
-    {...props}
-  >
-    {children}
-  </select>
-));
+>(({ className, children, title: titleProp, ...props }, ref) => {
+  const fieldLabel = useContext(FieldContext);
+  return (
+    <select
+      ref={ref}
+      title={titleProp ?? fieldLabel ?? undefined}
+      className={cn(
+        "w-full h-9 px-3 text-sm rounded-lg border border-slate-300 bg-white",
+        "focus-ring",
+        className
+      )}
+      {...props}
+    >
+      {children}
+    </select>
+  );
+});
 Select.displayName = "Select";
 
 export function Field({
@@ -126,24 +143,30 @@ export function Field({
   label?: string;
   hint?: string;
   error?: string;
-  children: React.ReactNode;
+  children: ReactNode;
   required?: boolean;
   className?: string;
 }) {
   return (
-    <div className={cn("space-y-1.5", className)}>
-      {label ? (
-        <label className="block text-xs font-medium text-slate-600">
-          {label}
-          {required ? <span className="text-red-500 mx-1">*</span> : null}
-        </label>
-      ) : null}
-      {children}
-      {error ? (
-        <div className="text-xs text-red-600">{error}</div>
-      ) : hint ? (
-        <div className="text-xs text-slate-400">{hint}</div>
-      ) : null}
-    </div>
+    <FieldContext.Provider value={label ?? null}>
+      <div className={cn("space-y-1.5", className)}>
+        {label ? (
+          <label className="block space-y-1.5">
+            <span className="block text-xs font-medium text-slate-600">
+              {label}
+              {required ? <span className="text-red-500 mx-1">*</span> : null}
+            </span>
+            {children}
+          </label>
+        ) : (
+          children
+        )}
+        {error ? (
+          <div className="text-xs text-red-600">{error}</div>
+        ) : hint ? (
+          <div className="text-xs text-slate-400">{hint}</div>
+        ) : null}
+      </div>
+    </FieldContext.Provider>
   );
 }
