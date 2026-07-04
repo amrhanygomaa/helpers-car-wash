@@ -113,6 +113,7 @@ export function CarwashInvoiceNewPage() {
   });
 
   const [productLines, setProductLines] = useState<ProductLineDraft[]>([]);
+  const [invoiceWorkerId, setInvoiceWorkerId] = useState("");
 
   const [commissionInTotal, setCommissionInTotal] = useState(false);
   const [discountCodeInput, setDiscountCodeInput] = useState("");
@@ -168,8 +169,11 @@ export function CarwashInvoiceNewPage() {
   const loyaltyDiscount = effectiveRedeem * pointValue;
   const total = Math.max(0, preLoyaltyTotal - loyaltyDiscount);
   const commissionTotal = useMemo(
-    () => lines.reduce((sum, l) => sum + l.workers.reduce((s, w) => s + (w.commissionAmount ?? 0), 0), 0),
-    [lines]
+    () => lines.reduce((sum, line) => {
+      const service = activeServices.find((item) => item.id === line.serviceId);
+      return sum + (invoiceWorkerId ? targetCommission(service, line.price, 1) : 0);
+    }, 0),
+    [lines, activeServices, invoiceWorkerId]
   );
   const remainingDue = Math.max(0, total - (paymentType === "cash" ? amountReceived : 0));
 
@@ -297,10 +301,6 @@ export function CarwashInvoiceNewPage() {
     if (lines.length === 0 && productLines.length === 0) { toast.error("أضف خدمة أو إضافة واحدة على الأقل"); return; }
     if (lines.some((l) => !l.serviceId || l.quantity <= 0)) { toast.error("تحقق من بنود الخدمات"); return; }
     if (productLines.some((l) => !l.productId || l.quantity <= 0)) { toast.error("تحقق من بنود الإضافات"); return; }
-    if (amountReceived < 0) { toast.error("المبلغ المستلم غير صحيح"); return; }
-    if ((paymentType === "account" || remainingDue > 0) && !paymentDueDate) {
-      toast.error("حدد تاريخ استحقاق المبلغ المتبقي"); return;
-    }
 
     // Stock validation — can't go negative
     for (const pl of productLines) {
@@ -314,22 +314,20 @@ export function CarwashInvoiceNewPage() {
     const vehicle = vehicles.find((v) => v.id === vehicleId);
     const serviceInvLines: InvoiceLine[] = lines.map((l) => {
       const svc = activeServices.find((s) => s.id === l.serviceId)!;
-      const assigned = l.workers
-        .filter((w) => w.workerId)
-        .map((w) => ({
-          workerId: w.workerId,
-          workerName: dbWorkers.find((d) => d.id === w.workerId)?.name,
-          commissionAmount: w.commissionAmount,
-        }));
+      const assigned = invoiceWorkerId ? [{
+        workerId: invoiceWorkerId,
+        workerName: dbWorkers.find((d) => d.id === invoiceWorkerId)?.name,
+        commissionAmount: targetCommission(svc, l.price, 1),
+      }] : [];
       const lineCommission = assigned.reduce((s, w) => s + (w.commissionAmount ?? 0), 0);
       return {
         id: uid("sline"),
         productId: "",
         productName: svc.name,
         unit: "خدمة",
-        quantity: l.quantity,
+        quantity: 1,
         price: l.price,
-        subtotal: l.price * l.quantity,
+        subtotal: l.price,
         kind: "service",
         serviceId: svc.id,
         // Legacy single-worker mirror (first assigned) for back-compat display.
@@ -356,10 +354,6 @@ export function CarwashInvoiceNewPage() {
     });
 
     const invLines = [...serviceInvLines, ...productInvLines];
-    const actualCashReceived = paymentType === "cash" ? Math.min(amountReceived, total) : 0;
-    const cashOverpayment = paymentType === "cash" ? Math.max(0, amountReceived - total) : 0;
-    const effectivePaymentType: SalesPaymentType = remainingDue > 0 ? "account" : paymentType;
-
     const inv = addSalesInvoice({
       invoiceNumber,
       date,
@@ -367,12 +361,10 @@ export function CarwashInvoiceNewPage() {
       customerName: customer.name,
       lines: invLines,
       total,
-      amountReceived: actualCashReceived,
-      overpayment: cashOverpayment > 0 ? cashOverpayment : undefined,
-      paymentType: effectivePaymentType,
-      paymentMethod,
+      amountReceived: total,
+      paymentType: "cash",
+      paymentMethod: "cash",
       priceType: "retail",
-      paymentDueDate: remainingDue > 0 ? paymentDueDate : undefined,
       notes: notes.trim() || undefined,
       createdByUserId: currentUser?.id,
       invoiceKind: "service",
@@ -462,11 +454,14 @@ export function CarwashInvoiceNewPage() {
     }
 
     // Print 80mm invoice
-    printServiceInvoice({
+    const printResult = printServiceInvoice({
       invoice: inv,
       businessName: settings.companyName ?? "Top Gear",
       currency: settings.currency,
     });
+    if (!printResult.ok) {
+      toast.error("تعذر فتح الطباعة", "تأكد من إعدادات الطابعة وحاول مرة أخرى");
+    }
 
     toast.success("تم تأكيد فاتورة الغسيل", `رقم ${inv.invoiceNumber}`);
     navigate(`/sales/${inv.id}`);
@@ -520,11 +515,19 @@ export function CarwashInvoiceNewPage() {
                 ))}
               </Select>
             </Field>
+            <Field label="الصنايعي">
+              <Select value={invoiceWorkerId} onChange={(e) => setInvoiceWorkerId(e.target.value)}>
+                <option value="">— بدون صنايعي —</option>
+                {dbWorkers.map((worker) => (
+                  <option key={worker.id} value={worker.id}>{worker.name}</option>
+                ))}
+              </Select>
+            </Field>
           </CardBody>
         </Card>
 
         {/* Payment */}
-        <Card>
+        <Card className="hidden">
           <CardHeader title="الدفع" />
           <CardBody className="space-y-4">
             <Field label="نوع الدفع">
@@ -550,7 +553,7 @@ export function CarwashInvoiceNewPage() {
                 onChange={(e) => setAmountReceived(Number(e.target.value))}
               />
             </Field>
-            {remainingDue > 0 && (
+            {false && remainingDue > 0 && (
               <Field label="تاريخ استحقاق المتبقي" required>
                 <Input type="date" value={paymentDueDate} onChange={(e) => setPaymentDueDate(e.target.value)} />
               </Field>
@@ -587,8 +590,6 @@ export function CarwashInvoiceNewPage() {
             <THead>
               <TR>
                 <TH>الخدمة</TH>
-                <TH>الصنايعي</TH>
-                <TH className="w-20">الكمية</TH>
                 <TH className="w-32">السعر</TH>
                 {anyLineHasCommission && <TH className="w-28">العمولة</TH>}
                 <TH className="w-32 text-end">الإجمالي</TH>
@@ -615,7 +616,7 @@ export function CarwashInvoiceNewPage() {
                           ))}
                         </Select>
                       </TD>
-                      <TD>
+                      <TD className="hidden">
                         <div className="space-y-1.5 min-w-[200px]">
                           {l.workers.length === 0 ? (
                             <span className="text-slate-400 text-xs">— لم يُسنَد صنايعي —</span>
@@ -650,7 +651,7 @@ export function CarwashInvoiceNewPage() {
                           )}
                         </div>
                       </TD>
-                      <TD>
+                      <TD className="hidden">
                         <Input type="number" min={1} value={l.quantity}
                           onChange={(e) => onQuantityChange(l.id, Number(e.target.value))} />
                       </TD>
@@ -691,10 +692,10 @@ export function CarwashInvoiceNewPage() {
       {dbProducts.length > 0 && (
         <Card className="mt-4">
           <CardHeader
-            title="إضافات (فوّاحة، إلخ…)"
+            title="المنتجات"
             actions={
               <Button variant="outline" size="sm" onClick={addProductLine}>
-                <Plus className="w-4 h-4" /> إضافة ملحق
+                <Plus className="w-4 h-4" /> إضافة منتج
               </Button>
             }
           />
@@ -703,7 +704,6 @@ export function CarwashInvoiceNewPage() {
               <THead>
                 <TR>
                   <TH>الإضافة</TH>
-                  <TH className="w-24">الكمية</TH>
                   <TH className="w-20">الكمية</TH>
                   <TH className="w-32">سعر البيع</TH>
                   <TH className="w-32 text-end">الإجمالي</TH>
@@ -730,7 +730,7 @@ export function CarwashInvoiceNewPage() {
                             ))}
                           </Select>
                         </TD>
-                        <TD>
+                        <TD className="hidden">
                           <span className={stockWarning ? "text-amber-700 font-bold flex items-center gap-1" : "text-slate-600"}>
                             {stockWarning && <AlertTriangle className="w-3.5 h-3.5" />}
                             {prod?.stockQty ?? "—"}

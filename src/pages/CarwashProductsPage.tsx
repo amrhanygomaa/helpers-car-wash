@@ -70,9 +70,9 @@ function ProductForm({ open, initial, onSave, onClose }: ProductFormProps) {
   }
 
   return (
-    <Dialog open={open} onClose={onClose} title={initial ? "تعديل إضافة" : "إضافة جديدة"}>
+    <Dialog open={open} onClose={onClose} title={initial ? "تعديل منتج" : "منتج جديد"}>
       <div className="space-y-4">
-        <Field label="اسم الإضافة" required>
+        <Field label="اسم المنتج" required>
           <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="مثال: فوّاحة" />
         </Field>
         <Field label={`سعر البيع (${CURRENCY})`} required>
@@ -243,12 +243,12 @@ export function CarwashProductsPage() {
   return (
     <>
       <PageHeader
-        title="إضافات الغسيل"
-        description="فوّاحات، معطرات، وأي إضافة تُباع مع الغسيل — مع متابعة الكمية والربح."
+        title="المنتجات"
+        description="المنتجات التي تُباع مع الغسيل، مع متابعة الكمية والربح."
         actions={
           canManage ? (
             <Button onClick={() => { setEditing(null); setFormOpen(true); }}>
-              <Plus className="w-4 h-4" /> إضافة جديدة
+              <Plus className="w-4 h-4" /> منتج جديد
             </Button>
           ) : null
         }
@@ -263,7 +263,7 @@ export function CarwashProductsPage() {
 
       {/* Active products */}
       <Card>
-        <CardHeader title="الإضافات الفعّالة" />
+        <CardHeader title="المنتجات الفعّالة" />
         <CardBody className="p-0">
           {activeProducts.length === 0 ? (
             <EmptyState
@@ -276,7 +276,7 @@ export function CarwashProductsPage() {
             <Table>
               <THead>
                 <TR>
-                  <TH>الإضافة</TH>
+                  <TH>المنتج</TH>
                   <TH className="w-24">الكمية</TH>
                   <TH className="w-32">سعر البيع</TH>
                   <TH className="w-32">التكلفة</TH>

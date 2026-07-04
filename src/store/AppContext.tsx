@@ -1665,7 +1665,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       };
       setCashEntries((list) => [ce, ...list]);
     }
-
     return full;
   };
   const updatePurchaseInvoice: AppActions["updatePurchaseInvoice"] = (id, patch) => {
@@ -1894,6 +1893,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
         paymentMethod: inv.paymentMethod,
       };
       setCashEntries((list) => [ce, ...list]);
+    }
+    // Worker commission is paid from the drawer and must reduce its balance.
+    if ((inv.commissionTotal ?? 0) > 0) {
+      const commissionEntry: CashEntry = {
+        id: uid("cash_commission"),
+        type: "manual-remove",
+        amount: -(inv.commissionTotal ?? 0),
+        description: `عمولة صنايعي — فاتورة ${inv.invoiceNumber}`,
+        referenceId: id,
+        date: inv.date,
+        paymentMethod: "cash",
+      };
+      setCashEntries((list) => [commissionEntry, ...list]);
     }
     if (inv.amountReceived > 0) {
       const initEntry: import("../types").PaymentLogEntry = {

@@ -9,7 +9,6 @@ import {
   Droplets,
   GripVertical,
   KeyRound,
-  MessageCircle,
   Play,
   Plus,
   Printer,
@@ -27,13 +26,11 @@ import { useToast } from "../components/ui/Toast";
 import { useCarwash } from "../store/CarwashContext";
 import { useCatalog } from "../store/CatalogContext";
 import { useAuth } from "../store/AuthContext";
-import { useSettings } from "../store/SettingsContext";
 import { vehicleLabel } from "./VehiclesPage";
 import { formatDateTime, formatDate } from "../lib/format";
 import { hasPermission } from "../lib/permissions";
 import { cn, todayISO } from "../lib/utils";
 import { printIntakeTicket } from "../lib/print";
-import { openWhatsapp, carReadyMessage } from "../lib/whatsapp";
 import type { QueueStatus, QueueTicket, WashService } from "../types";
 
 /** Common bodywork areas inspected for pre-existing damage at intake. */
@@ -125,17 +122,7 @@ export function QueuePage() {
   } = useCarwash();
   const { customers, addCustomer } = useCatalog();
   const { currentUser } = useAuth();
-  const { settings } = useSettings();
   const toast = useToast();
-
-  function notifyReady(ticket: QueueTicket) {
-    const company = settings.companyNameAr || settings.companyName || "Top Gear";
-    const ok = openWhatsapp(
-      ticket.phone,
-      carReadyMessage({ customerName: ticket.customerName, vehicleLabel: ticket.vehicleLabel, company })
-    );
-    if (!ok) toast.error("لا يوجد رقم هاتف لهذا العميل");
-  }
 
   const canAdd = hasPermission(currentUser, "queue", "add");
   const canEdit = hasPermission(currentUser, "queue", "edit");
@@ -284,21 +271,8 @@ export function QueuePage() {
     const cleanVehicleText = vehicleText.trim();
     const selectedServices = activeServices.filter((service) => serviceIds.includes(service.id));
 
-    if (!cleanName) {
-      toast.error("أدخل اسم العميل");
-      return;
-    }
-    if (!cleanBrand && !vehicleId) {
-      toast.error("أدخل ماركة السيارة");
-      return;
-    }
-    if (selectedServices.length === 0) {
-      toast.error("اختر خدمة واحدة على الأقل");
-      return;
-    }
-
     let effectiveCustomerId = customerId || undefined;
-    if (!effectiveCustomerId) {
+    if (!effectiveCustomerId && (cleanName || cleanPhone)) {
       const existingCustomer = customers.find((customer) => {
         if (customer.archived) return false;
         const samePhone = cleanPhone && customer.phone?.trim() === cleanPhone;
@@ -338,7 +312,7 @@ export function QueuePage() {
     const keyTime = keyReceived ? new Date().toISOString() : undefined;
     const ticket = addQueueTicket({
       customerId: effectiveCustomerId,
-      customerName: cleanName,
+      customerName: cleanName || "زائر",
       phone: cleanPhone || undefined,
       vehicleId: effectiveVehicleId,
       vehicleBrand: (selectedVehicle?.brand ?? cleanBrand) || undefined,
@@ -498,7 +472,6 @@ export function QueuePage() {
               onOpenInvoice={t.invoiceId ? () => navigate(`/sales/${t.invoiceId}`) : undefined}
               onPrint={() => handlePrint(t)}
               onRequeue={() => requeueTicket(t.id)}
-              onNotifyReady={() => notifyReady(t)}
               onDragStart={(event) => onTicketDragStart(event, t)}
               onDragEnd={clearDragState}
             />
@@ -583,7 +556,7 @@ export function QueuePage() {
               ))}
             </Select>
           </Field>
-          <Field label="اسم العميل" required>
+          <Field label="اسم العميل">
             <Input value={name} onChange={(e) => setName(e.target.value)} />
           </Field>
           <Field label="رقم الهاتف">
@@ -599,7 +572,7 @@ export function QueuePage() {
               </Select>
             </Field>
           ) : null}
-          <Field label="ماركة السيارة" required>
+          <Field label="ماركة السيارة">
             <Input value={vehicleBrand} onChange={(e) => setVehicleBrand(e.target.value)} placeholder="مثل: Toyota" />
           </Field>
           <Field label="رقم اللوحة / وصف السيارة" hint="لو أضفت رقم لوحة سيتم حفظ المركبة مع العميل">
@@ -611,7 +584,7 @@ export function QueuePage() {
           <Field label="موعد الاستلام المطلوب">
             <Input type="datetime-local" value={requestedPickupAt} onChange={(e) => setRequestedPickupAt(e.target.value)} />
           </Field>
-          <Field label="الخدمات" required className="md:col-span-2">
+          <Field label="الخدمات" className="md:col-span-2">
             {activeServices.length === 0 ? (
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
                 لا توجد خدمات مفعّلة. أضف الخدمات من صفحة الخدمات أولاً.
@@ -783,7 +756,6 @@ function TicketCard({
   onOpenInvoice,
   onPrint,
   onRequeue,
-  onNotifyReady,
   onDragStart,
   onDragEnd,
 }: {
@@ -808,7 +780,6 @@ function TicketCard({
   onOpenInvoice?: () => void;
   onPrint?: () => void;
   onRequeue?: () => void;
-  onNotifyReady?: () => void;
   onDragStart?: (event: DragEvent<HTMLElement>) => void;
   onDragEnd?: () => void;
 }) {
@@ -915,11 +886,6 @@ function TicketCard({
         ) : null}
         {onOpenInvoice ? (
           <Button size="sm" variant="outline" onClick={onOpenInvoice}><Receipt className="h-3.5 w-3.5" /> فتح</Button>
-        ) : null}
-        {onNotifyReady && t.phone ? (
-          <Button size="sm" variant="outline" onClick={onNotifyReady} title="إشعار واتساب: العربية جاهزة">
-            <MessageCircle className="h-3.5 w-3.5" /> واتساب
-          </Button>
         ) : null}
         {onPrint ? (
           <Button size="icon" variant="ghost" onClick={onPrint} title="طباعة تذكرة الاستقبال">
