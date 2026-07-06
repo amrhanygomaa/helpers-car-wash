@@ -42,7 +42,7 @@ jobs:
           Set-Content -Path electron/license-public-key.cjs -Value ($lines -join "`n") -NoNewline
 
       - name: Build Windows installer (unsigned)
-        run: npm run dist:win
+        run: npm run dist:win -- --publish never
         env:
           HELPERS_SKIP_CODE_SIGN: "1"
 
