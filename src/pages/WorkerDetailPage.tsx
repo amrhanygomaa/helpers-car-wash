@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import {
   ArrowRight,
   TrendingUp,
@@ -10,7 +10,6 @@ import {
   Sparkles,
   Award,
   AlertCircle,
-  HelpCircle,
 } from "lucide-react";
 import { PageHeader } from "../components/layout/AppLayout";
 import { Card, CardBody, CardHeader } from "../components/ui/Card";
@@ -22,14 +21,12 @@ import { Dialog } from "../components/ui/Dialog";
 import { Field, Input, Select } from "../components/ui/Input";
 import { useToast } from "../components/ui/Toast";
 import { hasDb, db } from "../db/client";
-import { workers, dailyClosures, workerWithdrawals } from "../db/schema";
-import { eq, and } from "drizzle-orm";
+import { workers } from "../db/schema";
+import { eq } from "drizzle-orm";
 import { listWorkerWithdrawalsForWorker, recordWorkerFinancialAdjustment, deleteWorkerWithdrawal } from "../features/treasury/queries";
 import { listDailyClosuresForWorker } from "../features/payroll/queries";
-import { formatCurrency, formatDate } from "../lib/format";
+import { formatCurrency } from "../lib/format";
 import { useSettings } from "../store/SettingsContext";
-import { useInvoicing } from "../store/InvoicingContext";
-import { lineWorkers } from "../store/_pure";
 import { todayISO, uid } from "../lib/utils";
 import { piastresToEgp, egpToPiastres } from "../lib/money";
 import type { Worker, DailyClosure, WorkerWithdrawal } from "../db/schema";
@@ -45,7 +42,6 @@ export function WorkerDetailPage() {
   const navigate = useNavigate();
   const toast = useToast();
   const { settings } = useSettings();
-  const { salesInvoices } = useInvoicing();
 
   const [worker, setWorker] = useState<Worker | null>(null);
   const [closures, setClosures] = useState<DailyClosure[]>([]);
