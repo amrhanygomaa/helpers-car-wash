@@ -2,6 +2,9 @@ name: Build Windows Installer
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - ci/build-windows-testers
 
 jobs:
   build:
@@ -26,18 +29,17 @@ jobs:
         env:
           LICENSE_PUBLIC_KEY_PEM: ${{ secrets.LICENSE_PUBLIC_KEY_PEM }}
         run: |
-          $escaped = $env:LICENSE_PUBLIC_KEY_PEM -replace "`r`n", "`n"
-          $escaped = $escaped -replace "`n", '\n'
-          $content = @"
-// SECURITY: Public key is hardcoded -- never allow ENV override.
-// This prevents attackers from replacing the key with their own keypair.
-const LICENSE_PUBLIC_KEY =
-  "$escaped";
-
-// Freeze to prevent runtime mutation via require cache
-Object.freeze(module.exports = { LICENSE_PUBLIC_KEY });
-"@
-          Set-Content -Path electron/license-public-key.cjs -Value $content -NoNewline
+          $escaped = $env:LICENSE_PUBLIC_KEY_PEM -replace "`r`n", "`n" -replace "`n", '\n'
+          $lines = @(
+            '// SECURITY: Public key is hardcoded -- never allow ENV override.',
+            '// This prevents attackers from replacing the key with their own keypair.',
+            'const LICENSE_PUBLIC_KEY =',
+            ('  "' + $escaped + '";'),
+            '',
+            '// Freeze to prevent runtime mutation via require cache',
+            'Object.freeze(module.exports = { LICENSE_PUBLIC_KEY });'
+          )
+          Set-Content -Path electron/license-public-key.cjs -Value ($lines -join "`n") -NoNewline
 
       - name: Build Windows installer (unsigned)
         run: npm run dist:win
