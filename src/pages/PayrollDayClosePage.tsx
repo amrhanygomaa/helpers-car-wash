@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   AlertTriangle,
   HandCoins,
@@ -537,7 +538,11 @@ export function PayrollDayClosePage() {
               <TBody>
                 {dayRows.map((row) => (
                   <TR key={row.worker.id}>
-                    <TD className="font-medium text-slate-900">{row.worker.name}</TD>
+                    <TD className="font-medium text-slate-900">
+                      <Link to={`/workers/${row.worker.id}`} className="text-brand-700 hover:underline">
+                        {row.worker.name}
+                      </Link>
+                    </TD>
                     <TD>{WAGE_LABELS[row.worker.wageType]}</TD>
                     <TD className="text-end">{row.carsCount}</TD>
                     <TD className="text-end">{row.servicesCount}</TD>
@@ -649,7 +654,11 @@ export function PayrollDayClosePage() {
                 <TBody>
                   {workers.map((worker) => (
                     <TR key={worker.id} className={!worker.active ? "text-slate-400" : undefined}>
-                      <TD className="font-medium">{worker.name}</TD>
+                      <TD className="font-medium">
+                        <Link to={`/workers/${worker.id}`} className="text-brand-700 hover:underline">
+                          {worker.name}
+                        </Link>
+                      </TD>
                       <TD>{WAGE_LABELS[worker.wageType]}</TD>
                       <TD>{worker.baseWage != null ? formatPiastres(worker.baseWage) : "—"}</TD>
                       <TD>

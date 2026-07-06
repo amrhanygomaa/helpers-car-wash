@@ -141,7 +141,7 @@ export function SalesInvoiceDetailPage() {
         </div>
       ) : null}
 
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         {/* 1. Invoice total */}
         <Stat
           label={inv.discount && inv.discount > 0 ? "الإجمالي قبل الخصم" : "الإجمالي"}
@@ -153,60 +153,16 @@ export function SalesInvoiceDetailPage() {
         {inv.discount && inv.discount > 0 ? (
           <Stat label="الإجمالي بعد الخصم" value={formatCurrency(inv.total, settings.currency)} />
         ) : null}
-        <Stat label="المبلغ المدفوع" value={formatCurrency(inv.amountReceived, settings.currency)} tone="green" />
-        <Stat label="المتبقي" value={formatCurrency(inv.remaining, settings.currency)} tone={inv.remaining > 0 ? "amber" : "slate"} />
-        {(inv.overpayment ?? 0) > 0 ? (
-          <Stat label="رصيد دائن للعميل" value={formatCurrency(inv.overpayment!, settings.currency)} tone="blue" />
-        ) : null}
         <Stat
           label="الحالة"
-          value={
-            inv.cancelled ? "ملغاة"
-            : inv.status === "paid" && (inv.overpayment ?? 0) > 0 ? "مسددة بزيادة"
-            : inv.status === "paid" ? "مسددة"
-            : inv.status === "partial" ? "جزئي"
-            : "غير مسددة"
-          }
-          tone={
-            inv.cancelled ? "slate"
-            : inv.status === "paid" && (inv.overpayment ?? 0) > 0 ? "blue"
-            : inv.status === "paid" ? "green"
-            : inv.status === "partial" ? "amber"
-            : "red"
-          }
-        />
-        {inv.paymentDueDate ? (
-          <Stat
-            label="تاريخ الاستحقاق"
-            value={formatDate(inv.paymentDueDate)}
-            tone={dueDatePassed ? "red" : "slate"}
-          />
-        ) : null}
-        {/* 6. Total customer balance across all invoices */}
-        <Stat
-          label={`إجمالي رصيد ${inv.customerName}`}
-          value={
-            totalCustomerBalance > 0
-              ? `مديون: ${formatCurrency(totalCustomerBalance, settings.currency)}`
-              : totalCustomerBalance < 0
-                ? `رصيد دائن: ${formatCurrency(-totalCustomerBalance, settings.currency)}`
-                : "لا يوجد مستحق"
-          }
-          tone={totalCustomerBalance > 0 ? "red" : totalCustomerBalance < 0 ? "blue" : "slate"}
+          value={inv.cancelled ? "ملغاة" : "مسددة"}
+          tone={inv.cancelled ? "slate" : "green"}
         />
       </div>
-      {/* Credit balance notice when return creates credit */}
-      {(inv.overpayment ?? 0) > 0 && !inv.cancelled && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-900">
-          <span className="font-semibold">رصيد دائن: </span>
-          للعميل <strong>{inv.customerName}</strong> رصيد دائن من هذه الفاتورة بقيمة{" "}
-          <strong>{formatCurrency(inv.overpayment!, settings.currency)}</strong> — يمكن استخدامه في فواتير قادمة أو استرداده نقداً.
-        </div>
-      )}
 
       <Card>
         <CardHeader title="تفاصيل العميل والفاتورة" />
-        <CardBody className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <CardBody className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <Info label="العميل">{inv.customerName}</Info>
           <Info label="هاتف العميل">{customer?.phone ?? "—"}</Info>
           {inv.vehicleLabel ? (
@@ -214,13 +170,8 @@ export function SalesInvoiceDetailPage() {
           ) : (
             <Info label="السائق">{inv.driverName ?? "—"}</Info>
           )}
-          <Info label="طريقة الدفع">
-            <Badge tone={inv.paymentType === "cash" ? "emerald" : "indigo"}>
-              {inv.paymentType === "cash" ? "نقدي" : "آجل"}
-            </Badge>
-          </Info>
           {inv.notes ? (
-            <Info label="ملاحظات" className="col-span-2 md:col-span-4">
+            <Info label="ملاحظات" className="col-span-1 md:col-span-3">
               {inv.notes}
             </Info>
           ) : null}
@@ -272,36 +223,6 @@ export function SalesInvoiceDetailPage() {
           </Table>
         </CardBody>
       </Card>
-
-      {inv.paymentLog && inv.paymentLog.length > 0 ? (
-        <Card>
-          <CardHeader title="سجل سداد الدفعات" />
-          <CardBody>
-            <Table>
-              <THead>
-                <TR>
-                  <TH className="w-10">#</TH>
-                  <TH>التاريخ</TH>
-                  <TH>وسيلة الدفع</TH>
-                  <TH className="text-end">المبلغ</TH>
-                  <TH>ملاحظات</TH>
-                </TR>
-              </THead>
-              <TBody>
-                {inv.paymentLog.map((entry, idx) => (
-                  <TR key={entry.id}>
-                    <TD>{idx + 1}</TD>
-                    <TD>{formatDate(entry.date)}</TD>
-                    <TD>{PAYMENT_METHOD_LABELS[entry.paymentMethod] ?? entry.paymentMethod}</TD>
-                    <TD className="text-end font-semibold text-emerald-700">{formatCurrency(entry.amount, settings.currency)}</TD>
-                    <TD className="text-xs text-slate-500">{entry.notes ?? "—"}</TD>
-                  </TR>
-                ))}
-              </TBody>
-            </Table>
-          </CardBody>
-        </Card>
-      ) : null}
 
       <Dialog
         open={payOpen}

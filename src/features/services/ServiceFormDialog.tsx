@@ -127,6 +127,11 @@ export function ServiceFormDialog({
       }
     >
       <div className="grid grid-cols-2 gap-4">
+        {editing?.code && (
+          <Field label="كود الخدمة">
+            <Input value={editing.code} disabled className="font-mono bg-slate-50 text-slate-500" />
+          </Field>
+        )}
         <Field label="اسم الخدمة" required error={errors.name}>
           <Input
             value={form.name}

@@ -5,135 +5,17 @@ import { Button } from "../components/ui/Button";
 import { ConfirmDialog, Dialog } from "../components/ui/Dialog";
 import { Field, Input } from "../components/ui/Input";
 import { useToast } from "../components/ui/Toast";
-import type { AppUser, MonthlyEmployeeConfig, UserPermissions } from "../types";
+import type { AppUser, UserPermissions } from "../types";
 import { hashPassword } from "../lib/auth";
-import { MONTH_NAMES_AR, localISODate } from "../lib/utils";
 import {
   CARWASH_PERMISSION_GROUPS,
   areAllCarwashPermissionsEnabled,
   areAllPermissionsEnabled,
-  createCashierPermissions,
   normalizePermissions,
   setPermission,
   setCarwashPermissionGroups,
   setPermissionGroup,
 } from "../lib/permissions";
-
-function buildVisibleMonths(): string[] {
-  const now = new Date();
-  const months: string[] = [];
-  // Show last 2 months + current + next 5 (8 months total)
-  for (let i = -2; i <= 5; i++) {
-    const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
-    months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
-  }
-  return months;
-}
-
-function MonthlyConfigTable({
-  configs,
-  onChange,
-}: {
-  configs: Record<string, MonthlyEmployeeConfig>;
-  onChange: (c: Record<string, MonthlyEmployeeConfig>) => void;
-}) {
-  const visibleMonths = useMemo(() => {
-    const base = buildVisibleMonths();
-    // Also include any months that already have config but aren't in base
-    const extra = Object.keys(configs).filter((k) => !base.includes(k)).sort();
-    return [...extra, ...base].filter((v, i, a) => a.indexOf(v) === i).sort();
-  }, [configs]);
-
-  const todayMonth = localISODate().slice(0, 7);
-
-  function setField(month: string, field: "target" | "commissionPct", raw: string) {
-    const val = raw.trim() === "" ? undefined : Number(raw);
-    onChange({
-      ...configs,
-      [month]: { ...configs[month], [field]: val },
-    });
-  }
-
-  function clearMonth(month: string) {
-    const next = { ...configs };
-    delete next[month];
-    onChange(next);
-  }
-
-  return (
-    <div>
-      <div className="flex items-center gap-2 mb-2">
-        <span className="text-sm font-semibold text-slate-700">تارجت وعمولة لكل شهر</span>
-        <span className="text-xs text-slate-400">(يُطبَّق بدلاً من الافتراضي للشهر المحدد)</span>
-      </div>
-      <div className="rounded-lg border border-slate-200 overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-50 border-b border-slate-200">
-            <tr>
-              <th className="text-right px-3 py-2 font-medium text-slate-600 w-28">الشهر</th>
-              <th className="text-right px-3 py-2 font-medium text-slate-600">التارجت (جنيه)</th>
-              <th className="text-right px-3 py-2 font-medium text-slate-600">العمولة (%)</th>
-              <th className="w-8" />
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {visibleMonths.map((month) => {
-              const [y, m] = month.split("-").map(Number);
-              const label = `${MONTH_NAMES_AR[m - 1]} ${y}`;
-              const cfg = configs[month];
-              const isCurrentMonth = month === todayMonth;
-              return (
-                <tr key={month} className={isCurrentMonth ? "bg-blue-50/50" : ""}>
-                  <td className="px-3 py-1.5 text-slate-700 font-medium whitespace-nowrap">
-                    {label}
-                    {isCurrentMonth && (
-                      <span className="mr-1 text-[10px] text-blue-500 font-normal">الحالي</span>
-                    )}
-                  </td>
-                  <td className="px-3 py-1.5">
-                    <Input
-                      type="number"
-                      min={0}
-                      step="1"
-                      value={cfg?.target !== undefined ? String(cfg.target) : ""}
-                      onChange={(e) => setField(month, "target", e.target.value)}
-                      placeholder="افتراضي"
-                      className="h-7 text-xs w-full"
-                    />
-                  </td>
-                  <td className="px-3 py-1.5">
-                    <Input
-                      type="number"
-                      min={0}
-                      max={100}
-                      step="0.01"
-                      value={cfg?.commissionPct !== undefined ? String(cfg.commissionPct) : ""}
-                      onChange={(e) => setField(month, "commissionPct", e.target.value)}
-                      placeholder="افتراضي"
-                      className="h-7 text-xs w-full"
-                    />
-                  </td>
-                  <td className="px-2 py-1.5">
-                    {cfg && (cfg.target !== undefined || cfg.commissionPct !== undefined) && (
-                      <button
-                        type="button"
-                        onClick={() => clearMonth(month)}
-                        className="text-slate-400 hover:text-rose-500"
-                        title="مسح"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
 
 function UserFormDialog({
   open,
@@ -156,28 +38,12 @@ function UserFormDialog({
   const [permissions, setPermissions] = useState<UserPermissions>(
     normalizePermissions(editing?.permissions)
   );
-  const [monthlySalary, setMonthlySalary] = useState(
-    editing?.monthlySalary === undefined ? "" : String(editing.monthlySalary)
-  );
-  const [salesCommissionPct, setSalesCommissionPct] = useState(
-    editing?.salesCommissionPct === undefined ? "" : String(editing.salesCommissionPct)
-  );
-  const [monthlySalesTarget, setMonthlySalesTarget] = useState(
-    editing?.monthlySalesTarget === undefined ? "" : String(editing.monthlySalesTarget)
-  );
-  const [monthlyConfigs, setMonthlyConfigs] = useState<Record<string, MonthlyEmployeeConfig>>(
-    editing?.monthlyConfigs ?? {}
-  );
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const allPermissionsSelected = useMemo(
     () => areAllCarwashPermissionsEnabled(permissions),
     [permissions]
   );
-
-  function optionalNumber(value: string) {
-    return value.trim() === "" ? undefined : Number(value);
-  }
 
   async function handleSave() {
     const e: Record<string, string> = {};
@@ -190,35 +56,12 @@ function UserFormDialog({
     if (usernameExists) e.username = "اسم الدخول مستخدم بالفعل";
     if (!editing && !password) e.password = "مطلوب";
     if (password && password.length < 4) e.password = "PIN يجب ألا يقل عن 4 أرقام";
-    const salary = optionalNumber(monthlySalary);
-    const commission = optionalNumber(salesCommissionPct);
-    const target = optionalNumber(monthlySalesTarget);
-    if (salary !== undefined && salary < 0) e.monthlySalary = "يجب أن يكون موجباً";
-    if (commission !== undefined && (commission < 0 || commission > 100)) {
-      e.salesCommissionPct = "النسبة يجب أن تكون بين 0 و 100";
-    }
-    if (target !== undefined && target < 0) e.monthlySalesTarget = "يجب أن يكون موجباً";
     if (Object.keys(e).length > 0) {
       setErrors(e);
       return;
     }
 
     setSaving(true);
-    const cleanedMonthlyConfigs: Record<string, MonthlyEmployeeConfig> = {};
-    Object.entries(monthlyConfigs).forEach(([k, v]) => {
-      if (v.target !== undefined || v.commissionPct !== undefined) {
-        cleanedMonthlyConfigs[k] = v;
-      }
-    });
-    const employeeFields =
-      editing?.role !== "owner"
-        ? {
-            monthlySalary: salary,
-            salesCommissionPct: commission,
-            monthlySalesTarget: target,
-            monthlyConfigs: cleanedMonthlyConfigs,
-          }
-        : {};
     if (editing) {
       const patch: Partial<AppUser> = {
         name: name.trim(),
@@ -226,7 +69,6 @@ function UserFormDialog({
         role: editing.role === "owner" ? "owner" : role,
         roleId: editing.role === "owner" ? "owner" : role === "cashier" ? "cashier" : "custom",
         permissions,
-        ...employeeFields,
       };
       if (password) patch.passwordHash = await hashPassword(password);
       updateUser(editing.id, patch);
@@ -239,7 +81,6 @@ function UserFormDialog({
         role,
         roleId: role === "cashier" ? "cashier" : "custom",
         permissions,
-        ...employeeFields,
       });
       toast.success("تم إضافة المستخدم");
     }
@@ -251,50 +92,58 @@ function UserFormDialog({
     <Dialog
       open={open}
       onClose={onClose}
-      title={editing ? "تعديل مستخدم" : "إضافة مستخدم جديد"}
+      title={editing ? "تعديل بيانات المستخدم" : "إضافة مستخدم جديد"}
       width="lg"
       footer={
         <>
-          <Button variant="outline" onClick={onClose}>إلغاء</Button>
-          <Button onClick={handleSave} disabled={saving}>
-            {saving ? "جاري الحفظ..." : "حفظ"}
+          <Button variant="outline" onClick={onClose} disabled={saving}>
+            إلغاء
+          </Button>
+          <Button onClick={handleSave} loading={saving}>
+            {editing ? "حفظ التغييرات" : "إضافة مستخدم"}
           </Button>
         </>
       }
     >
-      <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-4">
-          <Field label="اسم الموظف" required error={errors.name}>
+      <div className="space-y-4 text-start" dir="rtl">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <Field label="الاسم بالكامل" required error={errors.name}>
             <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="مثال: أحمد محمد"
+              autoFocus
             />
           </Field>
-          <Field label="اسم الدخول" required error={errors.username}>
+          <Field label="اسم الدخول (اسم المستخدم)" required error={errors.username}>
             <Input
               value={username}
               onChange={(e) => setUsername(e.target.value)}
+              placeholder="مثال: ahmed12"
               disabled={editing?.role === "owner"}
             />
           </Field>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {editing?.role !== "owner" && (
-            <Field label="الدور">
+            <Field label="الدور الوظيفي" required>
               <select
                 value={role}
-                onChange={(e) => {
-                  const nextRole = e.target.value as "cashier" | "employee";
-                  setRole(nextRole);
-                  if (nextRole === "cashier") setPermissions(createCashierPermissions());
-                }}
-                className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                onChange={(e) => setRole(e.target.value as "cashier" | "employee")}
+                className="w-full h-9 px-3 rounded-lg border border-slate-300 bg-white text-sm"
               >
-                <option value="cashier">Cashier / Operator</option>
-                <option value="employee">دور مخصص</option>
+                <option value="cashier">كاشير / استقبال</option>
+                <option value="employee">مخصص</option>
               </select>
             </Field>
           )}
-          <Field label={editing ? "PIN (اتركه فارغاً لعدم التغيير)" : "PIN"} required={!editing} error={errors.password}>
+          <Field
+            label={editing ? "تغيير رمز المرور (PIN)" : "رمز المرور (PIN)"}
+            required={!editing}
+            error={errors.password}
+            hint="رقم سري من 4 أرقام على الأقل لتسجيل الدخول"
+          >
             <Input
               type="password"
               inputMode="numeric"
@@ -306,46 +155,6 @@ function UserFormDialog({
 
         {editing?.role !== "owner" && (
           <div className="border border-slate-200 rounded-xl p-4 bg-slate-50 space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <Field label="الراتب الشهري" error={errors.monthlySalary}>
-                <Input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={monthlySalary}
-                  onChange={(e) => setMonthlySalary(e.target.value)}
-                  placeholder="جنيه"
-                />
-              </Field>
-              <Field label="نسبة العمولة على الغسيل" error={errors.salesCommissionPct}>
-                <Input
-                  type="number"
-                  min={0}
-                  max={100}
-                  step="0.01"
-                  value={salesCommissionPct}
-                  onChange={(e) => setSalesCommissionPct(e.target.value)}
-                  placeholder="%"
-                />
-              </Field>
-              <Field label="التارجت الشهري (افتراضي)" error={errors.monthlySalesTarget}>
-                <Input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={monthlySalesTarget}
-                  onChange={(e) => setMonthlySalesTarget(e.target.value)}
-                  placeholder="جنيه"
-                />
-              </Field>
-            </div>
-
-            {/* Monthly targets & commissions per month */}
-            <MonthlyConfigTable
-              configs={monthlyConfigs}
-              onChange={setMonthlyConfigs}
-            />
-
             <div className="flex flex-wrap items-center justify-between gap-3">
               <h3 className="font-semibold text-slate-800 flex items-center gap-2">
                 <Shield className="w-5 h-5 text-brand-600" /> الصلاحيات
@@ -421,7 +230,7 @@ export function UsersPage() {
   const toast = useToast();
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6" dir="rtl">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
@@ -429,14 +238,14 @@ export function UsersPage() {
           </h1>
           <p className="text-slate-500 mt-1">إدارة الموظفين والصلاحيات الخاصة بهم</p>
         </div>
-        <Button onClick={() => setFormState({ open: true })} className="gap-2">
-          <Plus className="w-5 h-5" /> إضافة مستخدم
+        <Button onClick={() => setFormState({ open: true })}>
+          <Plus className="w-4 h-4" /> إضافة مستخدم جديد
         </Button>
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-        <table className="w-full text-sm text-right">
-          <thead className="bg-slate-50 border-b border-slate-200 text-slate-600">
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <table className="w-full text-right text-sm">
+          <thead className="bg-slate-50 text-slate-700 border-b border-slate-200">
             <tr>
               <th className="px-4 py-3 font-medium">الاسم</th>
               <th className="px-4 py-3 font-medium">اسم الدخول</th>

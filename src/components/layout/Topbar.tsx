@@ -20,6 +20,7 @@ const TITLES: Record<string, string> = {
   "/cashbox/shift": "وردية الخزنة",
   "/reports/end-of-day": "تقرير نهاية اليوم",
   "/workers/attendance": "حضور الصنايعية",
+  "/workers": "الصنايعية",
   "/carwash/reports": "تقارير الغسيل",
   "/vehicles": "المركبات",
   "/services": "خدمات الغسيل",

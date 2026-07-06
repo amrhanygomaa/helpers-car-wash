@@ -19,7 +19,7 @@ export function Dialog({
   subtitle?: ReactNode;
   children: ReactNode;
   footer?: ReactNode;
-  width?: "sm" | "md" | "lg" | "xl" | "2xl";
+  width?: "sm" | "md" | "md+" | "lg" | "xl" | "2xl";
 }) {
   useEffect(() => {
     if (!open) return;
@@ -42,6 +42,8 @@ export function Dialog({
       ? "max-w-sm"
       : width === "md"
       ? "max-w-md"
+      : width === "md+"
+      ? "max-w-lg"
       : width === "lg"
       ? "max-w-2xl"
       : width === "xl"

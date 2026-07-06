@@ -1,6 +1,6 @@
 import { useEffect, useRef, useMemo, useState, type ReactNode } from "react";
 import { ArrowRight, Sparkles, Target, TrendingUp, UserRound } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { PageHeader } from "../components/layout/AppLayout";
 import { Card, CardBody, CardHeader } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -126,7 +126,9 @@ export function EmployeeReportPage() {
                   title={
                     <div className="flex items-center gap-2">
                       <UserRound className="w-4 h-4 text-brand-600" />
-                      <span>{employee.name || employee.username}</span>
+                      <Link to={`/workers/${employee.id}`} className="hover:underline text-brand-700 font-semibold">
+                        {employee.name || employee.username}
+                      </Link>
                     </div>
                   }
                   actions={

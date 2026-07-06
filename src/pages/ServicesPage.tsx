@@ -115,6 +115,7 @@ export function ServicesPage() {
               <THead>
                 <TR>
                   <TH>الخدمة</TH>
+                  <TH>الكود</TH>
                   <TH>النوع</TH>
                   <TH className="text-end">السعر الافتراضي</TH>
                   <TH>العمولة</TH>
@@ -127,6 +128,7 @@ export function ServicesPage() {
                 {filtered.map((s) => (
                   <TR key={s.id}>
                     <TD className="font-medium text-slate-900">{s.name}</TD>
+                    <TD><span className="font-mono text-xs text-slate-500">{s.code ?? "—"}</span></TD>
                     <TD>
                       <Badge tone={s.category === "chemical" ? "amber" : s.category === "extra" ? "indigo" : "blue"}>
                         {categoryLabel(s.category)}

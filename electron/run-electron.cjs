@@ -4,7 +4,12 @@ const electronPath = require("electron");
 const env = { ...process.env };
 delete env.ELECTRON_RUN_AS_NODE;
 
-const child = childProcess.spawn(electronPath, process.argv.slice(2), {
+const args = process.argv.slice(2);
+if (process.platform === "linux") {
+  args.push("--no-sandbox");
+}
+
+const child = childProcess.spawn(electronPath, args, {
   env,
   stdio: "inherit",
   windowsHide: false,

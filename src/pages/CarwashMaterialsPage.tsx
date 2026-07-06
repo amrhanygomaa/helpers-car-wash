@@ -118,7 +118,7 @@ function MaterialForm({ open, initial, onSave, onClose }: MaterialFormProps) {
             onChange={(e) => setUnitCost(e.target.value)}
           />
         </Field>
-        <Field label="رصيد البداية" hint="يُستخدم عند إنشاء خامة لأول مرة أو تصحيح الرصيد يدوياً.">
+        <Field label="الكمية الحالية" hint="الكمية الموجودة فعلياً في المخزن دلوقتي">
           <Input
             type="number"
             min={0}

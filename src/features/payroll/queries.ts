@@ -14,6 +14,14 @@ export function listDailyClosuresForDate(businessDate: string, branchId = MAIN_B
     .where(and(eq(dailyClosures.businessDate, businessDate), eq(dailyClosures.branchId, branchId)));
 }
 
+export function listDailyClosuresForWorker(workerId: string): Promise<DailyClosure[]> {
+  return db
+    .select()
+    .from(dailyClosures)
+    .where(eq(dailyClosures.workerId, workerId))
+    .orderBy(desc(dailyClosures.businessDate));
+}
+
 type ClosureRow = {
   id: string;
   businessDate: string;

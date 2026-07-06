@@ -1,8 +1,38 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 
+const EGYPT_PLATE_NUMBER_REGEX = /^[ء-ي](?: [ء-ي]){1,2} [0-9]{3,4}$/;
+
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
+}
+
+export function normalizeEgyptPlateNumber(value: string): string {
+  const trimmed = value.trim();
+  const digitsNormalized = trimmed.replace(/[٠-٩]/g, (ch) =>
+    String("٠١٢٣٤٥٦٧٨٩").indexOf(ch).toString()
+  );
+  const cleaned = digitsNormalized.replace(/[^ء-ي0-9 ]+/g, "");
+  const collapsed = cleaned.replace(/\s+/g, " ").trim();
+  const flattened = collapsed.replace(/ /g, "");
+  const letters = (flattened.match(/[ء-ي]/g) ?? []).slice(0, 3);
+  const digits = (flattened.match(/[0-9]/g) ?? []).slice(0, 4);
+
+  if (letters.length > 0 && digits.length > 0) {
+    return `${letters.join(" ")} ${digits.join("")}`.trim();
+  }
+  if (letters.length > 0) {
+    return letters.join(" ");
+  }
+  if (digits.length > 0) {
+    return digits.join("");
+  }
+
+  return collapsed;
+}
+
+export function isValidEgyptPlateNumber(value: string): boolean {
+  return EGYPT_PLATE_NUMBER_REGEX.test(normalizeEgyptPlateNumber(value));
 }
 
 export function uid(prefix = "id"): string {
@@ -60,8 +90,18 @@ export function getMonthsInRange(from: string, to: string): string[] {
 }
 
 export const MONTH_NAMES_AR = [
-  "يناير","فبراير","مارس","أبريل","مايو","يونيو",
-  "يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر",
+  "يناير",
+  "فبراير",
+  "مارس",
+  "أبريل",
+  "مايو",
+  "يونيو",
+  "يوليو",
+  "أغسطس",
+  "سبتمبر",
+  "أكتوبر",
+  "نوفمبر",
+  "ديسمبر",
 ];
 
 export function monthLabel(yyyymm: string): string {

@@ -31,8 +31,6 @@ export function SalesInvoicesPage() {
   const canDeleteSales = hasPermission(currentUser, "salesInvoices", "delete");
   const [q, setQ] = useState("");
   const [customerId, setCustomerId] = useState("");
-  const [status, setStatus] = useState("");
-  const [payment, setPayment] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [toDelete, setToDelete] = useState<SalesInvoice | null>(null);
@@ -60,24 +58,14 @@ export function SalesInvoicesPage() {
       );
     }
     if (customerId) list = list.filter((s) => s.customerId === customerId);
-    if (status === "overpaid") list = list.filter((s) => s.status === "paid" && (s.overpayment ?? 0) > 0);
-    else if (status) list = list.filter((s) => s.status === status);
-    if (payment) list = list.filter((s) => s.paymentType === payment);
     list = list.filter((s) => inRange(s.date, from, to));
     return [...list].sort((a, b) => (a.date < b.date ? 1 : -1));
-  }, [salesInvoices, customerCodeMap, customerPhoneMap, q, customerId, status, payment, from, to]);
+  }, [salesInvoices, customerCodeMap, customerPhoneMap, q, customerId, from, to]);
 
   const totals = useMemo(() => {
     const total = filtered.reduce((a, s) => a + (s.cancelled ? 0 : s.total), 0);
-    const received = filtered.reduce(
-      (a, s) => a + (s.cancelled ? 0 : s.amountReceived),
-      0
-    );
-    const remaining = filtered.reduce(
-      (a, s) => a + (s.cancelled ? 0 : s.remaining),
-      0
-    );
-    return { total, received, remaining };
+    const count = filtered.filter((s) => !s.cancelled).length;
+    return { total, count };
   }, [filtered]);
 
   return (
@@ -95,10 +83,9 @@ export function SalesInvoicesPage() {
         }
       />
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <Stat label="إجمالي الفواتير" value={formatCurrency(totals.total, settings.currency)} tone="blue" />
-        <Stat label="المحصل" value={formatCurrency(totals.received, settings.currency)} tone="green" />
-        <Stat label="المتبقي" value={formatCurrency(totals.remaining, settings.currency)} tone="amber" />
+        <Stat label="عدد الفواتير" value={String(totals.count)} tone="green" />
       </div>
 
       <Card>
@@ -112,7 +99,7 @@ export function SalesInvoicesPage() {
           }
         />
         <CardBody className="space-y-3">
-          <div className="flex flex-wrap gap-2 items-center">
+          <div className="flex flex-wrap gap-2 items-end">
             <div className="relative w-64">
               <Search className="w-4 h-4 absolute top-1/2 -translate-y-1/2 end-3 text-slate-400" />
               <Input
@@ -130,18 +117,6 @@ export function SalesInvoicesPage() {
                 </option>
               ))}
             </Select>
-            <Select value={status} onChange={(e) => setStatus(e.target.value)} className="w-40">
-              <option value="">كل الحالات</option>
-              <option value="paid">مسدد</option>
-              <option value="overpaid">مسدد بزيادة</option>
-              <option value="partial">جزئي</option>
-              <option value="unpaid">غير مسدد</option>
-            </Select>
-            <Select value={payment} onChange={(e) => setPayment(e.target.value)} className="w-32">
-              <option value="">كل الأنواع</option>
-              <option value="cash">نقدي</option>
-              <option value="account">آجل</option>
-            </Select>
             <div className="flex flex-col gap-0.5">
               <span className="text-xs font-medium text-slate-500">من تاريخ</span>
               <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-40" />
@@ -156,8 +131,6 @@ export function SalesInvoicesPage() {
               onClick={() => {
                 setQ("");
                 setCustomerId("");
-                setStatus("");
-                setPayment("");
                 setFrom("");
                 setTo("");
               }}
@@ -186,9 +159,6 @@ export function SalesInvoicesPage() {
                   <TH>التاريخ</TH>
                   <TH>العميل</TH>
                   <TH className="text-end">الإجمالي</TH>
-                  <TH className="text-end">المستلم</TH>
-                  <TH className="text-end">المتبقي</TH>
-                  <TH>الدفع</TH>
                   <TH>الحالة</TH>
                   <TH className="text-end">إجراءات</TH>
                 </TR>
@@ -204,38 +174,11 @@ export function SalesInvoicesPage() {
                     <TD>{formatDate(s.date)}</TD>
                     <TD className="font-medium text-slate-900">{s.customerName}</TD>
                     <TD className="text-end">{formatCurrency(s.total, settings.currency)}</TD>
-                    <TD className="text-end text-emerald-700">
-                      {formatCurrency(s.amountReceived, settings.currency)}
-                    </TD>
-                    <TD className="text-end">
-                      {s.overpayment && s.overpayment > 0 ? (
-                        <span className="text-emerald-700">
-                          رصيد دائن {formatCurrency(s.overpayment, settings.currency)}
-                        </span>
-                      ) : s.remaining > 0 ? (
-                        <span className="text-rose-700">
-                          {formatCurrency(s.remaining, settings.currency)}
-                        </span>
-                      ) : (
-                        <span className="text-slate-400">0</span>
-                      )}
-                    </TD>
-                    <TD>
-                      <Badge tone={s.paymentType === "cash" ? "emerald" : "indigo"}>
-                        {s.paymentType === "cash" ? "نقدي" : "آجل"}
-                      </Badge>
-                    </TD>
                     <TD>
                       {s.cancelled ? (
                         <Badge tone="slate">ملغاة</Badge>
-                      ) : s.status === "paid" && (s.overpayment ?? 0) > 0 ? (
-                        <Badge tone="blue">مسدد بزيادة</Badge>
-                      ) : s.status === "paid" ? (
-                        <Badge tone="green">مسدد</Badge>
-                      ) : s.status === "partial" ? (
-                        <Badge tone="amber">جزئي</Badge>
                       ) : (
-                        <Badge tone="red">غير مسدد</Badge>
+                        <Badge tone="green">مسددة</Badge>
                       )}
                     </TD>
                     <TD className="text-end">

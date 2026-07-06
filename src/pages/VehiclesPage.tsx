@@ -15,7 +15,10 @@ import { ConfirmDialog, Dialog } from "../components/ui/Dialog";
 import { Field, Input, Select, Textarea } from "../components/ui/Input";
 import { useToast } from "../components/ui/Toast";
 import { EmptyState } from "../components/ui/EmptyState";
+import { BrandCombobox } from "../features/vehicles/BrandCombobox";
 import { formatCurrency, formatDate } from "../lib/format";
+import { isValidEgyptPlateNumber, normalizeEgyptPlateNumber } from "../lib/utils";
+import { PlateNumberInput } from "../components/ui/PlateNumberInput";
 import type { Vehicle } from "../types";
 import { hasPermission } from "../lib/permissions";
 
@@ -85,7 +88,7 @@ export function VehiclesPage() {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
     const customerId = fd.get("customerId") as string;
-    const plateNumber = (fd.get("plateNumber") as string).trim();
+    const plateNumber = normalizeEgyptPlateNumber((fd.get("plateNumber") as string).trim());
     const brand = (fd.get("brand") as string).trim();
     if (!customerId) {
       toast.error("اختر العميل");
@@ -93,6 +96,12 @@ export function VehiclesPage() {
     }
     if (!plateNumber) {
       toast.error("أدخل رقم اللوحة");
+      return;
+    }
+    if (!isValidEgyptPlateNumber(plateNumber)) {
+      toast.error(
+        "رقم اللوحة غير صحيح. استخدم 2-3 حروف مفصولة بمسافة ثم 3-4 أرقام مثل: ن هـ 7535"
+      );
       return;
     }
     const data = {
@@ -234,6 +243,7 @@ export function VehiclesPage() {
         open={open}
         onClose={() => setOpen(false)}
         title={editing ? "تعديل بيانات المركبة" : "إضافة مركبة جديدة"}
+        width="md+"
       >
         <form id="vehicleForm" onSubmit={handleSave} className="space-y-4 mt-4">
           <Field label="العميل" required>
@@ -250,13 +260,17 @@ export function VehiclesPage() {
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="الماركة" required>
-              <Input name="brand" defaultValue={editing?.brand} required autoFocus />
+              <BrandCombobox key={editing?.id ?? "new"} name="brand" defaultValue={editing?.brand} required autoFocus />
             </Field>
             <Field label="الموديل">
               <Input name="model" defaultValue={editing?.model} />
             </Field>
-            <Field label="رقم اللوحة" required>
-              <Input name="plateNumber" defaultValue={editing?.plateNumber} required />
+            <Field
+              label="رقم اللوحة"
+              required
+              hint="مثال: ن هـ 7535 — 2-3 حروف مفصولة بمسافة ثم 3-4 أرقام"
+            >
+              <PlateNumberInput name="plateNumber" defaultValue={editing?.plateNumber} required />
             </Field>
             <Field label="اللون">
               <Input name="color" defaultValue={editing?.color} />

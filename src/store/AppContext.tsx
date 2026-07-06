@@ -417,6 +417,18 @@ function normalizeWashServices(list: WashService[]): WashService[] {
     normalized.push(seed);
   }
 
+  // Backfill codes for services that don't have one yet.
+  let maxCode = normalized.reduce((max, svc) => {
+    const m = svc.code?.match(/^SVC-(\d+)$/);
+    return m ? Math.max(max, Number(m[1])) : max;
+  }, 0);
+  for (const svc of normalized) {
+    if (!svc.code) {
+      maxCode++;
+      svc.code = `SVC-${String(maxCode).padStart(3, "0")}`;
+    }
+  }
+
   return normalized.sort((a, b) => (a.sortOrder ?? 999) - (b.sortOrder ?? 999));
 }
 
@@ -1463,7 +1475,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // ── Car Wash: Services ──
   const addWashService = (s: Omit<WashService, "id" | "createdAt">): WashService => {
-    const service: WashService = { ...s, id: uid("svc"), createdAt: new Date().toISOString() };
+    const maxCode = washServices.reduce((max, svc) => {
+      const m = svc.code?.match(/^SVC-(\d+)$/);
+      return m ? Math.max(max, Number(m[1])) : max;
+    }, 0);
+    const code = s.code || `SVC-${String(maxCode + 1).padStart(3, "0")}`;
+    const service: WashService = { ...s, code, id: uid("svc"), createdAt: new Date().toISOString() };
     setWashServices((list) => [service, ...list]);
     return service;
   };

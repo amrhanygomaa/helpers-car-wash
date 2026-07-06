@@ -46,13 +46,12 @@ export function CashboxPage() {
         .reduce((a, s) => a + s.amountReceived + (s.overpayment ?? 0), 0),
     [salesInvoices]
   );
-  const receivables = useMemo(
-    () => customers.reduce((a, c) => a + Math.max(0, customerBalance(c.id)), 0),
-    [customers, customerBalance]
-  );
-  const customerCredits = useMemo(
-    () => customers.reduce((a, c) => a + Math.max(0, -customerBalance(c.id)), 0),
-    [customers, customerBalance]
+  const totalCommissions = useMemo(
+    () =>
+      salesInvoices
+        .filter((s) => !s.cancelled)
+        .reduce((a, s) => a + (s.commissionTotal ?? 0), 0),
+    [salesInvoices]
   );
 
   function submit() {
@@ -137,11 +136,10 @@ export function CashboxPage() {
         }
       />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <Stat icon={<Wallet className="w-5 h-5" />} label="الرصيد الحالي" value={formatCurrency(currentCashBalance(), settings.currency)} tone="green" />
         <Stat icon={<HandCoins className="w-5 h-5" />} label="إجمالي المحصل" value={formatCurrency(totalReceived, settings.currency)} tone="blue" />
-        <Stat icon={<Users className="w-5 h-5" />} label="مستحقات من العملاء" value={formatCurrency(receivables, settings.currency)} tone="rose" />
-        <Stat icon={<UserRoundMinus className="w-5 h-5" />} label="فلوس علينا للعملاء" value={formatCurrency(customerCredits, settings.currency)} tone="violet" />
+        <Stat icon={<HandCoins className="w-5 h-5" />} label="عمولة الصنايعية" value={formatCurrency(totalCommissions, settings.currency)} tone="amber" />
       </div>
 
       <Card>

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { AlertTriangle, ArrowRight, Check, Plus, Save, Tag, Trash2 } from "lucide-react";
+import { AlertTriangle, ArrowRight, Plus, Save, Trash2 } from "lucide-react";
 import { PageHeader } from "../components/layout/AppLayout";
 import { Card, CardBody, CardHeader } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -23,8 +23,10 @@ import { listActiveRawMaterials, recordMaterialConsumption, type RawMaterial } f
 import { listUsableSubscriptions, redeemSubscription, type CustomerSubscription } from "../features/subscriptions/queries";
 import { expandServiceMaterials, splitCommissionEvenly } from "../store/_pure";
 import { printServiceInvoice } from "../lib/print";
-import { computeDiscount, computeServiceCommission } from "../lib/carwash";
-import type { DiscountCode, InvoiceLine, PaymentMethod, SalesPaymentType } from "../types";
+import { computeServiceCommission } from "../lib/carwash";
+import { CustomerFormDialog } from "../features/customers/CustomerFormDialog";
+import { VehicleFormDialog } from "../features/vehicles/VehicleFormDialog";
+import type { InvoiceLine, PaymentMethod, SalesPaymentType } from "../types";
 
 interface LineWorkerDraft {
   workerId: string;
@@ -72,14 +74,13 @@ export function CarwashInvoiceNewPage() {
 
   const { customers: allCustomers } = useCatalog();
   const { vehicles, washServices, queueTickets, updateQueueTicket, setQueueStatus } = useCarwash();
-  const { salesInvoices, addSalesInvoice, discountCodes } = useInvoicing();
+  const { salesInvoices, addSalesInvoice } = useInvoicing();
   const { currentUser } = useAuth();
   const { settings } = useSettings();
   const toast = useToast();
 
   const customers = useMemo(() => allCustomers.filter((c) => !c.archived), [allCustomers]);
   const activeServices = useMemo(() => washServices.filter((s) => s.active), [washServices]);
-  const activeCodes = useMemo(() => discountCodes.filter((c) => c.active), [discountCodes]);
 
   const ticket = useMemo(() => queueTickets.find((t) => t.id === queueId), [queueTickets, queueId]);
 
@@ -103,6 +104,8 @@ export function CarwashInvoiceNewPage() {
     return customers[0]?.id ?? "";
   });
   const [vehicleId, setVehicleId] = useState(() => ticket?.vehicleId ?? "");
+  const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
+  const [vehicleDialogOpen, setVehicleDialogOpen] = useState(false);
 
   const [lines, setLines] = useState<ServiceLineDraft[]>(() => {
     const selectedIds = ticket?.serviceIds?.filter((id) => activeServices.some((s) => s.id === id)) ?? [];
@@ -115,9 +118,6 @@ export function CarwashInvoiceNewPage() {
   const [productLines, setProductLines] = useState<ProductLineDraft[]>([]);
   const [invoiceWorkerId, setInvoiceWorkerId] = useState("");
 
-  const [commissionInTotal, setCommissionInTotal] = useState(false);
-  const [discountCodeInput, setDiscountCodeInput] = useState("");
-  const [appliedCode, setAppliedCode] = useState<DiscountCode | null>(null);
 
   const [notes, setNotes] = useState("");
   const [redeemPoints, setRedeemPoints] = useState(0);
@@ -147,8 +147,7 @@ export function CarwashInvoiceNewPage() {
   const serviceSubtotal = useMemo(() => lines.reduce((sum, l) => sum + l.price * l.quantity, 0), [lines]);
   const productSubtotal = useMemo(() => productLines.reduce((sum, l) => sum + l.price * l.quantity, 0), [productLines]);
   const subtotal = serviceSubtotal + productSubtotal;
-  const discountAmt = useMemo(() => (appliedCode ? computeDiscount(subtotal, appliedCode) : 0), [subtotal, appliedCode]);
-  const afterCode = Math.max(0, subtotal - discountAmt);
+  const afterCode = subtotal;
 
   // Subscription redemption — a used package covers the wash (service portion).
   const activeSubscription = usableSubs.find((s) => s.id === useSubscriptionId);
@@ -176,11 +175,6 @@ export function CarwashInvoiceNewPage() {
     [lines, activeServices, invoiceWorkerId]
   );
   const remainingDue = Math.max(0, total - (paymentType === "cash" ? amountReceived : 0));
-
-  const anyLineHasCommission = useMemo(
-    () => lines.some((l) => activeServices.find((s) => s.id === l.serviceId)?.hasCommission),
-    [lines, activeServices]
-  );
 
   // Service line CRUD ─ commission is auto-calculated from the service's % and
   // split evenly across the line's assigned صنايعية (each share editable).
@@ -279,22 +273,6 @@ export function CarwashInvoiceNewPage() {
     updateProductLine(id, { productId, price: prod ? piastresToEgp(prod.salePrice) : 0 });
   }
 
-  // Discount
-  function applyCode() {
-    const input = discountCodeInput.trim();
-    if (!input) return;
-    const code = activeCodes.find((c) => c.code.toLowerCase() === input.toLowerCase());
-    if (!code) { toast.error("كود الخصم غير موجود أو منتهي الصلاحية"); return; }
-    setAppliedCode(code);
-    const label = code.type === "percent" ? `${code.value}%` : formatCurrency(code.value, settings.currency);
-    toast.success(`تم تطبيق كود الخصم — ${label} خصم`);
-  }
-
-  function removeCode() {
-    setAppliedCode(null);
-    setDiscountCodeInput("");
-  }
-
   async function submit() {
     const customer = customers.find((c) => c.id === customerId);
     if (!customer) { toast.error("اختر العميل"); return; }
@@ -335,7 +313,7 @@ export function CarwashInvoiceNewPage() {
         employeeName: assigned[0]?.workerName,
         workers: assigned.length > 0 ? assigned : undefined,
         commissionAmount: lineCommission > 0 ? lineCommission : undefined,
-        commissionInTotal: lineCommission > 0 ? commissionInTotal : undefined,
+        commissionInTotal: lineCommission > 0 ? false : undefined,
       };
     });
 
@@ -372,13 +350,9 @@ export function CarwashInvoiceNewPage() {
       vehicleLabel: vehicle ? vehicleLabel(vehicle) : undefined,
       queueId: ticket?.id,
       finalizedAt: new Date().toISOString(),
-      commissionInTotal: commissionTotal > 0 ? commissionInTotal : undefined,
+      commissionInTotal: commissionTotal > 0 ? false : undefined,
       commissionTotal: commissionTotal > 0 ? commissionTotal : undefined,
       loyaltyPointsRedeemed: effectiveRedeem > 0 ? effectiveRedeem : undefined,
-      discountCodeId: appliedCode?.id,
-      discountCode: appliedCode?.code,
-      discountCodeType: appliedCode?.type,
-      discountCodeValue: appliedCode?.value,
     });
 
     if (ticket) {
@@ -484,11 +458,11 @@ export function CarwashInvoiceNewPage() {
         }
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-4">
         {/* Basic data */}
-        <Card className="lg:col-span-2">
+        <Card>
           <CardHeader title="البيانات الأساسية" />
-          <CardBody className="grid grid-cols-2 gap-4">
+          <CardBody className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <Field label="رقم الفاتورة">
               <Input value={invoiceNumber} readOnly className="bg-slate-100 font-mono" />
             </Field>
@@ -496,24 +470,42 @@ export function CarwashInvoiceNewPage() {
               <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
             </Field>
             <Field label="العميل" required>
-              <Select
-                title="العميل"
-                value={customerId}
-                onChange={(e) => { setCustomerId(e.target.value); setVehicleId(""); }}
-              >
-                <option value="" disabled>اختر العميل</option>
-                {customers.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </Select>
+              <div className="flex gap-2">
+                <Select
+                  title="العميل"
+                  value={customerId}
+                  onChange={(e) => { setCustomerId(e.target.value); setVehicleId(""); }}
+                  className="flex-1"
+                >
+                  <option value="" disabled>اختر العميل</option>
+                  {customers.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </Select>
+                <Button type="button" variant="outline" size="icon" title="إضافة عميل جديد" onClick={() => setCustomerDialogOpen(true)}>
+                  <Plus className="w-4 h-4" />
+                </Button>
+              </div>
             </Field>
             <Field label="المركبة" hint={customerVehicles.length === 0 ? "لا توجد مركبات لهذا العميل" : undefined}>
-              <Select title="المركبة" value={vehicleId} onChange={(e) => setVehicleId(e.target.value)}>
-                <option value="">— بدون مركبة —</option>
-                {customerVehicles.map((v) => (
-                  <option key={v.id} value={v.id}>{vehicleLabel(v)}</option>
-                ))}
-              </Select>
+              <div className="flex gap-2">
+                <Select title="المركبة" value={vehicleId} onChange={(e) => setVehicleId(e.target.value)} className="flex-1">
+                  <option value="">— بدون مركبة —</option>
+                  {customerVehicles.map((v) => (
+                    <option key={v.id} value={v.id}>{vehicleLabel(v)}</option>
+                  ))}
+                </Select>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  title={customerId ? "إضافة مركبة جديدة" : "اختر العميل أولاً"}
+                  disabled={!customerId}
+                  onClick={() => setVehicleDialogOpen(true)}
+                >
+                  <Plus className="w-4 h-4" />
+                </Button>
+              </div>
             </Field>
             <Field label="الصنايعي">
               <Select value={invoiceWorkerId} onChange={(e) => setInvoiceWorkerId(e.target.value)}>
@@ -568,17 +560,6 @@ export function CarwashInvoiceNewPage() {
           title="الخدمات"
           actions={
             <div className="flex items-center gap-3">
-              {anyLineHasCommission && (
-                <label className="flex items-center gap-1.5 text-sm cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={commissionInTotal}
-                    onChange={(e) => setCommissionInTotal(e.target.checked)}
-                    className="w-4 h-4 accent-blue-600"
-                  />
-                  <span className="text-slate-600">العمولة داخل السعر</span>
-                </label>
-              )}
               <Button variant="outline" size="sm" onClick={addLine}>
                 <Plus className="w-4 h-4" /> إضافة خدمة
               </Button>
@@ -591,7 +572,6 @@ export function CarwashInvoiceNewPage() {
               <TR>
                 <TH>الخدمة</TH>
                 <TH className="w-32">السعر</TH>
-                {anyLineHasCommission && <TH className="w-28">العمولة</TH>}
                 <TH className="w-32 text-end">الإجمالي</TH>
                 <TH className="w-10"></TH>
               </TR>
@@ -599,7 +579,7 @@ export function CarwashInvoiceNewPage() {
             <TBody>
               {lines.length === 0 ? (
                 <TR>
-                  <TD colSpan={anyLineHasCommission ? 7 : 6} className="text-center py-6 text-slate-500">
+                  <TD colSpan={6} className="text-center py-6 text-slate-500">
                     لم تتم إضافة خدمات بعد
                   </TD>
                 </TR>
@@ -659,17 +639,6 @@ export function CarwashInvoiceNewPage() {
                         <Input type="number" min={0} step="0.01" value={l.price}
                           onChange={(e) => onPriceChange(l.id, Number(e.target.value))} />
                       </TD>
-                      {anyLineHasCommission && (
-                        <TD className="text-end">
-                          {lineHasCommission ? (
-                            <span className="text-sm font-medium text-amber-700">
-                              {formatCurrency(l.workers.reduce((s, w) => s + (w.commissionAmount ?? 0), 0), settings.currency)}
-                            </span>
-                          ) : (
-                            <span className="text-slate-400 text-sm px-2">—</span>
-                          )}
-                        </TD>
-                      )}
                       <TD className="text-end font-medium">
                         {formatCurrency(l.price * l.quantity, settings.currency)}
                       </TD>
@@ -767,32 +736,6 @@ export function CarwashInvoiceNewPage() {
       <div className="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Card className="lg:col-span-2">
           <CardBody className="space-y-4">
-            <Field label="كود الخصم">
-              {appliedCode ? (
-                <div className="flex items-center gap-2">
-                  <div className="flex-1 flex items-center gap-2 px-3 py-2 rounded-md bg-green-50 border border-green-200 text-green-800 text-sm font-medium">
-                    <Tag className="w-4 h-4" />
-                    <span>{appliedCode.code}</span>
-                    <span className="text-green-600">
-                      ({appliedCode.type === "percent" ? `${appliedCode.value}%` : formatCurrency(appliedCode.value, settings.currency)} خصم)
-                    </span>
-                  </div>
-                  <Button variant="outline" size="sm" onClick={removeCode}>إلغاء</Button>
-                </div>
-              ) : (
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="أدخل كود الخصم"
-                    value={discountCodeInput}
-                    onChange={(e) => setDiscountCodeInput(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") applyCode(); }}
-                  />
-                  <Button variant="outline" onClick={applyCode}>
-                    <Check className="w-4 h-4" /> تطبيق
-                  </Button>
-                </div>
-              )}
-            </Field>
             {usableSubs.length > 0 && (
               <Field label="اشتراك / باقة العميل" hint={serviceSubtotal === 0 ? "أضف خدمة ليغطّيها الاشتراك" : "الاشتراك يغطّي قيمة الغسيل (الخدمات)"}>
                 <Select value={useSubscriptionId} onChange={(e) => setUseSubscriptionId(e.target.value)}>
@@ -839,16 +782,10 @@ export function CarwashInvoiceNewPage() {
 
         <Card>
           <CardBody className="space-y-2 text-sm">
-            {(appliedCode || loyaltyDiscount > 0 || subscriptionDiscount > 0) && (
+            {(loyaltyDiscount > 0 || subscriptionDiscount > 0) && (
               <div className="flex items-center justify-between text-slate-500">
                 <span>المجموع قبل الخصم</span>
                 <span>{formatCurrency(subtotal, settings.currency)}</span>
-              </div>
-            )}
-            {appliedCode && (
-              <div className="flex items-center justify-between text-green-700">
-                <span>الخصم</span>
-                <span>({formatCurrency(discountAmt, settings.currency)})</span>
               </div>
             )}
             {subscriptionDiscount > 0 && (
@@ -873,20 +810,22 @@ export function CarwashInvoiceNewPage() {
                 <span className="font-semibold text-amber-700">{formatCurrency(remainingDue, settings.currency)}</span>
               </div>
             )}
-            {commissionTotal > 0 && (
-              <>
-                <div className="flex items-center justify-between border-t pt-2 text-blue-700">
-                  <span>إجمالي العمولات</span>
-                  <span className="font-semibold">{formatCurrency(commissionTotal, settings.currency)}</span>
-                </div>
-                <p className="text-xs text-slate-500">
-                  {commissionInTotal ? "العمولات داخل السعر (لا تُضاف)" : "العمولات تُخصم من إيراد المحل"}
-                </p>
-              </>
-            )}
           </CardBody>
         </Card>
       </div>
+
+      <CustomerFormDialog
+        open={customerDialogOpen}
+        onClose={() => setCustomerDialogOpen(false)}
+        onCreated={(customer) => { setCustomerId(customer.id); setVehicleId(""); }}
+      />
+      <VehicleFormDialog
+        open={vehicleDialogOpen}
+        onClose={() => setVehicleDialogOpen(false)}
+        customerId={customerId}
+        customers={customers}
+        onCreated={(vehicle) => setVehicleId(vehicle.id)}
+      />
     </>
   );
 }

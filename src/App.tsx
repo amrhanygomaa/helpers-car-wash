@@ -6,6 +6,7 @@ import { FirstRunSetupPage } from "./pages/FirstRunSetupPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { CustomersPage } from "./pages/CustomersPage";
 import { CustomerMarketingPage } from "./pages/CustomerMarketingPage";
+import { CustomerDetailPage } from "./pages/CustomerDetailPage";
 import { VehiclesPage } from "./pages/VehiclesPage";
 import { ServicesPage } from "./pages/ServicesPage";
 import { CarwashInvoiceNewPage } from "./pages/CarwashInvoiceNewPage";
@@ -28,6 +29,8 @@ import { SettingsPage } from "./pages/SettingsPage";
 import { UsersPage } from "./pages/UsersPage";
 import { EmployeeProfilePage } from "./pages/EmployeeProfilePage";
 import { AuditLogPage } from "./pages/AuditLogPage";
+import { WorkerDetailPage } from "./pages/WorkerDetailPage";
+import { WorkersPage } from "./pages/WorkersPage";
 import { ProtectedShell } from "./components/layout/ProtectedShell";
 
 export default function App() {
@@ -163,6 +166,14 @@ export default function App() {
         }
       />
       <Route
+        path="/customers/:id"
+        element={
+          <ProtectedShell permission="customers" feature="customers">
+            <CustomerDetailPage />
+          </ProtectedShell>
+        }
+      />
+      <Route
         path="/customers/marketing"
         element={
           <ProtectedShell permission="customers" feature="customers">
@@ -205,6 +216,14 @@ export default function App() {
         }
       />
       <Route
+        path="/workers"
+        element={
+          <ProtectedShell permissionKey="payroll.manage">
+            <WorkersPage />
+          </ProtectedShell>
+        }
+      />
+      <Route
         path="/workers/attendance"
         element={
           <ProtectedShell permissionKey="payroll.manage">
@@ -227,6 +246,14 @@ export default function App() {
         element={
           <ProtectedShell permissionKey="payroll.manage" feature="employeesReport">
             <EmployeeReportPage />
+          </ProtectedShell>
+        }
+      />
+      <Route
+        path="/workers/:id"
+        element={
+          <ProtectedShell permissionKey="payroll.manage">
+            <WorkerDetailPage />
           </ProtectedShell>
         }
       />
