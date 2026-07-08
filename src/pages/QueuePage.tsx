@@ -122,7 +122,7 @@ export function QueuePage() {
     vehicles,
     washServices,
   } = useCarwash();
-  const { customers } = useCatalog();
+  const { customers, addCustomer } = useCatalog();
   const { currentUser } = useAuth();
   const toast = useToast();
 
