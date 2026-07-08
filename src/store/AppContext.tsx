@@ -1941,12 +1941,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setCashEntries((list) => [ce, ...list]);
     }
     // Worker commission is paid from the drawer and must reduce its balance.
+    // Named per worker so the treasury shows exactly who received it.
     if ((inv.commissionTotal ?? 0) > 0) {
+      const workerNames = [...new Set(
+        inv.lines.flatMap((l) => (l.workers ?? [])
+          .filter((w) => (w.commissionAmount ?? 0) > 0)
+          .map((w) => w.workerName)
+          .filter((n): n is string => Boolean(n)))
+      )];
       const commissionEntry: CashEntry = {
         id: uid("cash_commission"),
         type: "manual-remove",
         amount: -(inv.commissionTotal ?? 0),
-        description: `عمولة صنايعي — فاتورة ${inv.invoiceNumber}`,
+        description: `عمولة صنايعي${workerNames.length ? ` (${workerNames.join("، ")})` : ""} — فاتورة ${inv.invoiceNumber}`,
         referenceId: id,
         date: inv.date,
         paymentMethod: "cash",

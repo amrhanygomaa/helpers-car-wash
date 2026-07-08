@@ -139,7 +139,8 @@ function fmtPrice(amount: number | undefined, currency: string): string {
 
 /**
  * Prints the final 80mm service invoice for a completed car-wash job.
- * Shows: services + per-line worker, commission, discount, total, payment.
+ * Shows: services + per-line worker, discount, total, payment.
+ * Worker commission is internal-only and intentionally never printed.
  */
 export function printServiceInvoice({
   invoice,
@@ -253,7 +254,6 @@ export function printServiceInvoice({
   <div class="total-row"><span>الإجمالي</span><span class="ltr">${fmtPrice(invoice.total, currency)}</span></div>
   <div class="divider"></div>
   ${paymentRow}
-  ${commissionRow}
   ${invoice.notes ? `<div class="muted small" style="margin-top:4px">ملاحظة: ${escapeHtml(invoice.notes)}</div>` : ""}
   <div class="footer muted small">شكراً لاختياركم Top Gear — احتفظ بهذه الفاتورة</div>
   <script>
