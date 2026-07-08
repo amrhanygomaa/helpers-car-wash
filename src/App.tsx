@@ -11,7 +11,6 @@ import { ServicesPage } from "./pages/ServicesPage";
 import { CarwashInvoiceNewPage } from "./pages/CarwashInvoiceNewPage";
 import { CarwashProductsPage } from "./pages/CarwashProductsPage";
 import { CarwashMaterialsPage } from "./pages/CarwashMaterialsPage";
-import { PackagesPage } from "./pages/PackagesPage";
 import { CashShiftPage } from "./pages/CashShiftPage";
 import { EndOfDayPage } from "./pages/EndOfDayPage";
 import { AttendancePage } from "./pages/AttendancePage";
@@ -136,15 +135,6 @@ export default function App() {
           </ProtectedShell>
         }
       />
-      <Route
-        path="/carwash/packages"
-        element={
-          <ProtectedShell permissionKey="products.view" feature="washServices">
-            <PackagesPage />
-          </ProtectedShell>
-        }
-      />
-
       {/* Customers */}
       <Route
         path="/customers"
