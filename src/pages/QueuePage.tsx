@@ -965,9 +965,6 @@ export function QueuePage() {
             )}
           </Field>
 
-          <Field label="ملاحظة" className="md:col-span-2">
-            <Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="مثلاً: العميل مستعجل / خدش في الباب الخلفي" />
-          </Field>
           <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
             <input
               type="checkbox"
@@ -986,6 +983,10 @@ export function QueuePage() {
             />
             طباعة تذكرة الاستقبال
           </label>
+
+          <Field label="ملاحظة" className="md:col-span-2">
+            <Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="مثلاً: العميل مستعجل / خدش في الباب الخلفي" />
+          </Field>
         </div>
       </Dialog>
 
