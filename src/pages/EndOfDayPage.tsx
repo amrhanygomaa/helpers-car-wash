@@ -72,11 +72,9 @@ export function EndOfDayPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+      <div className="grid grid-cols-2 gap-3 mb-4">
         <Metric label="سيارات مغسولة" value={String(sales.cars)} tone="blue" />
         <Metric label="إجمالي المبيعات" value={formatCurrency(sales.revenue, currency)} tone="green" />
-        <Metric label="المحصَّل" value={formatCurrency(sales.collected, currency)} tone="slate" />
-        <Metric label="المتبقي (آجل)" value={formatCurrency(sales.outstanding, currency)} tone="amber" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
