@@ -264,35 +264,34 @@ function openDatabase() {
   const dbPath = getDatabasePath();
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
   const existed = fs.existsSync(dbPath);
-
-  db = new Database(dbPath);
-  // SECURITY: Use parameterized key setting to prevent SQL injection.
-  // The key is hex-only (SHA-256 output) but we use x'' literal for safety.
   const dbKeyHex = getDbKey();
-  if (existed) {
-    db.pragma(`key="x'${dbKeyHex}'"`);
-  } else {
-    db.pragma(`rekey="x'${dbKeyHex}'"`);
-  }
-  db.pragma("journal_mode = WAL");
 
-  try {
-    db.prepare(
+  const initDb = (isExisting) => {
+    const instance = new Database(dbPath);
+    if (isExisting) {
+      instance.pragma(`key="x'${dbKeyHex}'"`);
+    } else {
+      instance.pragma(`rekey="x'${dbKeyHex}'"`);
+    }
+    instance.pragma("journal_mode = WAL");
+    instance.prepare(
       "CREATE TABLE IF NOT EXISTS kv_store (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL)"
     ).run();
+    return instance;
+  };
+
+  try {
+    db = initDb(existed);
   } catch (error) {
-    // If decryption fails in development (due to key change/machine change), recreate database.
-    if (typeof app !== "undefined" && !app.isPackaged && error.message.includes("encrypted")) {
-      console.warn("Dev database decryption failed (key mismatch). Recreating fresh database...");
-      try { db.close(); } catch { /* ignore */ }
+    // If decryption or initialization fails in development, recreate database.
+    if (typeof app !== "undefined" && !app.isPackaged) {
+      console.warn("Dev database initialization failed. Recreating fresh database...", error);
+      try { if (db) db.close(); } catch { /* ignore */ }
       const backupPath = `${dbPath}.corrupt-${Date.now()}.bak`;
-      fs.renameSync(dbPath, backupPath);
-      db = new Database(dbPath);
-      db.pragma(`rekey="x'${dbKeyHex}'"`);
-      db.pragma("journal_mode = WAL");
-      db.prepare(
-        "CREATE TABLE IF NOT EXISTS kv_store (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL)"
-      ).run();
+      if (fs.existsSync(dbPath)) {
+        fs.renameSync(dbPath, backupPath);
+      }
+      db = initDb(false);
     } else {
       throw error;
     }
