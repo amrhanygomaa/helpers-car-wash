@@ -368,12 +368,7 @@ export function CustomersPage() {
               onChange={(e) => setForm({ ...form, phone: e.target.value.replace(/\D/g, "") })}
             />
           </Field>
-          <Field label="المنطقة / العنوان">
-            <Input
-              value={form.address ?? ""}
-              onChange={(e) => setForm({ ...form, address: e.target.value })}
-            />
-          </Field>
+
         </div>
       </Dialog>
 

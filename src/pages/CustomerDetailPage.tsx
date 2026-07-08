@@ -5,7 +5,6 @@ import {
   Car,
   Receipt,
   Phone,
-  MapPin,
   Pencil,
   History,
 } from "lucide-react";
@@ -155,18 +154,12 @@ export function CustomerDetailPage() {
         }
       />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <StatCard
           icon={<Phone className="h-5 w-5" />}
           label="الهاتف"
           value={customer.phone ?? "—"}
           tone="blue"
-        />
-        <StatCard
-          icon={<MapPin className="h-5 w-5" />}
-          label="المنطقة / العنوان"
-          value={customer.address ?? "—"}
-          tone="slate"
         />
         <StatCard
           icon={<Receipt className="h-5 w-5" />}
