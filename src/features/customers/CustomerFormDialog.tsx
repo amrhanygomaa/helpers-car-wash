@@ -34,10 +34,13 @@ export function CustomerFormDialog({
 
   useEffect(() => {
     if (open) {
+      const query = (initialName ?? "").trim();
+      const isPhone = /^[0-9]+$/.test(query);
       setForm({
         ...EMPTY,
         code: `CUS-${String(nextCustomerCode).padStart(4, "0")}`,
-        name: initialName ?? "",
+        name: isPhone ? "" : query,
+        phone: isPhone ? query : "",
       });
     }
   }, [open, nextCustomerCode, initialName]);
@@ -90,9 +93,6 @@ export function CustomerFormDialog({
             maxLength={11}
             onChange={(e) => set("phone", e.target.value.replace(/\D/g, ""))}
           />
-        </Field>
-        <Field label="العنوان">
-          <Input value={form.address ?? ""} onChange={(e) => set("address", e.target.value)} />
         </Field>
       </div>
     </Dialog>
