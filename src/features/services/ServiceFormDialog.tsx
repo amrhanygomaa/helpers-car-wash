@@ -181,7 +181,7 @@ export function ServiceFormDialog({
             <option value="none">لا علاقة له بالغسيل</option>
           </Select>
         </Field>
-        <Field label="عمولة صنايعي">
+        <Field label="عمولة صنايعي" hint={form.hasCommission ? "مبلغ العمولة يُدخل في الفاتورة ولا يظهر للعميل" : undefined}>
           <div className="flex items-center gap-3 h-9 flex-wrap">
             <label className="flex items-center gap-2 text-sm">
               <input
@@ -191,22 +191,6 @@ export function ServiceFormDialog({
               />
               تدخل في العمولة
             </label>
-            {form.hasCommission && (
-              <label className="flex items-center gap-1.5 text-sm">
-                <span className="text-slate-500">نسبة:</span>
-                <input
-                  type="number"
-                  min={0}
-                  max={100}
-                  step={0.5}
-                  placeholder="0"
-                  className="w-20 h-7 px-2 text-sm rounded border border-slate-300 focus:outline-none focus:ring-1 focus:ring-brand-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                  value={form.commissionPct ?? ""}
-                  onChange={(e) => set("commissionPct", e.target.value ? Number(e.target.value) : undefined)}
-                />
-                <span className="text-slate-500">%</span>
-              </label>
-            )}
           </div>
         </Field>
         <Field label="الحالة">
