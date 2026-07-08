@@ -30,10 +30,13 @@ import { useAuth } from "../store/AuthContext";
 import { vehicleLabel } from "./VehiclesPage";
 import { formatDateTime, formatDate } from "../lib/format";
 import { hasPermission } from "../lib/permissions";
-import { cn, todayISO } from "../lib/utils";
+import { cn, isValidEgyptPlateNumber, normalizeEgyptPlateNumber, todayISO } from "../lib/utils";
 import { printIntakeTicket } from "../lib/print";
 import { CustomerFormDialog } from "../features/customers/CustomerFormDialog";
+import { CustomerCombobox } from "../features/customers/CustomerCombobox";
 import { VehicleFormDialog } from "../features/vehicles/VehicleFormDialog";
+import { BrandCombobox } from "../features/vehicles/BrandCombobox";
+import { PlateNumberInput } from "../components/ui/PlateNumberInput";
 import type { QueueStatus, QueueTicket, Vehicle, WashService } from "../types";
 
 const STATUS_LABEL: Record<QueueStatus, string> = {
@@ -138,7 +141,11 @@ export function QueuePage() {
   const [customerId, setCustomerId] = useState("");
   const [selectedVehicleIds, setSelectedVehicleIds] = useState<string[]>([""]);
   const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
+  const [customerDialogPrefill, setCustomerDialogPrefill] = useState("");
   const [vehicleDialogOpen, setVehicleDialogOpen] = useState(false);
+  // Walk-in customer who isn't saved as a registered customer.
+  const [guest, setGuest] = useState<{ name: string; phone: string } | null>(null);
+  const [guestVehicle, setGuestVehicle] = useState({ brand: "", model: "", plateNumber: "", color: "" });
   const [arrival, setArrival] = useState(() => nowLocalInput());
   const [requestedPickupAt, setRequestedPickupAt] = useState("");
   const [pickupDropdownOpen, setPickupDropdownOpen] = useState(false);
