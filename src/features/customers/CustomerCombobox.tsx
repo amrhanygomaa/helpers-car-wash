@@ -50,7 +50,13 @@ export function CustomerCombobox({
   }, [selectedCustomer]);
 
   const results = customers.filter((c) => matchesQuery(c, text)).slice(0, MAX_RESULTS);
-  const showActions = text.trim().length > 0;
+  const exactMatchExists = customers.some(
+    (c) =>
+      c.name.trim() === text.trim() ||
+      (c.phone && c.phone.trim() === text.trim()) ||
+      (c.code && c.code.trim().toLowerCase() === text.trim().toLowerCase())
+  );
+  const showActions = text.trim().length > 0 && !exactMatchExists;
   const actionCount = showActions ? 2 : 0;
 
   function pick(customer: Customer) {

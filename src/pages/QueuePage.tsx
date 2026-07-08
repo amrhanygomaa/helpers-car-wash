@@ -214,7 +214,12 @@ export function QueuePage() {
 
   function onPickCustomer(id: string) {
     setCustomerId(id);
-    setSelectedVehicleIds([""]);
+    const vList = vehicles.filter((v) => v.customerId === id && !v.archived);
+    if (vList.length > 0) {
+      setSelectedVehicleIds([vList[0].id]);
+    } else {
+      setSelectedVehicleIds([""]);
+    }
   }
 
   /** "تسجيل كزائر" — skips the add-customer dialog for a fast one-off intake. */
@@ -609,9 +614,6 @@ export function QueuePage() {
                   onGuest={quickRegisterGuest}
                 />
               </Field>
-              <Button type="button" variant="outline" onClick={() => openAddCustomerDialog("")}>
-                <Plus className="w-4 h-4" /> عميل جديد
-              </Button>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Field label="اسم العميل">
