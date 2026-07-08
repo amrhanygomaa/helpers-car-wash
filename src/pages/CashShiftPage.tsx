@@ -291,6 +291,18 @@ export function CashShiftPage() {
   );
 }
 
+const CASH_ENTRY_TYPE_LABELS: Record<string, string> = {
+  "sales-receipt": "تحصيل فاتورة",
+  "purchase-payment": "دفع مشتريات",
+  "manual-add": "إضافة يدوية",
+  "manual-remove": "سحب يدوي",
+  adjustment: "تسوية",
+};
+
+function cashEntryTypeLabel(type: string): string {
+  return CASH_ENTRY_TYPE_LABELS[type] ?? type;
+}
+
 function Stat({ label, value, tone }: { label: string; value: string; tone: "slate" | "blue" | "green" }) {
   const tones = { slate: "text-slate-900", blue: "text-blue-700", green: "text-emerald-700" } as const;
   return (
