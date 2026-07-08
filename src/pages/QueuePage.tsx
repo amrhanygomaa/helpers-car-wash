@@ -30,13 +30,11 @@ import { useAuth } from "../store/AuthContext";
 import { vehicleLabel } from "./VehiclesPage";
 import { formatDateTime, formatDate } from "../lib/format";
 import { hasPermission } from "../lib/permissions";
-import { cn, isValidEgyptPlateNumber, normalizeEgyptPlateNumber, todayISO } from "../lib/utils";
+import { cn, todayISO } from "../lib/utils";
 import { printIntakeTicket } from "../lib/print";
 import { CustomerFormDialog } from "../features/customers/CustomerFormDialog";
 import { CustomerCombobox } from "../features/customers/CustomerCombobox";
 import { VehicleFormDialog } from "../features/vehicles/VehicleFormDialog";
-import { BrandCombobox } from "../features/vehicles/BrandCombobox";
-import { PlateNumberInput } from "../components/ui/PlateNumberInput";
 import type { QueueStatus, QueueTicket, Vehicle, WashService } from "../types";
 
 const STATUS_LABEL: Record<QueueStatus, string> = {
@@ -143,9 +141,6 @@ export function QueuePage() {
   const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
   const [customerDialogPrefill, setCustomerDialogPrefill] = useState("");
   const [vehicleDialogOpen, setVehicleDialogOpen] = useState(false);
-  // Walk-in customer who isn't saved as a registered customer.
-  const [guest, setGuest] = useState<{ name: string; phone: string } | null>(null);
-  const [guestVehicle, setGuestVehicle] = useState({ brand: "", model: "", plateNumber: "", color: "" });
   const [arrival, setArrival] = useState(() => nowLocalInput());
   const [requestedPickupAt, setRequestedPickupAt] = useState("");
   const [pickupDropdownOpen, setPickupDropdownOpen] = useState(false);
@@ -203,8 +198,6 @@ export function QueuePage() {
   function resetForm() {
     setCustomerId("");
     setSelectedVehicleIds([""]);
-    setGuest(null);
-    setGuestVehicle({ brand: "", model: "", plateNumber: "", color: "" });
     setRequestedPickupAt("");
     setPickupDropdownOpen(false);
     setNote("");
@@ -222,13 +215,23 @@ export function QueuePage() {
   function onPickCustomer(id: string) {
     setCustomerId(id);
     setSelectedVehicleIds([""]);
-    setGuest(null);
   }
 
-  function onGuestFromSearch(name: string) {
-    setCustomerId("");
-    setSelectedVehicleIds([""]);
-    setGuest({ name, phone: "" });
+  /** "تسجيل كزائر" — skips the add-customer dialog for a fast one-off intake. */
+  function quickRegisterGuest(name: string) {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      toast.error("اكتب اسم الزائر أولاً");
+      return;
+    }
+    const created = addCustomer({ name: trimmed, phone: "" });
+    toast.success("تم تسجيل الزائر", created.name);
+    onPickCustomer(created.id);
+  }
+
+  function openAddCustomerDialog(query: string) {
+    setCustomerDialogPrefill(query);
+    setCustomerDialogOpen(true);
   }
 
   function onPickVehicle(index: number, id: string) {
@@ -307,75 +310,7 @@ export function QueuePage() {
     toast.success("تم تحديث حالة السيارة", `${ticket.customerName} - ${STATUS_LABEL[status]}`);
   }
 
-  async function handleAddGuest() {
-    if (!guest) return;
-    if (!guest.name.trim()) {
-      toast.error("اكتب اسم الزائر");
-      return;
-    }
-    if (!guestVehicle.brand.trim()) {
-      toast.error("أدخل ماركة السيارة");
-      return;
-    }
-    const plateNumber = normalizeEgyptPlateNumber(guestVehicle.plateNumber);
-    if (plateNumber && !isValidEgyptPlateNumber(plateNumber)) {
-      toast.error(
-        "رقم اللوحة غير صحيح. استخدم 2-3 حروف مفصولة بمسافة ثم 3-4 أرقام مثل: ن هـ 7535"
-      );
-      return;
-    }
-    const arrivalDate = parseLocalInput(arrival);
-    const pickupDate = requestedPickupAt ? parseLocalInput(requestedPickupAt) : null;
-    if (pickupDate && arrivalDate && pickupDate.getTime() <= arrivalDate.getTime()) {
-      toast.error("وقت الاستلام لازم يكون بعد وقت الوصول");
-      return;
-    }
-
-    const selectedServices = activeServices.filter((service) => serviceIds.includes(service.id));
-    const keyTime = keyReceived ? new Date().toISOString() : undefined;
-    const [ticket] = addQueueTickets([
-      {
-        customerName: guest.name.trim(),
-        phone: guest.phone.trim() || undefined,
-        vehicleBrand: guestVehicle.brand.trim(),
-        vehicleLabel: vehicleLabel({
-          brand: guestVehicle.brand.trim(),
-          model: guestVehicle.model.trim() || undefined,
-          plateNumber,
-        }),
-        serviceIds: selectedServices.map((service) => service.id),
-        serviceNames: selectedServices.map((service) => service.name),
-        arrivalTime: arrival ? new Date(arrival).toISOString() : new Date().toISOString(),
-        requestedPickupAt: requestedPickupAt ? new Date(requestedPickupAt).toISOString() : undefined,
-        note: note.trim() || undefined,
-        delayNote: note.trim() || undefined,
-        keyReceived,
-        keyReceivedAt: keyTime,
-        keyReceivedBy: keyReceived ? currentUser?.id : undefined,
-        keyReceivedByName: keyReceived ? currentUser?.name : undefined,
-      },
-    ]);
-
-    if (printOnAdd) {
-      const carsAlreadyWaiting = queueTickets.filter((t) => ACTIVE_QUEUE_STATUSES.has(t.status)).length;
-      const result = await printIntakeTicket({
-        ticket,
-        carsAhead: carsAlreadyWaiting,
-        services: selectedServices.map((service) => service.name),
-      });
-      if (!result.ok) toast.error("تعذر فتح الطباعة", result.error);
-    }
-
-    toast.success("تمت إضافة السيارة للطابور", `#${ticket.number}`);
-    resetForm();
-    setOpen(false);
-  }
-
   async function handleAdd() {
-    if (guest) {
-      await handleAddGuest();
-      return;
-    }
     if (!selectedCustomer) {
       toast.error("اختر عميلاً مسجلاً أو سجّله كزائر");
       return;
