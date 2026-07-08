@@ -89,10 +89,6 @@ export async function printIntakeTicket({
     <div class="muted">تذكرة استقبال غسيل</div>
     <div class="ticket">#${escapeHtml(ticket.number)}</div>
   </div>
-  <div class="row"><span>العميل</span><strong>${escapeHtml(ticket.customerName)}</strong></div>
-  <div class="row"><span>الهاتف</span><strong>${escapeHtml(ticket.phone || "-")}</strong></div>
-  <div class="row"><span>السيارة</span><strong>${escapeHtml(ticket.vehicleLabel || ticket.vehicleBrand || "-")}</strong></div>
-  <div class="row"><span>الاستقبال</span><strong>${escapeHtml(formatReceiptDate(ticket.arrivalTime))}</strong></div>
   <div class="row"><span>الاستلام المتوقع</span><strong>${escapeHtml(formatReceiptDate(ticket.requestedPickupAt) || "-")}</strong></div>
   <div class="row"><span>سيارات قبلك</span><strong>${escapeHtml(carsAhead)}</strong></div>
   <div>
@@ -157,6 +153,7 @@ export function printServiceInvoice({
   if (typeof document === "undefined") return { ok: false, error: "document_unavailable" };
 
   const serviceLines = invoice.lines.filter((l) => l.kind === "service");
+  const documentTitle = invoice.invoiceKind === "product" ? "فاتورة منتجات" : "فاتورة غسيل سيارات";
 
   const lineRows = serviceLines
     .map((l) => {
@@ -215,7 +212,7 @@ export function printServiceInvoice({
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="utf-8" />
-  <title>فاتورة غسيل ${escapeHtml(invoice.invoiceNumber)}</title>
+  <title>${escapeHtml(documentTitle)} ${escapeHtml(invoice.invoiceNumber)}</title>
   <style>
     @page { size: 80mm auto; margin: 4mm; }
     * { box-sizing: border-box; }
@@ -240,7 +237,7 @@ export function printServiceInvoice({
 <body>
   <div class="center">
     <div class="brand">${escapeHtml(businessName || "Top Gear")}</div>
-    <div class="muted">فاتورة غسيل سيارات</div>
+    <div class="muted">${escapeHtml(documentTitle)}</div>
     <div class="inv-no">#${escapeHtml(invoice.invoiceNumber)}</div>
     <div class="muted small">${escapeHtml(formatReceiptDate(invoice.finalizedAt ?? invoice.date))}</div>
   </div>

@@ -268,16 +268,21 @@ function openDatabase() {
 
   const initDb = (isExisting) => {
     const instance = new Database(dbPath);
-    if (isExisting) {
-      instance.pragma(`key="x'${dbKeyHex}'"`);
-    } else {
-      instance.pragma(`rekey="x'${dbKeyHex}'"`);
+    try {
+      if (isExisting) {
+        instance.pragma(`key="x'${dbKeyHex}'"`);
+      } else {
+        instance.pragma(`rekey="x'${dbKeyHex}'"`);
+      }
+      instance.pragma("journal_mode = WAL");
+      instance.prepare(
+        "CREATE TABLE IF NOT EXISTS kv_store (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL)"
+      ).run();
+      return instance;
+    } catch (error) {
+      try { instance.close(); } catch { /* ignore close errors while recovering */ }
+      throw error;
     }
-    instance.pragma("journal_mode = WAL");
-    instance.prepare(
-      "CREATE TABLE IF NOT EXISTS kv_store (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL)"
-    ).run();
-    return instance;
   };
 
   try {
@@ -1629,10 +1634,6 @@ function buildIntakeTicketHtml(payload, settings) {
       <div class="muted">تذكرة استقبال غسيل</div>
       <div class="ticket">#${escapeHtml(ticketNumber)}</div>
     </div>
-    <div class="row"><span>العميل</span><strong>${escapeHtml(String(ticket.customerName || "زائر").slice(0, 160))}</strong></div>
-    <div class="row"><span>الهاتف</span><strong>${escapeHtml(String(ticket.phone || "-").slice(0, 60))}</strong></div>
-    <div class="row"><span>السيارة</span><strong>${escapeHtml(String(ticket.vehicleLabel || ticket.vehicleBrand || "-").slice(0, 200))}</strong></div>
-    <div class="row"><span>الاستقبال</span><strong>${escapeHtml(formatDateTime(ticket.arrivalTime))}</strong></div>
     <div class="row"><span>الاستلام المتوقع</span><strong>${escapeHtml(formatDateTime(ticket.requestedPickupAt))}</strong></div>
     <div class="row"><span>سيارات قبلك</span><strong>${carsAhead}</strong></div>
     <div><strong>الخدمات</strong><ul>${serviceRows}</ul></div>

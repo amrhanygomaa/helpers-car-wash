@@ -71,6 +71,7 @@ export function CarwashInvoiceNewPage() {
   const [params] = useSearchParams();
   const queueId = params.get("queue") ?? "";
   const customerParam = params.get("customerId") ?? "";
+  const productOnly = params.get("type") === "products";
 
   const { customers: allCustomers } = useCatalog();
   const { vehicles, washServices, queueTickets, updateQueueTicket, setQueueStatus } = useCarwash();
@@ -108,6 +109,7 @@ export function CarwashInvoiceNewPage() {
   const [vehicleDialogOpen, setVehicleDialogOpen] = useState(false);
 
   const [lines, setLines] = useState<ServiceLineDraft[]>(() => {
+    if (productOnly) return [];
     const selectedIds = ticket?.serviceIds?.filter((id) => activeServices.some((s) => s.id === id)) ?? [];
     return selectedIds.map((serviceId) => {
       const service = activeServices.find((s) => s.id === serviceId)!;
@@ -117,6 +119,12 @@ export function CarwashInvoiceNewPage() {
 
   const [productLines, setProductLines] = useState<ProductLineDraft[]>([]);
   const [invoiceWorkerId, setInvoiceWorkerId] = useState("");
+
+  useEffect(() => {
+    if (!productOnly || productLines.length > 0 || dbProducts.length === 0) return;
+    const prod = dbProducts[0];
+    setProductLines([{ id: uid("pln"), productId: prod.id, quantity: 1, price: piastresToEgp(prod.salePrice) }]);
+  }, [dbProducts, productLines.length, productOnly]);
 
 
   const [notes, setNotes] = useState("");
@@ -276,8 +284,8 @@ export function CarwashInvoiceNewPage() {
   async function submit() {
     const customer = customers.find((c) => c.id === customerId);
     if (!customer) { toast.error("اختر العميل"); return; }
-    if (lines.length === 0 && productLines.length === 0) { toast.error("أضف خدمة أو إضافة واحدة على الأقل"); return; }
-    if (lines.some((l) => !l.serviceId || l.quantity <= 0)) { toast.error("تحقق من بنود الخدمات"); return; }
+    if (lines.length === 0 && productLines.length === 0) { toast.error(productOnly ? "أضف منتجاً واحداً على الأقل" : "أضف خدمة أو إضافة واحدة على الأقل"); return; }
+    if (!productOnly && lines.some((l) => !l.serviceId || l.quantity <= 0)) { toast.error("تحقق من بنود الخدمات"); return; }
     if (productLines.some((l) => !l.productId || l.quantity <= 0)) { toast.error("تحقق من بنود الإضافات"); return; }
 
     // Stock validation — can't go negative
@@ -345,17 +353,17 @@ export function CarwashInvoiceNewPage() {
       priceType: "retail",
       notes: notes.trim() || undefined,
       createdByUserId: currentUser?.id,
-      invoiceKind: "service",
-      vehicleId: vehicle?.id,
-      vehicleLabel: vehicle ? vehicleLabel(vehicle) : undefined,
-      queueId: ticket?.id,
+      invoiceKind: productOnly ? "product" : "service",
+      vehicleId: productOnly ? undefined : vehicle?.id,
+      vehicleLabel: productOnly ? undefined : vehicle ? vehicleLabel(vehicle) : undefined,
+      queueId: productOnly ? undefined : ticket?.id,
       finalizedAt: new Date().toISOString(),
       commissionInTotal: commissionTotal > 0 ? false : undefined,
       commissionTotal: commissionTotal > 0 ? commissionTotal : undefined,
       loyaltyPointsRedeemed: effectiveRedeem > 0 ? effectiveRedeem : undefined,
     });
 
-    if (ticket) {
+    if (!productOnly && ticket) {
       updateQueueTicket(ticket.id, { invoiceId: inv.id });
       setQueueStatus(ticket.id, "done");
     }
@@ -390,7 +398,7 @@ export function CarwashInvoiceNewPage() {
     // expandServiceMaterials aggregates per-service material rows × line quantity.
     // Settled (not awaited per-item) so an insufficient-stock material never blocks the
     // confirmed wash — the work is already done; the operator reconciles from the materials page.
-    if (hasDb()) {
+    if (!productOnly && hasDb()) {
       const now = new Date().toISOString();
       const consumptions = expandServiceMaterials(invLines, washServices);
       await Promise.allSettled(
@@ -411,7 +419,7 @@ export function CarwashInvoiceNewPage() {
     }
 
     // Redeem the subscription that covered this wash (decrements a count package).
-    if (hasDb() && activeSubscription) {
+    if (!productOnly && hasDb() && activeSubscription) {
       try {
         await redeemSubscription({
           redemptionId: uid("redm"),
@@ -437,22 +445,22 @@ export function CarwashInvoiceNewPage() {
       toast.error("تعذر فتح الطباعة", "تأكد من إعدادات الطابعة وحاول مرة أخرى");
     }
 
-    toast.success("تم تأكيد فاتورة الغسيل", `رقم ${inv.invoiceNumber}`);
+    toast.success(productOnly ? "تم تأكيد فاتورة المنتجات" : "تم تأكيد فاتورة الغسيل", `رقم ${inv.invoiceNumber}`);
     navigate(`/sales/${inv.id}`);
   }
 
   return (
     <>
       <PageHeader
-        title="فاتورة غسيل جديدة"
-        description="أدخل الخدمات والصنايعي والإضافات والخصم — تُؤكَّد الفاتورة وتُطبع فور الحفظ."
+        title={productOnly ? "فاتورة منتجات جديدة" : "فاتورة غسيل جديدة"}
+        description={productOnly ? "بيع منتجات وإكسسوارات منفصلة عن تذاكر الغسيل." : "أدخل الخدمات والصنايعي والإضافات والخصم — تُؤكَّد الفاتورة وتُطبع فور الحفظ."}
         actions={
           <>
             <Button variant="outline" onClick={() => navigate(-1)}>
               <ArrowRight className="w-4 h-4" /> رجوع
             </Button>
             <Button onClick={submit}>
-              <Save className="w-4 h-4" /> تأكيد وطباعة
+              <Save className="w-4 h-4" /> {productOnly ? "تأكيد فاتورة المنتجات" : "تأكيد وطباعة"}
             </Button>
           </>
         }
@@ -487,34 +495,38 @@ export function CarwashInvoiceNewPage() {
                 </Button>
               </div>
             </Field>
-            <Field label="المركبة" hint={customerVehicles.length === 0 ? "لا توجد مركبات لهذا العميل" : undefined}>
-              <div className="flex gap-2">
-                <Select title="المركبة" value={vehicleId} onChange={(e) => setVehicleId(e.target.value)} className="flex-1">
-                  <option value="">— بدون مركبة —</option>
-                  {customerVehicles.map((v) => (
-                    <option key={v.id} value={v.id}>{vehicleLabel(v)}</option>
-                  ))}
-                </Select>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  title={customerId ? "إضافة مركبة جديدة" : "اختر العميل أولاً"}
-                  disabled={!customerId}
-                  onClick={() => setVehicleDialogOpen(true)}
-                >
-                  <Plus className="w-4 h-4" />
-                </Button>
-              </div>
-            </Field>
-            <Field label="الصنايعي">
-              <Select value={invoiceWorkerId} onChange={(e) => setInvoiceWorkerId(e.target.value)}>
-                <option value="">— بدون صنايعي —</option>
-                {dbWorkers.map((worker) => (
-                  <option key={worker.id} value={worker.id}>{worker.name}</option>
-                ))}
-              </Select>
-            </Field>
+            {!productOnly ? (
+              <>
+                <Field label="المركبة" hint={customerVehicles.length === 0 ? "لا توجد مركبات لهذا العميل" : undefined}>
+                  <div className="flex gap-2">
+                    <Select title="المركبة" value={vehicleId} onChange={(e) => setVehicleId(e.target.value)} className="flex-1">
+                      <option value="">— بدون مركبة —</option>
+                      {customerVehicles.map((v) => (
+                        <option key={v.id} value={v.id}>{vehicleLabel(v)}</option>
+                      ))}
+                    </Select>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      title={customerId ? "إضافة مركبة جديدة" : "اختر العميل أولاً"}
+                      disabled={!customerId}
+                      onClick={() => setVehicleDialogOpen(true)}
+                    >
+                      <Plus className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </Field>
+                <Field label="الصنايعي">
+                  <Select value={invoiceWorkerId} onChange={(e) => setInvoiceWorkerId(e.target.value)}>
+                    <option value="">— بدون صنايعي —</option>
+                    {dbWorkers.map((worker) => (
+                      <option key={worker.id} value={worker.id}>{worker.name}</option>
+                    ))}
+                  </Select>
+                </Field>
+              </>
+            ) : null}
           </CardBody>
         </Card>
 
@@ -555,113 +567,115 @@ export function CarwashInvoiceNewPage() {
       </div>
 
       {/* Services table */}
-      <Card className="mt-4">
-        <CardHeader
-          title="الخدمات"
-          actions={
-            <div className="flex items-center gap-3">
-              <Button variant="outline" size="sm" onClick={addLine}>
-                <Plus className="w-4 h-4" /> إضافة خدمة
-              </Button>
-            </div>
-          }
-        />
-        <CardBody className="p-0">
-          <Table>
-            <THead>
-              <TR>
-                <TH>الخدمة</TH>
-                <TH className="w-32">السعر</TH>
-                <TH className="w-32 text-end">الإجمالي</TH>
-                <TH className="w-10"></TH>
-              </TR>
-            </THead>
-            <TBody>
-              {lines.length === 0 ? (
+      {!productOnly ? (
+        <Card className="mt-4">
+          <CardHeader
+            title="الخدمات"
+            actions={
+              <div className="flex items-center gap-3">
+                <Button variant="outline" size="sm" onClick={addLine}>
+                  <Plus className="w-4 h-4" /> إضافة خدمة
+                </Button>
+              </div>
+            }
+          />
+          <CardBody className="p-0">
+            <Table>
+              <THead>
                 <TR>
-                  <TD colSpan={6} className="text-center py-6 text-slate-500">
-                    لم تتم إضافة خدمات بعد
-                  </TD>
+                  <TH>الخدمة</TH>
+                  <TH className="w-32">السعر</TH>
+                  <TH className="w-32 text-end">الإجمالي</TH>
+                  <TH className="w-10"></TH>
                 </TR>
-              ) : (
-                lines.map((l) => {
-                  const svc = activeServices.find((s) => s.id === l.serviceId);
-                  const lineHasCommission = svc?.hasCommission ?? false;
-                  return (
-                    <TR key={l.id}>
-                      <TD>
-                        <Select aria-label="الخدمة" title="الخدمة" value={l.serviceId} onChange={(e) => onServiceChange(l.id, e.target.value)}>
-                          {activeServices.map((s) => (
-                            <option key={s.id} value={s.id}>{s.name}</option>
-                          ))}
-                        </Select>
-                      </TD>
-                      <TD className="hidden">
-                        <div className="space-y-1.5 min-w-[200px]">
-                          {l.workers.length === 0 ? (
-                            <span className="text-slate-400 text-xs">— لم يُسنَد صنايعي —</span>
-                          ) : (
-                            l.workers.map((w, idx) => (
-                              <div key={idx} className="flex items-center gap-1.5">
-                                <Select aria-label="الصنايعي" title="الصنايعي" value={w.workerId} className="flex-1"
-                                  onChange={(e) => setWorkerId(l.id, idx, e.target.value)}>
-                                  <option value="" disabled>اختر صنايعي</option>
-                                  {dbWorkers.map((d) => (
-                                    <option key={d.id} value={d.id}>{d.name}</option>
-                                  ))}
-                                </Select>
-                                {lineHasCommission && (
-                                  <Input type="number" min={0} step="0.01" placeholder="عمولة" className="w-20"
-                                    aria-label="عمولة الصنايعي" title="عمولة الصنايعي"
-                                    value={w.commissionAmount || ""}
-                                    onChange={(e) => setWorkerCommission(l.id, idx, Number(e.target.value))} />
-                                )}
-                                <button type="button" onClick={() => removeWorker(l.id, idx)}
-                                  className="p-1 text-slate-400 hover:text-rose-600 transition-colors shrink-0" title="إزالة الصنايعي">
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                            ))
-                          )}
-                          {dbWorkers.length > 0 && (
-                            <button type="button" onClick={() => addWorker(l.id)}
-                              className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1">
-                              <Plus className="w-3 h-3" /> إضافة صنايعي
-                            </button>
-                          )}
-                        </div>
-                      </TD>
-                      <TD className="hidden">
-                        <Input type="number" min={1} value={l.quantity}
-                          onChange={(e) => onQuantityChange(l.id, Number(e.target.value))} />
-                      </TD>
-                      <TD>
-                        <Input type="number" min={0} step="0.01" value={l.price}
-                          onChange={(e) => onPriceChange(l.id, Number(e.target.value))} />
-                      </TD>
-                      <TD className="text-end font-medium">
-                        {formatCurrency(l.price * l.quantity, settings.currency)}
-                      </TD>
-                      <TD>
-                        <button onClick={() => removeLine(l.id)}
-                          className="p-1.5 text-slate-400 hover:text-rose-600 transition-colors" title="حذف">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </TD>
-                    </TR>
-                  );
-                })
-              )}
-            </TBody>
-          </Table>
-        </CardBody>
-      </Card>
+              </THead>
+              <TBody>
+                {lines.length === 0 ? (
+                  <TR>
+                    <TD colSpan={6} className="text-center py-6 text-slate-500">
+                      لم تتم إضافة خدمات بعد
+                    </TD>
+                  </TR>
+                ) : (
+                  lines.map((l) => {
+                    const svc = activeServices.find((s) => s.id === l.serviceId);
+                    const lineHasCommission = svc?.hasCommission ?? false;
+                    return (
+                      <TR key={l.id}>
+                        <TD>
+                          <Select aria-label="الخدمة" title="الخدمة" value={l.serviceId} onChange={(e) => onServiceChange(l.id, e.target.value)}>
+                            {activeServices.map((s) => (
+                              <option key={s.id} value={s.id}>{s.name}</option>
+                            ))}
+                          </Select>
+                        </TD>
+                        <TD className="hidden">
+                          <div className="space-y-1.5 min-w-[200px]">
+                            {l.workers.length === 0 ? (
+                              <span className="text-slate-400 text-xs">— لم يُسنَد صنايعي —</span>
+                            ) : (
+                              l.workers.map((w, idx) => (
+                                <div key={idx} className="flex items-center gap-1.5">
+                                  <Select aria-label="الصنايعي" title="الصنايعي" value={w.workerId} className="flex-1"
+                                    onChange={(e) => setWorkerId(l.id, idx, e.target.value)}>
+                                    <option value="" disabled>اختر صنايعي</option>
+                                    {dbWorkers.map((d) => (
+                                      <option key={d.id} value={d.id}>{d.name}</option>
+                                    ))}
+                                  </Select>
+                                  {lineHasCommission && (
+                                    <Input type="number" min={0} step="0.01" placeholder="عمولة" className="w-20"
+                                      aria-label="عمولة الصنايعي" title="عمولة الصنايعي"
+                                      value={w.commissionAmount || ""}
+                                      onChange={(e) => setWorkerCommission(l.id, idx, Number(e.target.value))} />
+                                  )}
+                                  <button type="button" onClick={() => removeWorker(l.id, idx)}
+                                    className="p-1 text-slate-400 hover:text-rose-600 transition-colors shrink-0" title="إزالة الصنايعي">
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              ))
+                            )}
+                            {dbWorkers.length > 0 && (
+                              <button type="button" onClick={() => addWorker(l.id)}
+                                className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1">
+                                <Plus className="w-3 h-3" /> إضافة صنايعي
+                              </button>
+                            )}
+                          </div>
+                        </TD>
+                        <TD className="hidden">
+                          <Input type="number" min={1} value={l.quantity}
+                            onChange={(e) => onQuantityChange(l.id, Number(e.target.value))} />
+                        </TD>
+                        <TD>
+                          <Input type="number" min={0} step="0.01" value={l.price}
+                            onChange={(e) => onPriceChange(l.id, Number(e.target.value))} />
+                        </TD>
+                        <TD className="text-end font-medium">
+                          {formatCurrency(l.price * l.quantity, settings.currency)}
+                        </TD>
+                        <TD>
+                          <button onClick={() => removeLine(l.id)}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 transition-colors" title="حذف">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </TD>
+                      </TR>
+                    );
+                  })
+                )}
+              </TBody>
+            </Table>
+          </CardBody>
+        </Card>
+      ) : null}
 
       {/* Product add-ons */}
       {dbProducts.length > 0 && (
         <Card className="mt-4">
           <CardHeader
-            title="المنتجات"
+            title={productOnly ? "بنود فاتورة المنتجات" : "المنتجات"}
             actions={
               <Button variant="outline" size="sm" onClick={addProductLine}>
                 <Plus className="w-4 h-4" /> إضافة منتج
@@ -683,7 +697,7 @@ export function CarwashInvoiceNewPage() {
                 {productLines.length === 0 ? (
                   <TR>
                     <TD colSpan={6} className="text-center py-4 text-slate-500 text-sm">
-                      اضغط "إضافة ملحق" لإضافة فوّاحة أو أي إضافة أخرى
+                      اضغط "إضافة منتج" لإضافة بند جديد
                     </TD>
                   </TR>
                 ) : (
@@ -736,7 +750,7 @@ export function CarwashInvoiceNewPage() {
       <div className="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Card className="lg:col-span-2">
           <CardBody className="space-y-4">
-            {usableSubs.length > 0 && (
+            {!productOnly && usableSubs.length > 0 && (
               <Field label="اشتراك / باقة العميل" hint={serviceSubtotal === 0 ? "أضف خدمة ليغطّيها الاشتراك" : "الاشتراك يغطّي قيمة الغسيل (الخدمات)"}>
                 <Select value={useSubscriptionId} onChange={(e) => setUseSubscriptionId(e.target.value)}>
                   <option value="">— بدون استخدام اشتراك —</option>

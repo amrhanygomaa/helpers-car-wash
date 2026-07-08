@@ -137,6 +137,8 @@ export function QueuePage() {
 
   // Add-ticket form state
   const [customerId, setCustomerId] = useState("");
+  const [customerName, setCustomerName] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
   const [selectedVehicleIds, setSelectedVehicleIds] = useState<string[]>([""]);
   const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
   const [customerDialogPrefill, setCustomerDialogPrefill] = useState("");
@@ -197,6 +199,8 @@ export function QueuePage() {
 
   function resetForm() {
     setCustomerId("");
+    setCustomerName("");
+    setCustomerPhone("");
     setSelectedVehicleIds([""]);
     setRequestedPickupAt("");
     setPickupDropdownOpen(false);
@@ -214,6 +218,9 @@ export function QueuePage() {
 
   function onPickCustomer(id: string) {
     setCustomerId(id);
+    const customer = customers.find((item) => item.id === id && !item.archived);
+    setCustomerName(customer?.name ?? "");
+    setCustomerPhone(customer?.phone ?? "");
     const vList = vehicles.filter((v) => v.customerId === id && !v.archived);
     if (vList.length > 0) {
       setSelectedVehicleIds([vList[0].id]);
@@ -239,13 +246,40 @@ export function QueuePage() {
     setCustomerDialogOpen(true);
   }
 
+  function ensureCustomerFromForm() {
+    if (selectedCustomer) return selectedCustomer;
+
+    const name = customerName.trim();
+    const phone = customerPhone.trim();
+    if (!name) {
+      toast.error("اكتب اسم العميل أولاً");
+      return null;
+    }
+
+    const existing = customers.find((customer) => {
+      if (customer.archived) return false;
+      const samePhone = phone && customer.phone?.trim() === phone;
+      const sameName = customer.name.trim() === name;
+      return Boolean(samePhone || sameName);
+    });
+    const customer = existing ?? addCustomer({ name, phone: phone || undefined });
+    setCustomerId(customer.id);
+    setCustomerName(customer.name);
+    setCustomerPhone(customer.phone ?? "");
+    return customer;
+  }
+
+  function openVehicleDialog() {
+    if (!ensureCustomerFromForm()) return;
+    setVehicleDialogOpen(true);
+  }
+
   function onPickVehicle(index: number, id: string) {
     setSelectedVehicleIds((current) => current.map((vehicleId, i) => (i === index ? id : vehicleId)));
   }
 
   function addVehicleSlot() {
-    if (!customerId) {
-      toast.error("اختر العميل أولاً");
+    if (!ensureCustomerFromForm()) {
       return;
     }
     setSelectedVehicleIds((current) => [...current, ""]);
@@ -316,8 +350,8 @@ export function QueuePage() {
   }
 
   async function handleAdd() {
-    if (!selectedCustomer) {
-      toast.error("اختر عميلاً مسجلاً أو سجّله كزائر");
+    const effectiveCustomer = ensureCustomerFromForm();
+    if (!effectiveCustomer) {
       return;
     }
     if (selectedVehicleIds.some((id) => !id)) {
@@ -330,7 +364,7 @@ export function QueuePage() {
     }
 
     const selectedVehicles = selectedVehicleIds
-      .map((id) => customerVehicles.find((vehicle) => vehicle.id === id))
+      .map((id) => vehicles.find((vehicle) => vehicle.customerId === effectiveCustomer.id && !vehicle.archived && vehicle.id === id))
       .filter((vehicle): vehicle is Vehicle => Boolean(vehicle));
     if (selectedVehicles.length !== selectedVehicleIds.length || selectedVehicles.length === 0) {
       toast.error("اختر مركبة مسجلة للعميل");
@@ -347,9 +381,9 @@ export function QueuePage() {
     const keyTime = keyReceived ? new Date().toISOString() : undefined;
     const tickets = addQueueTickets(
       selectedVehicles.map((vehicle) => ({
-        customerId: selectedCustomer.id,
-        customerName: selectedCustomer.name,
-        phone: selectedCustomer.phone || undefined,
+        customerId: effectiveCustomer.id,
+        customerName: effectiveCustomer.name,
+        phone: effectiveCustomer.phone || undefined,
         vehicleId: vehicle.id,
         vehicleBrand: vehicle.brand,
         vehicleLabel: vehicleLabel(vehicle),
@@ -616,11 +650,22 @@ export function QueuePage() {
               </Field>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Field label="اسم العميل">
-                <Input value={selectedCustomer?.name ?? ""} readOnly className="bg-white text-slate-600" />
+              <Field label="اسم العميل" required>
+                <Input
+                  value={customerName}
+                  readOnly={Boolean(selectedCustomer)}
+                  onChange={(e) => setCustomerName(e.target.value)}
+                  className={cn(selectedCustomer ? "bg-slate-50 text-slate-600" : "bg-white")}
+                />
               </Field>
               <Field label="رقم الهاتف">
-                <Input value={selectedCustomer?.phone ?? ""} readOnly className="bg-white text-slate-600" />
+                <Input
+                  value={customerPhone}
+                  readOnly={Boolean(selectedCustomer)}
+                  inputMode="tel"
+                  onChange={(e) => setCustomerPhone(e.target.value)}
+                  className={cn(selectedCustomer ? "bg-slate-50 text-slate-600" : "bg-white")}
+                />
               </Field>
             </div>
           </div>
@@ -636,8 +681,8 @@ export function QueuePage() {
                   type="button"
                   size="sm"
                   variant="outline"
-                  disabled={!customerId}
-                  onClick={() => setVehicleDialogOpen(true)}
+                  disabled={!customerId && !customerName.trim()}
+                  onClick={openVehicleDialog}
                 >
                   <Plus className="w-4 h-4" /> مركبة جديدة
                 </Button>
@@ -645,7 +690,7 @@ export function QueuePage() {
                   type="button"
                   size="sm"
                   variant="secondary"
-                  disabled={!customerId || selectedVehicleIds.some((id) => !id)}
+                  disabled={(!customerId && !customerName.trim()) || selectedVehicleIds.some((id) => !id)}
                   onClick={addVehicleSlot}
                 >
                   <Plus className="w-4 h-4" /> سيارة أخرى للغسيل

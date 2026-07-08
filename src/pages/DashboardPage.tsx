@@ -270,6 +270,13 @@ export function DashboardPage() {
                 </Button>
               </Link>
             ) : null}
+            {canAddInvoice ? (
+              <Link to="/carwash/new?type=products">
+                <Button className="h-12 w-full justify-start text-sm" variant="outline">
+                  <Receipt className="h-4 w-4" /> فاتورة منتجات
+                </Button>
+              </Link>
+            ) : null}
             {canManageQueue ? (
               <Link to="/queue">
                 <Button className="h-12 w-full justify-start text-sm" variant="outline">
