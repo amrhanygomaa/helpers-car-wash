@@ -114,11 +114,6 @@ export function CustomerDetailPage() {
       toast.error("ماركة السيارة مطلوبة");
       return;
     }
-    if (!form.plateNumber.trim()) {
-      toast.error("رقم اللوحة مطلوب");
-      return;
-    }
-
     updateVehicle(editVehicle.id, form);
     toast.success("تم تحديث بيانات السيارة بنجاح");
     setEditVehicle(null);
@@ -334,7 +329,7 @@ export function CustomerDetailPage() {
               placeholder="مثال: كورولا، 2022..."
             />
           </Field>
-          <Field label="رقم اللوحة" required>
+          <Field label="رقم اللوحة">
             <PlateNumberInput
               value={form.plateNumber}
               onPlateChange={(val) => setForm((prev) => ({ ...prev, plateNumber: val }))}
