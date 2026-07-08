@@ -359,37 +359,83 @@ export function QueuePage() {
   }
 
   async function handleAdd() {
-    const effectiveCustomer = ensureCustomerFromForm();
-    if (!effectiveCustomer) {
-      return;
-    }
-    if (selectedVehicleIds.some((id) => !id)) {
-      toast.error("اختر مركبة لكل خانة أو احذف الخانة الفارغة");
-      return;
-    }
-    if (new Set(selectedVehicleIds).size !== selectedVehicleIds.length) {
-      toast.error("لا يمكن إضافة نفس المركبة مرتين");
-      return;
-    }
+    let ticketsData;
 
-    const selectedVehicles = selectedVehicleIds
-      .map((id) => vehicles.find((vehicle) => vehicle.customerId === effectiveCustomer.id && !vehicle.archived && vehicle.id === id))
-      .filter((vehicle): vehicle is Vehicle => Boolean(vehicle));
-    if (selectedVehicles.length !== selectedVehicleIds.length || selectedVehicles.length === 0) {
-      toast.error("اختر مركبة مسجلة للعميل");
-      return;
-    }
-    const arrivalDate = parseLocalInput(arrival);
-    const pickupDate = requestedPickupAt ? parseLocalInput(requestedPickupAt) : null;
-    if (pickupDate && arrivalDate && pickupDate.getTime() <= arrivalDate.getTime()) {
-      toast.error("وقت الاستلام لازم يكون بعد وقت الوصول");
-      return;
-    }
+    if (isGuest) {
+      const name = customerName.trim() || "ضيف";
+      const phone = customerPhone.trim();
+      if (!guestBrand.trim()) {
+        toast.error("يرجى كتابة ماركة مركبة الضيف");
+        return;
+      }
 
-    const selectedServices = activeServices.filter((service) => serviceIds.includes(service.id));
-    const keyTime = keyReceived ? new Date().toISOString() : undefined;
-    const tickets = addQueueTickets(
-      selectedVehicles.map((vehicle) => ({
+      const make = [guestBrand.trim(), guestModel.trim()].filter(Boolean).join(" ").trim();
+      const plate = guestPlate.trim();
+      const color = guestColor.trim();
+      const label = [
+        make,
+        color ? `(${color})` : "",
+        plate ? `[${plate}]` : ""
+      ].filter(Boolean).join(" · ").trim();
+
+      const arrivalDate = parseLocalInput(arrival);
+      const pickupDate = requestedPickupAt ? parseLocalInput(requestedPickupAt) : null;
+      if (pickupDate && arrivalDate && pickupDate.getTime() <= arrivalDate.getTime()) {
+        toast.error("وقت الاستلام لازم يكون بعد وقت الوصول");
+        return;
+      }
+
+      const selectedServices = activeServices.filter((service) => serviceIds.includes(service.id));
+      const keyTime = keyReceived ? new Date().toISOString() : undefined;
+
+      ticketsData = [{
+        customerName: name,
+        phone: phone || undefined,
+        vehicleBrand: guestBrand.trim(),
+        vehicleLabel: label || guestBrand.trim(),
+        serviceIds: selectedServices.map((service) => service.id),
+        serviceNames: selectedServices.map((service) => service.name),
+        arrivalTime: arrival ? new Date(arrival).toISOString() : new Date().toISOString(),
+        requestedPickupAt: requestedPickupAt ? new Date(requestedPickupAt).toISOString() : undefined,
+        note: note.trim() || undefined,
+        delayNote: note.trim() || undefined,
+        keyReceived,
+        keyReceivedAt: keyTime,
+        keyReceivedBy: keyReceived ? currentUser?.id : undefined,
+        keyReceivedByName: keyReceived ? currentUser?.name : undefined,
+      }];
+    } else {
+      const effectiveCustomer = ensureCustomerFromForm();
+      if (!effectiveCustomer) {
+        return;
+      }
+      if (selectedVehicleIds.some((id) => !id)) {
+        toast.error("اختر مركبة لكل خانة أو احذف الخانة الفارغة");
+        return;
+      }
+      if (new Set(selectedVehicleIds).size !== selectedVehicleIds.length) {
+        toast.error("لا يمكن إضافة نفس المركبة مرتين");
+        return;
+      }
+
+      const selectedVehicles = selectedVehicleIds
+        .map((id) => vehicles.find((vehicle) => vehicle.customerId === effectiveCustomer.id && !vehicle.archived && vehicle.id === id))
+        .filter((vehicle): vehicle is Vehicle => Boolean(vehicle));
+      if (selectedVehicles.length !== selectedVehicleIds.length || selectedVehicles.length === 0) {
+        toast.error("اختر مركبة مسجلة للعميل");
+        return;
+      }
+      const arrivalDate = parseLocalInput(arrival);
+      const pickupDate = requestedPickupAt ? parseLocalInput(requestedPickupAt) : null;
+      if (pickupDate && arrivalDate && pickupDate.getTime() <= arrivalDate.getTime()) {
+        toast.error("وقت الاستلام لازم يكون بعد وقت الوصول");
+        return;
+      }
+
+      const selectedServices = activeServices.filter((service) => serviceIds.includes(service.id));
+      const keyTime = keyReceived ? new Date().toISOString() : undefined;
+
+      ticketsData = selectedVehicles.map((vehicle) => ({
         customerId: effectiveCustomer.id,
         customerName: effectiveCustomer.name,
         phone: effectiveCustomer.phone || undefined,
@@ -406,8 +452,11 @@ export function QueuePage() {
         keyReceivedAt: keyTime,
         keyReceivedBy: keyReceived ? currentUser?.id : undefined,
         keyReceivedByName: keyReceived ? currentUser?.name : undefined,
-      }))
-    );
+      }));
+    }
+
+    const selectedServices = activeServices.filter((service) => serviceIds.includes(service.id));
+    const tickets = addQueueTickets(ticketsData);
 
     if (printOnAdd) {
       const carsAlreadyWaiting = queueTickets.filter((ticket) => ACTIVE_QUEUE_STATUSES.has(ticket.status)).length;
@@ -690,7 +739,24 @@ export function QueuePage() {
                 <Input
                   value={customerName}
                   readOnly={Boolean(selectedCustomer)}
-                  onChange={(e) => setCust            <div className="flex flex-wrap items-center justify-between gap-2">
+                  onChange={(e) => setCustomerName(e.target.value)}
+                  className={cn(selectedCustomer ? "bg-slate-50 text-slate-600" : "bg-white")}
+                />
+              </Field>
+              <Field label="رقم الهاتف">
+                <Input
+                  value={customerPhone}
+                  readOnly={Boolean(selectedCustomer)}
+                  inputMode="tel"
+                  onChange={(e) => setCustomerPhone(e.target.value)}
+                  className={cn(selectedCustomer ? "bg-slate-50 text-slate-600" : "bg-white")}
+                />
+              </Field>
+            </div>
+          </div>
+
+          <div className="md:col-span-2 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <div className="text-sm font-semibold text-slate-800">مركبات الاستقبال</div>
                 <div className="text-xs text-slate-500">
@@ -817,23 +883,7 @@ export function QueuePage() {
                   </div>
                 );
               })
-            )}           <Field label="الماركة">
-                        <Input value={vehicle.brand} readOnly className="bg-slate-50 text-slate-600" />
-                      </Field>
-                      <Field label="الموديل">
-                        <Input value={vehicle.model ?? ""} readOnly className="bg-slate-50 text-slate-600" />
-                      </Field>
-                      <Field label="رقم اللوحة">
-                        <Input value={vehicle.plateNumber} readOnly className="bg-slate-50 text-slate-600 font-mono" />
-                      </Field>
-                      <Field label="اللون">
-                        <Input value={vehicle.color ?? ""} readOnly className="bg-slate-50 text-slate-600" />
-                      </Field>
-                    </div>
-                  ) : null}
-                </div>
-              );
-            })}
+            )}
           </div>
           <Field label="موعد الاستلام المطلوب" hint="اختر ساعة بعد وقت الوصول">
             <div className="relative">
