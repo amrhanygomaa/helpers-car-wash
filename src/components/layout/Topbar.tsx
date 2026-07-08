@@ -14,7 +14,7 @@ const TITLES: Record<string, string> = {
   "/": "لوحة التحكم",
   "/queue": "طابور الغسيل",
   "/carwash/new": "فاتورة غسيل جديدة",
-  "/carwash/products": "إضافات الغسيل",
+  "/carwash/products": "المنتجات",
   "/carwash/materials": "خامات الغسيل",
   "/carwash/packages": "الاشتراكات والباقات",
   "/cashbox/shift": "وردية الخزنة",
