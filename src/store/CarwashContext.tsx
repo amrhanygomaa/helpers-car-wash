@@ -28,6 +28,9 @@ export interface CarwashContextValue {
   addQueueTicket: (
     t: Omit<QueueTicket, "id" | "number" | "createdAt" | "status"> & { status?: QueueStatus }
   ) => QueueTicket;
+  addQueueTickets: (
+    tickets: Array<Omit<QueueTicket, "id" | "number" | "createdAt" | "status"> & { status?: QueueStatus }>
+  ) => QueueTicket[];
   updateQueueTicket: (id: string, patch: Partial<QueueTicket>) => void;
   setQueueStatus: (id: string, status: QueueStatus) => void;
   reorderQueueTicket: (id: string, direction: "up" | "down") => void;

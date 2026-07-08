@@ -1519,46 +1519,54 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   // ── Car Wash: Queue ──
-  const addQueueTicket = (
-    t: Omit<QueueTicket, "id" | "number" | "createdAt" | "status"> & { status?: QueueStatus }
-  ): QueueTicket => {
-    const existing = normalizeQueueTickets(queueTickets);
-    const now = new Date().toISOString();
-    const arrivalTime = t.arrivalTime || now;
-    const businessDate = t.businessDate ?? dateFromTicket({ arrivalTime });
-    const status = normalizeQueueStatus(t.status);
-    const number = nextDailyQueueNumber(existing, businessDate);
-    const desiredPos = isQueueActive(status)
-      ? pickupAwareQueuePosition(existing, t.requestedPickupAt)
-      : undefined;
-    // Shift active tickets at the insertion point up by 1 so the new ticket
-    // lands exactly at desiredPos (compactQueuePositions will renumber cleanly).
-    const shifted =
-      desiredPos !== undefined
-        ? existing.map((e) =>
-            isQueueActive(e.status) && queuePosition(e) >= desiredPos
-              ? { ...e, queuePosition: queuePosition(e) + 1 }
-              : e
-          )
-        : existing;
-    const ticket: QueueTicket = {
-      ...t,
-      id: uid("queue"),
-      number,
-      businessDate,
-      queuePosition: desiredPos,
-      status,
-      keyReceived: t.keyReceived ?? Boolean(t.keyReceivedAt),
-      serviceIds: t.serviceIds ?? [],
-      serviceNames: t.serviceNames ?? [],
-      arrivalTime,
-      createdAt: now,
-    };
-    const updated = compactQueuePositions([ticket, ...shifted]);
+  type QueueTicketInput = Omit<QueueTicket, "id" | "number" | "createdAt" | "status"> & {
+    status?: QueueStatus;
+  };
+  const addQueueTickets = (inputs: QueueTicketInput[]): QueueTicket[] => {
+    let updated = normalizeQueueTickets(queueTickets);
+    const created: QueueTicket[] = [];
+
+    for (const input of inputs) {
+      const now = new Date().toISOString();
+      const arrivalTime = input.arrivalTime || now;
+      const businessDate = input.businessDate ?? dateFromTicket({ arrivalTime });
+      const status = normalizeQueueStatus(input.status);
+      const number = nextDailyQueueNumber(updated, businessDate);
+      const desiredPos = isQueueActive(status)
+        ? pickupAwareQueuePosition(updated, input.requestedPickupAt)
+        : undefined;
+      const shifted =
+        desiredPos !== undefined
+          ? updated.map((entry) =>
+              isQueueActive(entry.status) && queuePosition(entry) >= desiredPos
+                ? { ...entry, queuePosition: queuePosition(entry) + 1 }
+                : entry
+            )
+          : updated;
+      const ticket: QueueTicket = {
+        ...input,
+        id: uid("queue"),
+        number,
+        businessDate,
+        queuePosition: desiredPos,
+        status,
+        keyReceived: input.keyReceived ?? Boolean(input.keyReceivedAt),
+        serviceIds: input.serviceIds ?? [],
+        serviceNames: input.serviceNames ?? [],
+        arrivalTime,
+        createdAt: now,
+      };
+      created.push(ticket);
+      updated = compactQueuePositions([ticket, ...shifted]);
+    }
+
     nextQueueNumberRef.current = nextDailyQueueNumber(updated);
     setNextQueueNumber(nextQueueNumberRef.current);
     setQueueTickets(updated);
-    return ticket;
+    return created;
+  };
+  const addQueueTicket = (input: QueueTicketInput): QueueTicket => {
+    return addQueueTickets([input])[0];
   };
   const updateQueueTicket = (id: string, patch: Partial<QueueTicket>) => {
     setQueueTickets((list) => list.map((t) => (t.id === id ? { ...t, ...patch } : t)));
@@ -3352,7 +3360,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       vehicles, addVehicle, updateVehicle, deleteVehicle, archiveVehicle,
       washServices, addWashService, updateWashService, deleteWashService,
       queueTickets, nextQueueNumber,
-      addQueueTicket, updateQueueTicket, setQueueStatus, reorderQueueTicket, requeueTicket,
+      addQueueTicket, addQueueTickets, updateQueueTicket, setQueueStatus, reorderQueueTicket, requeueTicket,
       receiveVehicleKey, deliverVehicleKey,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps

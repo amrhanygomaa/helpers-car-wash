@@ -5,6 +5,7 @@ import {
   ArrowUp,
   Car,
   Check,
+  ChevronDown,
   Clock,
   Droplets,
   GripVertical,
@@ -31,23 +32,9 @@ import { formatDateTime, formatDate } from "../lib/format";
 import { hasPermission } from "../lib/permissions";
 import { cn, todayISO } from "../lib/utils";
 import { printIntakeTicket } from "../lib/print";
-import type { QueueStatus, QueueTicket, WashService } from "../types";
-
-/** Common bodywork areas inspected for pre-existing damage at intake. */
-const DAMAGE_AREAS = [
-  "الصدام الأمامي",
-  "الصدام الخلفي",
-  "الكبوت",
-  "الشنطة",
-  "السقف",
-  "الباب الأمامي يمين",
-  "الباب الأمامي شمال",
-  "الباب الخلفي يمين",
-  "الباب الخلفي شمال",
-  "الزجاج الأمامي",
-  "الجنوط",
-  "المرايات",
-];
+import { CustomerFormDialog } from "../features/customers/CustomerFormDialog";
+import { VehicleFormDialog } from "../features/vehicles/VehicleFormDialog";
+import type { QueueStatus, QueueTicket, Vehicle, WashService } from "../types";
 
 const STATUS_LABEL: Record<QueueStatus, string> = {
   waiting: "في الانتظار",
@@ -74,6 +61,19 @@ function toLocalInput(iso: string): string {
   if (Number.isNaN(d.getTime())) return "";
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function nowLocalInput(): string {
+  return toLocalInput(new Date().toISOString());
+}
+
+function parseLocalInput(value: string): Date | null {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function pickupHourLabel(date: Date): string {
+  return date.toLocaleTimeString("ar-EG", { hour: "numeric", minute: "2-digit" });
 }
 
 function queuePosition(ticket: QueueTicket): number {
@@ -110,17 +110,16 @@ export function QueuePage() {
   const navigate = useNavigate();
   const {
     queueTickets,
-    addQueueTicket,
+    addQueueTickets,
     setQueueStatus,
     receiveVehicleKey,
     deliverVehicleKey,
     reorderQueueTicket,
     requeueTicket,
     vehicles,
-    addVehicle,
     washServices,
   } = useCarwash();
-  const { customers, addCustomer } = useCatalog();
+  const { customers } = useCatalog();
   const { currentUser } = useAuth();
   const toast = useToast();
 
@@ -137,19 +136,16 @@ export function QueuePage() {
 
   // Add-ticket form state
   const [customerId, setCustomerId] = useState("");
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [vehicleId, setVehicleId] = useState("");
-  const [vehicleBrand, setVehicleBrand] = useState("");
-  const [vehicleText, setVehicleText] = useState("");
-  const [arrival, setArrival] = useState(() => toLocalInput(new Date().toISOString()));
+  const [selectedVehicleIds, setSelectedVehicleIds] = useState<string[]>([""]);
+  const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
+  const [vehicleDialogOpen, setVehicleDialogOpen] = useState(false);
+  const [arrival, setArrival] = useState(() => nowLocalInput());
   const [requestedPickupAt, setRequestedPickupAt] = useState("");
+  const [pickupDropdownOpen, setPickupDropdownOpen] = useState(false);
   const [note, setNote] = useState("");
   const [serviceIds, setServiceIds] = useState<string[]>([]);
   const [keyReceived, setKeyReceived] = useState(true);
   const [printOnAdd, setPrintOnAdd] = useState(true);
-  const [damageAreas, setDamageAreas] = useState<string[]>([]);
-  const [conditionNotes, setConditionNotes] = useState("");
 
   const activeServices = useMemo(
     () => washServices.filter((s) => s.active).sort((a, b) => (a.sortOrder ?? 999) - (b.sortOrder ?? 999)),
@@ -159,6 +155,31 @@ export function QueuePage() {
   const customerVehicles = useMemo(
     () => vehicles.filter((v) => v.customerId === customerId && !v.archived),
     [vehicles, customerId]
+  );
+  const selectedCustomer = useMemo(
+    () => customers.find((customer) => customer.id === customerId && !customer.archived),
+    [customers, customerId]
+  );
+  const pickupHourOptions = useMemo(() => {
+    const arrivalDate = parseLocalInput(arrival);
+    if (!arrivalDate) return [];
+
+    const firstHour = new Date(arrivalDate);
+    firstHour.setHours(0, 0, 0, 0);
+
+    return Array.from({ length: 48 }, (_, index) => {
+      const date = new Date(firstHour);
+      date.setHours(firstHour.getHours() + index);
+      return {
+        value: toLocalInput(date.toISOString()),
+        label: pickupHourLabel(date),
+        disabled: date.getTime() <= arrivalDate.getTime(),
+      };
+    });
+  }, [arrival]);
+  const selectedPickupHourLabel = useMemo(
+    () => pickupHourOptions.find((option) => option.value === requestedPickupAt)?.label,
+    [pickupHourOptions, requestedPickupAt]
   );
 
   const today = todayISO();
@@ -174,42 +195,48 @@ export function QueuePage() {
 
   function resetForm() {
     setCustomerId("");
-    setName("");
-    setPhone("");
-    setVehicleId("");
-    setVehicleBrand("");
-    setVehicleText("");
-    setArrival(toLocalInput(new Date().toISOString()));
+    setSelectedVehicleIds([""]);
     setRequestedPickupAt("");
+    setPickupDropdownOpen(false);
     setNote("");
     setServiceIds([]);
     setKeyReceived(true);
     setPrintOnAdd(true);
-    setDamageAreas([]);
-    setConditionNotes("");
+  }
+
+  function openIntakeDialog() {
+    resetForm();
+    setArrival(nowLocalInput());
+    setOpen(true);
   }
 
   function onPickCustomer(id: string) {
     setCustomerId(id);
-    setVehicleId("");
-    if (!id) return;
-    const c = customers.find((x) => x.id === id);
-    if (c) {
-      setName(c.name);
-      setPhone(c.phone ?? "");
-    }
+    setSelectedVehicleIds([""]);
   }
 
-  function onPickVehicle(id: string) {
-    setVehicleId(id);
-    const vehicle = vehicles.find((v) => v.id === id);
-    if (!vehicle) {
-      setVehicleBrand("");
-      setVehicleText("");
+  function onPickVehicle(index: number, id: string) {
+    setSelectedVehicleIds((current) => current.map((vehicleId, i) => (i === index ? id : vehicleId)));
+  }
+
+  function addVehicleSlot() {
+    if (!customerId) {
+      toast.error("اختر العميل أولاً");
       return;
     }
-    setVehicleBrand(vehicle.brand);
-    setVehicleText(vehicle.plateNumber);
+    setSelectedVehicleIds((current) => [...current, ""]);
+  }
+
+  function removeVehicleSlot(index: number) {
+    setSelectedVehicleIds((current) => current.filter((_, i) => i !== index));
+  }
+
+  function selectCreatedVehicle(id: string) {
+    setSelectedVehicleIds((current) => {
+      const emptyIndex = current.findIndex((vehicleId) => !vehicleId);
+      if (emptyIndex < 0) return [...current, id];
+      return current.map((vehicleId, index) => (index === emptyIndex ? id : vehicleId));
+    });
   }
 
   function toggleService(serviceId: string) {
@@ -265,82 +292,73 @@ export function QueuePage() {
   }
 
   async function handleAdd() {
-    const cleanName = name.trim();
-    const cleanPhone = phone.trim();
-    const cleanBrand = vehicleBrand.trim();
-    const cleanVehicleText = vehicleText.trim();
+    if (!selectedCustomer) {
+      toast.error("اختر عميلاً مسجلاً");
+      return;
+    }
+    if (selectedVehicleIds.some((id) => !id)) {
+      toast.error("اختر مركبة لكل خانة أو احذف الخانة الفارغة");
+      return;
+    }
+    if (new Set(selectedVehicleIds).size !== selectedVehicleIds.length) {
+      toast.error("لا يمكن إضافة نفس المركبة مرتين");
+      return;
+    }
+
+    const selectedVehicles = selectedVehicleIds
+      .map((id) => customerVehicles.find((vehicle) => vehicle.id === id))
+      .filter((vehicle): vehicle is Vehicle => Boolean(vehicle));
+    if (selectedVehicles.length !== selectedVehicleIds.length || selectedVehicles.length === 0) {
+      toast.error("اختر مركبة مسجلة للعميل");
+      return;
+    }
+    const arrivalDate = parseLocalInput(arrival);
+    const pickupDate = requestedPickupAt ? parseLocalInput(requestedPickupAt) : null;
+    if (pickupDate && arrivalDate && pickupDate.getTime() <= arrivalDate.getTime()) {
+      toast.error("وقت الاستلام لازم يكون بعد وقت الوصول");
+      return;
+    }
+
     const selectedServices = activeServices.filter((service) => serviceIds.includes(service.id));
-
-    let effectiveCustomerId = customerId || undefined;
-    if (!effectiveCustomerId && (cleanName || cleanPhone)) {
-      const existingCustomer = customers.find((customer) => {
-        if (customer.archived) return false;
-        const samePhone = cleanPhone && customer.phone?.trim() === cleanPhone;
-        const sameName = customer.name.trim() === cleanName;
-        return Boolean(samePhone || sameName);
-      });
-      effectiveCustomerId =
-        existingCustomer?.id ??
-        addCustomer({
-          name: cleanName,
-          phone: cleanPhone || undefined,
-        }).id;
-    }
-
-    const selectedVehicle = vehicles.find((v) => v.id === vehicleId);
-    let effectiveVehicleId = selectedVehicle?.id;
-    let label = selectedVehicle ? vehicleLabel(selectedVehicle) : cleanVehicleText || cleanBrand || undefined;
-
-    if (!effectiveVehicleId && effectiveCustomerId && cleanBrand && cleanVehicleText) {
-      const existingVehicle = vehicles.find(
-        (vehicle) =>
-          vehicle.customerId === effectiveCustomerId &&
-          !vehicle.archived &&
-          vehicle.plateNumber.trim() === cleanVehicleText
-      );
-      const savedVehicle =
-        existingVehicle ??
-        addVehicle({
-          customerId: effectiveCustomerId,
-          brand: cleanBrand,
-          plateNumber: cleanVehicleText,
-        });
-      effectiveVehicleId = savedVehicle.id;
-      label = vehicleLabel(savedVehicle);
-    }
-
     const keyTime = keyReceived ? new Date().toISOString() : undefined;
-    const ticket = addQueueTicket({
-      customerId: effectiveCustomerId,
-      customerName: cleanName || "زائر",
-      phone: cleanPhone || undefined,
-      vehicleId: effectiveVehicleId,
-      vehicleBrand: (selectedVehicle?.brand ?? cleanBrand) || undefined,
-      vehicleLabel: label,
-      serviceIds: selectedServices.map((service) => service.id),
-      serviceNames: selectedServices.map((service) => service.name),
-      arrivalTime: arrival ? new Date(arrival).toISOString() : new Date().toISOString(),
-      requestedPickupAt: requestedPickupAt ? new Date(requestedPickupAt).toISOString() : undefined,
-      note: note.trim() || undefined,
-      delayNote: note.trim() || undefined,
-      damageAreas: damageAreas.length > 0 ? damageAreas : undefined,
-      conditionNotes: conditionNotes.trim() || undefined,
-      keyReceived,
-      keyReceivedAt: keyTime,
-      keyReceivedBy: keyReceived ? currentUser?.id : undefined,
-      keyReceivedByName: keyReceived ? currentUser?.name : undefined,
-    });
+    const tickets = addQueueTickets(
+      selectedVehicles.map((vehicle) => ({
+        customerId: selectedCustomer.id,
+        customerName: selectedCustomer.name,
+        phone: selectedCustomer.phone || undefined,
+        vehicleId: vehicle.id,
+        vehicleBrand: vehicle.brand,
+        vehicleLabel: vehicleLabel(vehicle),
+        serviceIds: selectedServices.map((service) => service.id),
+        serviceNames: selectedServices.map((service) => service.name),
+        arrivalTime: arrival ? new Date(arrival).toISOString() : new Date().toISOString(),
+        requestedPickupAt: requestedPickupAt ? new Date(requestedPickupAt).toISOString() : undefined,
+        note: note.trim() || undefined,
+        delayNote: note.trim() || undefined,
+        keyReceived,
+        keyReceivedAt: keyTime,
+        keyReceivedBy: keyReceived ? currentUser?.id : undefined,
+        keyReceivedByName: keyReceived ? currentUser?.name : undefined,
+      }))
+    );
 
     if (printOnAdd) {
-      const result = await printIntakeTicket({
-        ticket,
-        carsAhead: queueTickets.filter((t) => ACTIVE_QUEUE_STATUSES.has(t.status)).length,
-        services: selectedServices.map((service) => service.name),
-      });
-      if (!result.ok) toast.error("تعذر فتح الطباعة", result.error);
+      const carsAlreadyWaiting = queueTickets.filter((ticket) => ACTIVE_QUEUE_STATUSES.has(ticket.status)).length;
+      for (const [index, ticket] of tickets.entries()) {
+        const result = await printIntakeTicket({
+          ticket,
+          carsAhead: carsAlreadyWaiting + index,
+          services: selectedServices.map((service) => service.name),
+        });
+        if (!result.ok) toast.error("تعذر فتح الطباعة", result.error);
+      }
     }
 
-    toast.success("تمت إضافة السيارة للطابور", `رقم ${ticket.number}`);
+    const ticketNumbers = tickets.map((ticket) => `#${ticket.number}`).join("، ");
+    toast.success(
+      tickets.length > 1 ? `تمت إضافة ${tickets.length} سيارات للطابور` : "تمت إضافة السيارة للطابور",
+      ticketNumbers
+    );
     resetForm();
     setOpen(false);
   }
@@ -352,7 +370,7 @@ export function QueuePage() {
         description="لوحة تشغيل الدور ومراحل الغسيل وتتبع المفاتيح وتذاكر الاستلام"
         actions={
           canAdd ? (
-            <Button onClick={() => { resetForm(); setOpen(true); }}>
+            <Button onClick={openIntakeDialog}>
               <Plus className="w-4 h-4" /> استقبال سيارة
             </Button>
           ) : null
@@ -537,9 +555,21 @@ export function QueuePage() {
       <Dialog
         open={open}
         onClose={() => setOpen(false)}
-        title="استقبال سيارة جديدة"
-        subtitle="بيانات العميل والسيارة والخدمات المطلوبة وتذكرة الاستلام"
-        width="xl"
+        title={
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <div>استقبال سيارة جديدة</div>
+              <div className="mt-0.5 text-xs font-normal text-slate-500">
+                بيانات العميل والسيارة والخدمات المطلوبة وتذكرة الاستلام
+              </div>
+            </div>
+            <div className="w-full sm:w-72">
+              <div className="mb-1 text-xs font-medium text-slate-600">وقت الوصول</div>
+              <Input type="datetime-local" value={arrival} readOnly className="bg-slate-50 text-slate-600" />
+            </div>
+          </div>
+        }
+        width="2xl"
         footer={
           <>
             <Button variant="outline" onClick={() => setOpen(false)}>إلغاء</Button>
@@ -548,41 +578,162 @@ export function QueuePage() {
         }
       >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Field label="عميل مسجّل (اختياري)" className="md:col-span-2">
-            <Select value={customerId} onChange={(e) => onPickCustomer(e.target.value)}>
-              <option value="">زائر / إنشاء عميل تلقائياً</option>
-              {customers.filter((c) => !c.archived).map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="اسم العميل">
-            <Input value={name} onChange={(e) => setName(e.target.value)} />
-          </Field>
-          <Field label="رقم الهاتف">
-            <Input value={phone} inputMode="tel" onChange={(e) => setPhone(e.target.value)} />
-          </Field>
-          {customerId && customerVehicles.length > 0 ? (
-            <Field label="مركبة محفوظة">
-              <Select value={vehicleId} onChange={(e) => onPickVehicle(e.target.value)}>
-                <option value="">بدون مركبة محفوظة</option>
-                {customerVehicles.map((v) => (
-                  <option key={v.id} value={v.id}>{vehicleLabel(v)}</option>
-                ))}
-              </Select>
-            </Field>
-          ) : null}
-          <Field label="ماركة السيارة">
-            <Input value={vehicleBrand} onChange={(e) => setVehicleBrand(e.target.value)} placeholder="مثل: Toyota" />
-          </Field>
-          <Field label="رقم اللوحة / وصف السيارة" hint="لو أضفت رقم لوحة سيتم حفظ المركبة مع العميل">
-            <Input value={vehicleText} onChange={(e) => setVehicleText(e.target.value)} />
-          </Field>
-          <Field label="وقت الوصول">
-            <Input type="datetime-local" value={arrival} onChange={(e) => setArrival(e.target.value)} />
-          </Field>
-          <Field label="موعد الاستلام المطلوب">
-            <Input type="datetime-local" value={requestedPickupAt} onChange={(e) => setRequestedPickupAt(e.target.value)} />
+          <div className="md:col-span-2 rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+              <Field label="العميل المسجّل" required className="flex-1">
+                <Select value={customerId} onChange={(e) => onPickCustomer(e.target.value)}>
+                  <option value="">اختر العميل</option>
+                  {customers.filter((customer) => !customer.archived).map((customer) => (
+                    <option key={customer.id} value={customer.id}>{customer.name}</option>
+                  ))}
+                </Select>
+              </Field>
+              <Button type="button" variant="outline" onClick={() => setCustomerDialogOpen(true)}>
+                <Plus className="w-4 h-4" /> عميل جديد
+              </Button>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Field label="اسم العميل">
+                <Input value={selectedCustomer?.name ?? ""} readOnly className="bg-white text-slate-600" />
+              </Field>
+              <Field label="رقم الهاتف">
+                <Input value={selectedCustomer?.phone ?? ""} readOnly className="bg-white text-slate-600" />
+              </Field>
+            </div>
+          </div>
+
+          <div className="md:col-span-2 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <div className="text-sm font-semibold text-slate-800">مركبات الاستقبال</div>
+                <div className="text-xs text-slate-500">اختر مركبة محفوظة من ملف العميل لكل تذكرة غسيل.</div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={!customerId}
+                  onClick={() => setVehicleDialogOpen(true)}
+                >
+                  <Plus className="w-4 h-4" /> مركبة جديدة
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  disabled={!customerId || selectedVehicleIds.some((id) => !id)}
+                  onClick={addVehicleSlot}
+                >
+                  <Plus className="w-4 h-4" /> سيارة أخرى للغسيل
+                </Button>
+              </div>
+            </div>
+
+            {selectedVehicleIds.map((selectedId, index) => {
+              const vehicle = customerVehicles.find((item) => item.id === selectedId);
+              return (
+                <div key={index} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+                      <span className="grid h-7 w-7 place-items-center rounded-full bg-brand-50 text-brand-700">{index + 1}</span>
+                      السيارة {index + 1}
+                    </div>
+                    {selectedVehicleIds.length > 1 ? (
+                      <Button type="button" size="sm" variant="ghost" onClick={() => removeVehicleSlot(index)}>
+                        <X className="w-4 h-4" /> حذف
+                      </Button>
+                    ) : null}
+                  </div>
+                  <Field label="المركبة المحفوظة" required>
+                    <Select
+                      value={selectedId}
+                      disabled={!customerId}
+                      onChange={(event) => onPickVehicle(index, event.target.value)}
+                    >
+                      <option value="">{customerId ? "اختر المركبة" : "اختر العميل أولاً"}</option>
+                      {customerVehicles.map((item) => (
+                        <option
+                          key={item.id}
+                          value={item.id}
+                          disabled={selectedVehicleIds.some((id, slotIndex) => slotIndex !== index && id === item.id)}
+                        >
+                          {vehicleLabel(item)}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                  {customerId && customerVehicles.length === 0 ? (
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                      لا توجد مركبات محفوظة لهذا العميل. استخدم زر «مركبة جديدة» لإضافتها إلى ملفه.
+                    </div>
+                  ) : null}
+                  {vehicle ? (
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                      <Field label="الماركة">
+                        <Input value={vehicle.brand} readOnly className="bg-slate-50 text-slate-600" />
+                      </Field>
+                      <Field label="الموديل">
+                        <Input value={vehicle.model ?? ""} readOnly className="bg-slate-50 text-slate-600" />
+                      </Field>
+                      <Field label="رقم اللوحة">
+                        <Input value={vehicle.plateNumber} readOnly className="bg-slate-50 text-slate-600 font-mono" />
+                      </Field>
+                      <Field label="اللون">
+                        <Input value={vehicle.color ?? ""} readOnly className="bg-slate-50 text-slate-600" />
+                      </Field>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+          <Field label="موعد الاستلام المطلوب" hint="اختر ساعة بعد وقت الوصول">
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setPickupDropdownOpen((isOpen) => !isOpen)}
+                className={cn(
+                  "flex h-9 w-full items-center justify-between rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700",
+                  "focus-ring"
+                )}
+              >
+                <span className={selectedPickupHourLabel ? "text-slate-900" : "text-slate-500"}>
+                  {selectedPickupHourLabel ?? "اختياري - اختر الساعة"}
+                </span>
+                <ChevronDown className={cn("h-4 w-4 text-slate-500 transition", pickupDropdownOpen && "rotate-180")} />
+              </button>
+              {pickupDropdownOpen ? (
+                <div className="absolute z-30 mt-2 w-full rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
+                  <div className="grid max-h-56 grid-cols-4 gap-2 overflow-y-auto sm:grid-cols-6">
+                    {pickupHourOptions.map((option) => {
+                      const selected = requestedPickupAt === option.value;
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          disabled={option.disabled}
+                          onClick={() => {
+                            setRequestedPickupAt(option.value);
+                            setPickupDropdownOpen(false);
+                          }}
+                          className={cn(
+                            "rounded-md border px-2 py-1.5 text-xs font-semibold transition",
+                            selected
+                              ? "border-brand-600 bg-brand-600 text-white shadow-sm"
+                              : "border-slate-200 bg-white text-slate-700 hover:border-brand-300 hover:bg-brand-50",
+                            option.disabled &&
+                              "cursor-not-allowed border-slate-100 bg-slate-100 text-slate-300 hover:border-slate-100 hover:bg-slate-100"
+                          )}
+                        >
+                          {option.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+            </div>
           </Field>
           <Field label="الخدمات" className="md:col-span-2">
             {activeServices.length === 0 ? (
@@ -611,36 +762,6 @@ export function QueuePage() {
           <Field label="ملاحظة" className="md:col-span-2">
             <Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="مثلاً: العميل مستعجل / خدش في الباب الخلفي" />
           </Field>
-          <Field label="فحص حالة السيارة عند الاستلام" hint="علِّم على الأماكن التي بها خدوش/كسور موجودة مسبقاً — للحماية من النزاعات" className="md:col-span-2">
-            <div className="flex flex-wrap gap-1.5">
-              {DAMAGE_AREAS.map((area) => {
-                const active = damageAreas.includes(area);
-                return (
-                  <button
-                    key={area}
-                    type="button"
-                    onClick={() =>
-                      setDamageAreas((prev) => (active ? prev.filter((a) => a !== area) : [...prev, area]))
-                    }
-                    className={
-                      active
-                        ? "px-2.5 py-1 rounded-full text-xs border border-rose-300 bg-rose-50 text-rose-700"
-                        : "px-2.5 py-1 rounded-full text-xs border border-slate-200 bg-white text-slate-600 hover:border-slate-300"
-                    }
-                  >
-                    {area}
-                  </button>
-                );
-              })}
-            </div>
-            <Textarea
-              rows={2}
-              value={conditionNotes}
-              onChange={(e) => setConditionNotes(e.target.value)}
-              placeholder="تفاصيل إضافية عن حالة السيارة (اختياري)"
-              className="mt-2"
-            />
-          </Field>
           <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
             <input
               type="checkbox"
@@ -661,6 +782,22 @@ export function QueuePage() {
           </label>
         </div>
       </Dialog>
+
+      <CustomerFormDialog
+        open={customerDialogOpen}
+        onClose={() => setCustomerDialogOpen(false)}
+        onCreated={(customer) => {
+          setCustomerId(customer.id);
+          setSelectedVehicleIds([""]);
+        }}
+      />
+      <VehicleFormDialog
+        open={vehicleDialogOpen}
+        onClose={() => setVehicleDialogOpen(false)}
+        customerId={customerId}
+        customers={customers.filter((customer) => !customer.archived)}
+        onCreated={(vehicle) => selectCreatedVehicle(vehicle.id)}
+      />
 
       <ConfirmDialog
         open={!!cancelId}
