@@ -7,7 +7,6 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { CustomersPage } from "./pages/CustomersPage";
 import { CustomerMarketingPage } from "./pages/CustomerMarketingPage";
 import { CustomerDetailPage } from "./pages/CustomerDetailPage";
-import { VehiclesPage } from "./pages/VehiclesPage";
 import { ServicesPage } from "./pages/ServicesPage";
 import { CarwashInvoiceNewPage } from "./pages/CarwashInvoiceNewPage";
 import { CarwashProductsPage } from "./pages/CarwashProductsPage";
@@ -116,16 +115,6 @@ export default function App() {
         element={
           <ProtectedShell permission="washServices" feature="washServices">
             <ServicesPage />
-          </ProtectedShell>
-        }
-      />
-
-      {/* Vehicles */}
-      <Route
-        path="/vehicles"
-        element={
-          <ProtectedShell permission="vehicles" feature="vehicles">
-            <VehiclesPage />
           </ProtectedShell>
         }
       />

@@ -63,7 +63,6 @@ const GROUPS: NavGroup[] = [
       { to: "/queue", label: "طابور الغسيل", icon: ListChecks, permission: "queue", feature: "carwashQueue" },
       { to: "/carwash/new", label: "فاتورة غسيل جديدة", icon: Receipt, permission: "salesInvoices", feature: "washServices" },
       { to: "/carwash/new?type=products", label: "فاتورة منتجات جديدة", icon: Receipt, permission: "salesInvoices", feature: "washServices" },
-      { to: "/vehicles", label: "المركبات", icon: Car, permission: "vehicles", feature: "vehicles" },
       { to: "/services", label: "خدمات الغسيل", icon: Sparkles, permission: "washServices", feature: "washServices" },
       { to: "/carwash/products", label: "المنتجات", icon: Package, permissionKey: "products.view", feature: "washServices" },
       { to: "/carwash/materials", label: "خامات الغسيل", icon: Warehouse, permissionKey: "materials.view", feature: "washServices" },
