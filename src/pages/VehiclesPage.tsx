@@ -94,11 +94,7 @@ export function VehiclesPage() {
       toast.error("اختر العميل");
       return;
     }
-    if (!plateNumber) {
-      toast.error("أدخل رقم اللوحة");
-      return;
-    }
-    if (!isValidEgyptPlateNumber(plateNumber)) {
+    if (plateNumber && !isValidEgyptPlateNumber(plateNumber)) {
       toast.error(
         "رقم اللوحة غير صحيح. استخدم 2-3 حروف مفصولة بمسافة ثم 3-4 أرقام مثل: ن هـ 7535"
       );

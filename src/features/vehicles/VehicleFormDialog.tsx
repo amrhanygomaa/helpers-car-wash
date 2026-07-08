@@ -50,11 +50,7 @@ export function VehicleFormDialog({
       return;
     }
     const plateNumber = normalizeEgyptPlateNumber(form.plateNumber);
-    if (!plateNumber) {
-      toast.error("أدخل رقم اللوحة");
-      return;
-    }
-    if (!isValidEgyptPlateNumber(plateNumber)) {
+    if (plateNumber && !isValidEgyptPlateNumber(plateNumber)) {
       toast.error(
         "رقم اللوحة غير صحيح. استخدم 2-3 حروف مفصولة بمسافة ثم 3-4 أرقام مثل: ن هـ 7535"
       );
@@ -110,7 +106,6 @@ export function VehicleFormDialog({
           </Field>
           <Field
             label="رقم اللوحة"
-            required
             hint="مثال: ن هـ 7535 — 2-3 حروف مفصولة بمسافة ثم 3-4 أرقام"
           >
             <PlateNumberInput className="h-11" value={form.plateNumber} onPlateChange={(v) => set("plateNumber", v)} />
