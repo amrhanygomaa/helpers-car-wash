@@ -35,6 +35,7 @@ import { printIntakeTicket } from "../lib/print";
 import { CustomerFormDialog } from "../features/customers/CustomerFormDialog";
 import { CustomerCombobox } from "../features/customers/CustomerCombobox";
 import { VehicleFormDialog } from "../features/vehicles/VehicleFormDialog";
+import { BrandCombobox } from "../features/vehicles/BrandCombobox";
 import type { QueueStatus, QueueTicket, Vehicle, WashService } from "../types";
 
 const STATUS_LABEL: Record<QueueStatus, string> = {
@@ -801,10 +802,9 @@ export function QueuePage() {
                 </div>
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                   <Field label="الماركة">
-                    <Input
+                    <BrandCombobox
                       value={guestBrand}
-                      onChange={(e) => setGuestBrand(e.target.value)}
-                      placeholder="مثال: هيونداي"
+                      onChange={(brand) => setGuestBrand(brand)}
                     />
                   </Field>
                   <Field label="الموديل">
