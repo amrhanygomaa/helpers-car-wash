@@ -4,6 +4,7 @@ import { LoginPage } from "./pages/LoginPage";
 import { ActivationPage } from "./pages/ActivationPage";
 import { FirstRunSetupPage } from "./pages/FirstRunSetupPage";
 import { DashboardPage } from "./pages/DashboardPage";
+import { CustomersPage } from "./pages/CustomersPage";
 import { CustomerDetailPage } from "./pages/CustomerDetailPage";
 import { ServicesPage } from "./pages/ServicesPage";
 import { CarwashInvoiceNewPage } from "./pages/CarwashInvoiceNewPage";

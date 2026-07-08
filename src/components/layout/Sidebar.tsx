@@ -78,10 +78,9 @@ const GROUPS: NavGroup[] = [
   },
   {
     id: "parties",
-    label: "العملاء والتسويق",
+    label: "العملاء",
     items: [
       { to: "/customers", label: "العملاء", icon: Users, permission: "customers", feature: "customers" },
-      { to: "/customers/marketing", label: "تسويق العملاء", icon: MessageCircle, permission: "customers", feature: "customers" },
     ],
   },
   {
