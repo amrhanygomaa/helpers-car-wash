@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from "react-router-dom";
-import { Search, Bell, ChevronDown, User, Lock, PanelRightClose, PanelRightOpen, Building2 } from "lucide-react";
+import { Search, Bell, ChevronDown, User, Lock, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { useAuth } from "../../store/AuthContext";
 import { useSettings } from "../../store/SettingsContext";
 import { useCatalog } from "../../store/CatalogContext";
@@ -153,6 +153,7 @@ export function Topbar({
           </div>
         ) : null}
       </div>
+      <div className="flex items-center gap-2 ms-auto">
         {canViewAlerts ? (
           <button
             onClick={() => navigate("/cashbox")}

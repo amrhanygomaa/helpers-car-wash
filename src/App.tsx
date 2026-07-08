@@ -21,7 +21,6 @@ import { SalesInvoicePrintPage } from "./pages/SalesInvoicePrintPage";
 import { CashboxPage } from "./pages/CashboxPage";
 import { EmployeeReportPage } from "./pages/EmployeeReportPage";
 import { PayrollDayClosePage } from "./pages/PayrollDayClosePage";
-import { BranchesPage } from "./pages/BranchesPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { UsersPage } from "./pages/UsersPage";
 import { EmployeeProfilePage } from "./pages/EmployeeProfilePage";
@@ -228,14 +227,7 @@ export default function App() {
       />
 
       {/* Admin */}
-      <Route
-        path="/branches"
-        element={
-          <ProtectedShell permissionKey="settings.manage">
-            <BranchesPage />
-          </ProtectedShell>
-        }
-      />
+
       <Route
         path="/settings"
         element={

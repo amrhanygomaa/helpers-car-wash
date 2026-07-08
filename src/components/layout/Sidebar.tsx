@@ -19,7 +19,6 @@ import {
   ListChecks,
   Sparkles,
   MessageCircle,
-  Building2,
   BadgeCheck,
   DoorClosed,
   CalendarDays,
@@ -102,7 +101,6 @@ const GROUPS: NavGroup[] = [
     items: [
       { to: "/users", label: "المستخدمين", icon: Users, ownerOnly: true },
       { to: "/audit-log", label: "سجل التدقيق", icon: Shield, ownerOnly: true },
-      { to: "/branches", label: "الفروع", icon: Building2, permissionKey: "settings.manage" },
       { to: "/settings", label: "الإعدادات", icon: Settings, permissionKey: "settings.manage" },
     ],
   },
