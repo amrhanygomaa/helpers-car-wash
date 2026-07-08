@@ -36,7 +36,13 @@ function fmtEgp(piastres: number): string {
 interface ProductFormProps {
   open: boolean;
   initial?: Product | null;
-  onSave: (data: { name: string; salePrice: number; purchasePrice: number; lowStockThreshold: number }) => void;
+  onSave: (data: {
+    name: string;
+    salePrice: number;
+    purchasePrice: number;
+    lowStockThreshold: number;
+    stockQty?: number;
+  }) => void;
   onClose: () => void;
 }
 
@@ -45,6 +51,7 @@ function ProductForm({ open, initial, onSave, onClose }: ProductFormProps) {
   const [salePrice, setSalePrice] = useState(initial ? piastresToEgp(initial.salePrice).toString() : "");
   const [purchasePrice, setPurchasePrice] = useState(initial ? piastresToEgp(initial.purchasePrice).toString() : "");
   const [threshold, setThreshold] = useState(initial?.lowStockThreshold?.toString() ?? "5");
+  const [stockQty, setStockQty] = useState("");
 
   useEffect(() => {
     if (open) {
@@ -52,22 +59,37 @@ function ProductForm({ open, initial, onSave, onClose }: ProductFormProps) {
       setSalePrice(initial ? piastresToEgp(initial.salePrice).toString() : "");
       setPurchasePrice(initial ? piastresToEgp(initial.purchasePrice).toString() : "");
       setThreshold(initial?.lowStockThreshold?.toString() ?? "5");
+      setStockQty("");
     }
   }, [open, initial]);
 
   function handleSave() {
     if (!name.trim()) return;
     const sp = parseFloat(salePrice);
-    const pp = parseFloat(purchasePrice || "0");
+    const pp = parseFloat(purchasePrice);
     const th = parseInt(threshold || "5", 10);
+    const sq = parseInt(stockQty || "0", 10);
+
     if (!Number.isFinite(sp) || sp < 0) return;
+    if (!Number.isFinite(pp) || pp < 0) return;
+
     onSave({
       name: name.trim(),
       salePrice: egpToPiastres(sp),
       purchasePrice: egpToPiastres(pp),
       lowStockThreshold: Number.isFinite(th) && th >= 0 ? th : 5,
+      stockQty: sq >= 0 ? sq : 0,
     });
   }
+
+  const isSaveDisabled =
+    !name.trim() ||
+    !salePrice ||
+    parseFloat(salePrice) < 0 ||
+    isNaN(parseFloat(salePrice)) ||
+    !purchasePrice ||
+    parseFloat(purchasePrice) < 0 ||
+    isNaN(parseFloat(purchasePrice));
 
   return (
     <Dialog open={open} onClose={onClose} title={initial ? "تعديل منتج" : "منتج جديد"}>
@@ -78,15 +100,20 @@ function ProductForm({ open, initial, onSave, onClose }: ProductFormProps) {
         <Field label={`سعر البيع (${CURRENCY})`} required>
           <Input type="number" min={0} step="0.5" value={salePrice} onChange={(e) => setSalePrice(e.target.value)} />
         </Field>
-        <Field label={`تكلفة الوحدة (${CURRENCY})`}>
+        <Field label={`تكلفة الوحدة (${CURRENCY})`} required>
           <Input type="number" min={0} step="0.5" value={purchasePrice} onChange={(e) => setPurchasePrice(e.target.value)} />
         </Field>
+        {!initial && (
+          <Field label="الكمية">
+            <Input type="number" min={0} step="1" value={stockQty} onChange={(e) => setStockQty(e.target.value)} placeholder="0" />
+          </Field>
+        )}
         <Field label="حد التنبيه (كمية)" hint="ينبّه عند الوصول لهذه الكمية">
           <Input type="number" min={0} step="1" value={threshold} onChange={(e) => setThreshold(e.target.value)} />
         </Field>
         <div className="flex gap-2 justify-end pt-2">
           <Button variant="outline" onClick={onClose}>إلغاء</Button>
-          <Button onClick={handleSave} disabled={!name.trim()}>حفظ</Button>
+          <Button onClick={handleSave} disabled={isSaveDisabled}>حفظ</Button>
         </div>
       </div>
     </Dialog>
@@ -183,14 +210,32 @@ export function CarwashProductsPage() {
     salePrice: number;
     purchasePrice: number;
     lowStockThreshold: number;
+    stockQty?: number;
   }) {
     if (!hasDb()) { toast.error("قاعدة البيانات غير متاحة"); return; }
     try {
       if (editing) {
-        await updateCarwashProduct(editing.id, data);
+        await updateCarwashProduct(editing.id, {
+          name: data.name,
+          salePrice: data.salePrice,
+          purchasePrice: data.purchasePrice,
+          lowStockThreshold: data.lowStockThreshold,
+        });
         toast.success("تم تحديث الإضافة");
       } else {
-        await createCarwashProduct({ id: uid("prod"), active: true, ...data });
+        await createCarwashProduct({
+          id: uid("prod"),
+          active: true,
+          name: data.name,
+          salePrice: data.salePrice,
+          purchasePrice: data.purchasePrice,
+          lowStockThreshold: data.lowStockThreshold,
+          stockQty: data.stockQty,
+          branchId,
+          businessDate: todayISO(),
+          createdBy: currentUser?.id,
+          createdAt: new Date().toISOString(),
+        });
         toast.success("تمت إضافة الإضافة");
       }
       setFormOpen(false);
