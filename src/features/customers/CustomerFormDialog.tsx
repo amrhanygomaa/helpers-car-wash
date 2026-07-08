@@ -20,18 +20,27 @@ export function CustomerFormDialog({
   open,
   onClose,
   onCreated,
+  initialName,
 }: {
   open: boolean;
   onClose: () => void;
   onCreated?: (customer: Customer) => void;
+  /** Pre-fills the name field, e.g. from an unmatched search query. */
+  initialName?: string;
 }) {
   const { addCustomer, nextCustomerCode } = useCatalog();
   const toast = useToast();
   const [form, setForm] = useState<FormState>(EMPTY);
 
   useEffect(() => {
-    if (open) setForm({ ...EMPTY, code: `CUS-${String(nextCustomerCode).padStart(4, "0")}` });
-  }, [open, nextCustomerCode]);
+    if (open) {
+      setForm({
+        ...EMPTY,
+        code: `CUS-${String(nextCustomerCode).padStart(4, "0")}`,
+        name: initialName ?? "",
+      });
+    }
+  }, [open, nextCustomerCode, initialName]);
 
   function submit() {
     if (!form.name.trim()) {
