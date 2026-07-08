@@ -4,8 +4,6 @@ import { LoginPage } from "./pages/LoginPage";
 import { ActivationPage } from "./pages/ActivationPage";
 import { FirstRunSetupPage } from "./pages/FirstRunSetupPage";
 import { DashboardPage } from "./pages/DashboardPage";
-import { CustomersPage } from "./pages/CustomersPage";
-import { CustomerMarketingPage } from "./pages/CustomerMarketingPage";
 import { CustomerDetailPage } from "./pages/CustomerDetailPage";
 import { ServicesPage } from "./pages/ServicesPage";
 import { CarwashInvoiceNewPage } from "./pages/CarwashInvoiceNewPage";
@@ -152,15 +150,6 @@ export default function App() {
           </ProtectedShell>
         }
       />
-      <Route
-        path="/customers/marketing"
-        element={
-          <ProtectedShell permission="customers" feature="customers">
-            <CustomerMarketingPage />
-          </ProtectedShell>
-        }
-      />
-
       {/* Finance */}
       <Route
         path="/cashbox"
