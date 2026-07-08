@@ -29,7 +29,6 @@ const TITLES: Record<string, string> = {
   "/sales": "فواتير الغسيل",
   "/cashbox": "الخزينة",
   "/payroll/day-close": "قفلة اليوم",
-  "/reports/employees": "تقرير الموظفين",
   "/users": "المستخدمين",
   "/audit-log": "سجل التدقيق",
   "/my-profile": "ملفي الشخصي",

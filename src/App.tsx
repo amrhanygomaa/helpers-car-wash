@@ -19,7 +19,6 @@ import { SalesInvoicesPage } from "./pages/SalesInvoicesPage";
 import { SalesInvoiceDetailPage } from "./pages/SalesInvoiceDetailPage";
 import { SalesInvoicePrintPage } from "./pages/SalesInvoicePrintPage";
 import { CashboxPage } from "./pages/CashboxPage";
-import { EmployeeReportPage } from "./pages/EmployeeReportPage";
 import { PayrollDayClosePage } from "./pages/PayrollDayClosePage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { UsersPage } from "./pages/UsersPage";
@@ -209,14 +208,7 @@ export default function App() {
           </ProtectedShell>
         }
       />
-      <Route
-        path="/reports/employees"
-        element={
-          <ProtectedShell permissionKey="payroll.manage" feature="employeesReport">
-            <EmployeeReportPage />
-          </ProtectedShell>
-        }
-      />
+
       <Route
         path="/workers/:id"
         element={

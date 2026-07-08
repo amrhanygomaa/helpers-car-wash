@@ -21,7 +21,6 @@ export type FeatureKey =
   | "cashbox"
   | "dues"
   | "reports"
-  | "employeesReport"
   | "carwashQueue"
   | "vehicles"
   | "washServices";
@@ -40,7 +39,6 @@ export const FEATURES: FeatureDef[] = [
   { key: "cashbox", label: "الخزينة", description: "حركة النقدية والرصيد", defaultEnabled: true },
   { key: "dues", label: "تحصيل العملاء", description: "متابعة تحصيل فواتير الغسيل", defaultEnabled: false },
   { key: "reports", label: "تقارير الغسيل", description: "تقارير الغسيل والتحصيل والأرباح", defaultEnabled: true },
-  { key: "employeesReport", label: "تقرير الموظفين", description: "متابعة المحصَّل والعمولات الشهرية للموظفين", defaultEnabled: true },
   { key: "carwashQueue", label: "طابور الغسيل", description: "استقبال السيارات وإدارة طابور الغسيل ومفاتيح السيارات", defaultEnabled: true },
   { key: "vehicles", label: "المركبات", description: "إدارة مركبات العملاء (الماركة والموديل واللوحة)", defaultEnabled: true },
   { key: "washServices", label: "خدمات الغسيل", description: "تعريف خدمات الغسيل وأسعارها والخامات المرتبطة بها", defaultEnabled: true },
