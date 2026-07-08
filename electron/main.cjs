@@ -245,6 +245,10 @@ function getMachineHash() {
 }
 
 function getDbKey() {
+  // In development mode, use a static key to allow sharing databases across developer machines.
+  if (typeof app !== "undefined" && !app.isPackaged) {
+    return sha256(`${APP_SALT}:db:development-shared-constant-key`);
+  }
   return sha256(`${APP_SALT}:db:${getMachineMaterial()}`);
 }
 
@@ -271,9 +275,29 @@ function openDatabase() {
     db.pragma(`rekey="x'${dbKeyHex}'"`);
   }
   db.pragma("journal_mode = WAL");
-  db.prepare(
-    "CREATE TABLE IF NOT EXISTS kv_store (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL)"
-  ).run();
+
+  try {
+    db.prepare(
+      "CREATE TABLE IF NOT EXISTS kv_store (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL)"
+    ).run();
+  } catch (error) {
+    // If decryption fails in development (due to key change/machine change), recreate database.
+    if (typeof app !== "undefined" && !app.isPackaged && error.message.includes("encrypted")) {
+      console.warn("Dev database decryption failed (key mismatch). Recreating fresh database...");
+      try { db.close(); } catch { /* ignore */ }
+      const backupPath = `${dbPath}.corrupt-${Date.now()}.bak`;
+      fs.renameSync(dbPath, backupPath);
+      db = new Database(dbPath);
+      db.pragma(`rekey="x'${dbKeyHex}'"`);
+      db.pragma("journal_mode = WAL");
+      db.prepare(
+        "CREATE TABLE IF NOT EXISTS kv_store (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL)"
+      ).run();
+    } else {
+      throw error;
+    }
+  }
+
   db.prepare("DELETE FROM kv_store WHERE key = ?").run(AUTH_STATE_KEY);
 
   // Flush the WAL file periodically so it never grows unboundedly.
