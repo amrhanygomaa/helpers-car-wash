@@ -30,7 +30,7 @@ import { useAuth } from "../store/AuthContext";
 import { vehicleLabel } from "./VehiclesPage";
 import { formatDateTime, formatDate } from "../lib/format";
 import { hasPermission } from "../lib/permissions";
-import { cn, todayISO } from "../lib/utils";
+import { cn, todayISO, localISODate } from "../lib/utils";
 import { printIntakeTicket } from "../lib/print";
 import { CustomerFormDialog } from "../features/customers/CustomerFormDialog";
 import { CustomerCombobox } from "../features/customers/CustomerCombobox";
@@ -87,7 +87,9 @@ function sortQueueTickets(tickets: QueueTicket[]): QueueTicket[] {
 }
 
 function ticketBusinessDate(ticket: QueueTicket): string {
-  return ticket.businessDate ?? ticket.arrivalTime.slice(0, 10);
+  if (ticket.businessDate) return ticket.businessDate;
+  const d = new Date(ticket.arrivalTime);
+  return Number.isNaN(d.getTime()) ? ticket.arrivalTime.slice(0, 10) : localISODate(d);
 }
 
 function ticketServices(ticket: QueueTicket, services: WashService[]): string[] {
