@@ -20,16 +20,48 @@ export async function createCarwashProduct(data: {
   purchasePrice?: number;
   lowStockThreshold?: number;
   active?: boolean;
+  stockQty?: number;
+  branchId?: string;
+  businessDate?: string;
+  createdBy?: string;
+  createdAt?: string;
 }): Promise<void> {
-  await db.insert(products).values({
-    id: data.id,
-    name: data.name,
-    salePrice: data.salePrice,
-    purchasePrice: data.purchasePrice ?? 0,
-    stockQty: 0,
-    lowStockThreshold: data.lowStockThreshold ?? 5,
-    active: data.active ?? true,
-  });
+  const initialQty = data.stockQty ?? 0;
+  if (initialQty > 0) {
+    const movementId = `mov_${Math.random().toString(36).slice(2, 9)}${Date.now().toString(36)}`;
+    await db.batch([
+      db.insert(products).values({
+        id: data.id,
+        name: data.name,
+        salePrice: data.salePrice,
+        purchasePrice: data.purchasePrice ?? 0,
+        stockQty: initialQty,
+        lowStockThreshold: data.lowStockThreshold ?? 5,
+        active: data.active ?? true,
+      }),
+      db.insert(productMovements).values({
+        id: movementId,
+        productId: data.id,
+        type: "purchase",
+        qty: initialQty,
+        unitPrice: data.purchasePrice ?? 0,
+        branchId: data.branchId ?? "branch-main",
+        businessDate: data.businessDate ?? new Date().toISOString().slice(0, 10),
+        createdBy: data.createdBy ?? null,
+        createdAt: data.createdAt ?? new Date().toISOString(),
+      }),
+    ]);
+  } else {
+    await db.insert(products).values({
+      id: data.id,
+      name: data.name,
+      salePrice: data.salePrice,
+      purchasePrice: data.purchasePrice ?? 0,
+      stockQty: 0,
+      lowStockThreshold: data.lowStockThreshold ?? 5,
+      active: data.active ?? true,
+    });
+  }
 }
 
 export async function updateCarwashProduct(
