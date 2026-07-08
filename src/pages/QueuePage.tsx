@@ -940,24 +940,29 @@ export function QueuePage() {
                 لا توجد خدمات مفعّلة. أضف الخدمات من صفحة الخدمات أولاً.
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-56 overflow-y-auto rounded-lg border border-slate-200 p-2">
-                {activeServices.map((service) => (
-                  <label
-                    key={service.id}
-                    className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={serviceIds.includes(service.id)}
-                      onChange={() => toggleService(service.id)}
-                      className="h-4 w-4 rounded border-slate-300"
-                    />
-                    <span className="min-w-0 truncate">{service.name}</span>
-                  </label>
-                ))}
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                {activeServices.map((service) => {
+                  const selected = serviceIds.includes(service.id);
+                  return (
+                    <button
+                      key={service.id}
+                      type="button"
+                      onClick={() => toggleService(service.id)}
+                      className={[
+                        "rounded-xl border-2 px-3 py-4 text-sm font-medium transition-all duration-150 text-center leading-snug",
+                        selected
+                          ? "border-blue-500 bg-blue-50 text-blue-700 shadow-sm"
+                          : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50",
+                      ].join(" ")}
+                    >
+                      {service.name}
+                    </button>
+                  );
+                })}
               </div>
             )}
           </Field>
+
           <Field label="ملاحظة" className="md:col-span-2">
             <Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="مثلاً: العميل مستعجل / خدش في الباب الخلفي" />
           </Field>

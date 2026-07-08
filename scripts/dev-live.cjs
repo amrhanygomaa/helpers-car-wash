@@ -81,6 +81,25 @@ function restartElectron() {
 }
 
 /* ───────────────────────── git sync ───────────────────────── */
+let gitBin = "git";
+try {
+  execSync("git --version", { stdio: "ignore" });
+} catch {
+  if (process.platform === "win32") {
+    const commonPaths = [
+      "C:\\Program Files\\Git\\cmd\\git.exe",
+      "C:\\Program Files (x86)\\Git\\cmd\\git.exe",
+      path.join(process.env.USERPROFILE || "", "AppData\\Local\\Programs\\Git\\cmd\\git.exe")
+    ];
+    for (const p of commonPaths) {
+      if (fs.existsSync(p)) {
+        gitBin = `"${p}"`;
+        break;
+      }
+    }
+  }
+}
+
 function run(cmd) {
   return new Promise((resolve) => {
     exec(cmd, { cwd: ROOT, maxBuffer: 20 * 1024 * 1024 }, (err, stdout, stderr) =>
@@ -93,25 +112,26 @@ async function syncGit() {
   syncing = true;
   try {
     // 1) commit local changes (if any)
-    const status = await run("git status --porcelain");
+    const status = await run(`${gitBin} status --porcelain`);
     if (status.out) {
-      await run("git add -A");
+      await run(`${gitBin} add -A`);
       const ts = new Date().toISOString().replace("T", " ").slice(0, 19);
-      const c = await run(`git commit -m "auto: live changes ${ts}"`);
+      const c = await run(`${gitBin} commit -m "auto: live changes ${ts}"`);
       if (!c.err) log(`committed local changes (${ts})`);
     }
     // 2) integrate remote
-    await run("git fetch --quiet");
-    const behind = parseInt((await run("git rev-list --count HEAD..@{u}")).out || "0", 10) || 0;
+    await run(`${gitBin} fetch --quiet`);
+    const behind = parseInt((await run(`${gitBin} rev-list --count HEAD..@{u}`)).out || "0", 10) || 0;
     if (behind > 0) {
-      const p = await run("git pull --rebase");
+      const p = await run(`${gitBin} pull --rebase`);
       if (p.err) { syncPaused = true; return log(`git pull failed — auto-sync PAUSED. Resolve manually + restart dev:live.\n${p.errOut || p.out}`); }
       log(`pulled ${behind} commit(s) from GitHub`);
     }
+
     // 3) push local commits
-    const ahead = parseInt((await run("git rev-list --count @{u}..HEAD")).out || "0", 10) || 0;
+    const ahead = parseInt((await run(`${gitBin} rev-list --count @{u}..HEAD`)).out || "0", 10) || 0;
     if (ahead > 0) {
-      const pu = await run("git push");
+      const pu = await run(`${gitBin} push`);
       if (pu.err) { syncPaused = true; return log(`git push failed — auto-sync PAUSED.\n${pu.errOut || pu.out}`); }
       log(`pushed ${ahead} commit(s) → friend can pull now`);
     }
