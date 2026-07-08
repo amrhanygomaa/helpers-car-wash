@@ -67,11 +67,14 @@ export function Topbar({
   const accountName = currentUser?.name || auth.username || "مدير";
 
   const title = useMemo(() => {
+    if (loc.pathname === "/carwash/new" && new URLSearchParams(loc.search).get("type") === "products") {
+      return "فاتورة منتجات جديدة";
+    }
     for (const key of Object.keys(TITLES)) {
       if (loc.pathname === key || loc.pathname.startsWith(key + "/")) return TITLES[key];
     }
     return "غسيل السيارات";
-  }, [loc.pathname]);
+  }, [loc.pathname, loc.search]);
 
   const results = useMemo(() => {
     const term = q.trim().toLowerCase();
@@ -88,7 +91,7 @@ export function Topbar({
         if (s.invoiceNumber.toLowerCase().includes(term))
           out.push({
             label: s.invoiceNumber,
-            sub: `فاتورة غسيل — ${s.customerName}`,
+            sub: `${s.invoiceKind === "product" ? "فاتورة منتجات" : "فاتورة غسيل"} — ${s.customerName || "زائر"}`,
             to: `/sales/${s.id}`,
           });
       });

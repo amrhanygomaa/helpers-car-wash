@@ -62,6 +62,7 @@ const GROUPS: NavGroup[] = [
     items: [
       { to: "/queue", label: "طابور الغسيل", icon: ListChecks, permission: "queue", feature: "carwashQueue" },
       { to: "/carwash/new", label: "فاتورة غسيل جديدة", icon: Receipt, permission: "salesInvoices", feature: "washServices" },
+      { to: "/carwash/new?type=products", label: "فاتورة منتجات جديدة", icon: Receipt, permission: "salesInvoices", feature: "washServices" },
       { to: "/vehicles", label: "المركبات", icon: Car, permission: "vehicles", feature: "vehicles" },
       { to: "/services", label: "خدمات الغسيل", icon: Sparkles, permission: "washServices", feature: "washServices" },
       { to: "/carwash/products", label: "المنتجات", icon: Package, permissionKey: "products.view", feature: "washServices" },
@@ -128,16 +129,19 @@ function canSee(
   return true;
 }
 
-function itemMatchesPath(item: NavItem, pathname: string): boolean {
+function itemMatchesPath(item: NavItem, pathname: string, search = ""): boolean {
+  const [itemPath, itemSearch = ""] = item.to.split("?");
+  if (itemSearch) return pathname === itemPath && search === `?${itemSearch}`;
   if (item.to === "/") return pathname === "/";
-  return pathname === item.to || pathname.startsWith(item.to + "/");
+  if (itemPath === "/carwash/new" && search === "?type=products") return false;
+  return pathname === itemPath || pathname.startsWith(itemPath + "/");
 }
 
 export function Sidebar({ collapsed }: { collapsed: boolean }) {
   const { logout, currentUser } = useAuth();
   const { settings } = useSettings();
   const { isEnabled } = useFeatures();
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
 
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() =>
     lsGet("sidebarOpenGroups", {})
@@ -149,12 +153,12 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
   // Keep the group that contains the current page open so the active item is
   // never hidden behind a collapsed group.
   useEffect(() => {
-    const activeGroup = GROUPS.find((g) => g.items.some((i) => itemMatchesPath(i, pathname)));
+    const activeGroup = GROUPS.find((g) => g.items.some((i) => itemMatchesPath(i, pathname, search)));
     if (activeGroup && openGroups[activeGroup.id] === false) {
       setOpenGroups((prev) => ({ ...prev, [activeGroup.id]: true }));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname]);
+  }, [pathname, search]);
 
   const topItems = TOP_ITEMS.filter((i) => canSee(i, currentUser, isEnabled));
   const groups = GROUPS.map((g) => ({
@@ -165,6 +169,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
 
   const renderItem = (item: NavItem, indented = false) => {
     const Icon = item.icon;
+    const manuallyActive = itemMatchesPath(item, pathname, search);
     return (
       <NavLink
         key={item.to}
@@ -175,7 +180,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
           cn(
             "flex items-center h-9 rounded-lg text-sm transition-colors",
             collapsed ? "justify-center px-0 h-10" : indented ? "gap-3 px-3 ms-2" : "gap-3 px-3",
-            isActive
+            manuallyActive || (isActive && !item.to.includes("?"))
               ? "bg-brand-50 text-brand-700 font-medium"
               : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
           )

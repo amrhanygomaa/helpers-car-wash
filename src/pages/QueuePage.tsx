@@ -695,7 +695,7 @@ export function QueuePage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="md:col-span-2 rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-end gap-3">
-              <Field label="العميل المسجّل" required={!isGuest} className="flex-1">
+              <Field label="العميل المسجّل" className="flex-1">
                 <CustomerCombobox
                   customers={customers.filter((customer) => !customer.archived)}
                   selectedCustomer={isGuest ? undefined : selectedCustomer}

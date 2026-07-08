@@ -46,15 +46,11 @@ export function CustomerFormDialog({
   }, [open, nextCustomerCode, initialName]);
 
   function submit() {
-    if (!form.name.trim()) {
-      toast.error("الاسم مطلوب");
-      return;
-    }
     if (form.phone && form.phone.trim().replace(/\D/g, "").length !== 11) {
       toast.error("رقم الهاتف غير صحيح", "يجب أن يكون رقم الهاتف مكوناً من 11 رقماً بالضبط");
       return;
     }
-    const created = addCustomer(form);
+    const created = addCustomer({ ...form, name: form.name.trim() || "عميل بدون اسم" });
     toast.success("تم إضافة العميل");
     onCreated?.(created);
     onClose();
@@ -84,7 +80,7 @@ export function CustomerFormDialog({
             className="bg-gray-100 cursor-not-allowed text-gray-600 font-mono"
           />
         </Field>
-        <Field label="اسم العميل" required>
+        <Field label="اسم العميل">
           <Input value={form.name} onChange={(e) => set("name", e.target.value)} />
         </Field>
         <Field label="الهاتف">

@@ -147,19 +147,16 @@ export function CustomersPage() {
     setOpen(true);
   }
   function submit() {
-    if (!form.name.trim()) {
-      toast.error("اسم العميل مطلوب");
-      return;
-    }
     if (form.phone && form.phone.trim().replace(/\D/g, "").length !== 11) {
       toast.error("رقم الهاتف غير صحيح", "يجب أن يكون رقم الهاتف مكوناً من 11 رقماً بالضبط");
       return;
     }
+    const payload = { ...form, name: form.name.trim() || "عميل بدون اسم" };
     if (editing) {
-      updateCustomer(editing.id, form);
+      updateCustomer(editing.id, payload);
       toast.success("تم تحديث العميل");
     } else {
-      addCustomer(form);
+      addCustomer(payload);
       toast.success("تم إضافة العميل");
     }
     setOpen(false);
@@ -358,7 +355,7 @@ export function CustomersPage() {
               className="bg-gray-100 cursor-not-allowed text-gray-600 font-mono"
             />
           </Field>
-          <Field label="اسم العميل" required>
+          <Field label="اسم العميل">
             <Input
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}

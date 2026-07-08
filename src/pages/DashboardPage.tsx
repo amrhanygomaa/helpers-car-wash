@@ -266,7 +266,7 @@ export function DashboardPage() {
             {canAddInvoice ? (
               <Link to="/carwash/new">
                 <Button className="h-12 w-full justify-start text-sm" variant="outline">
-                  <Receipt className="h-4 w-4" /> تحصيل فاتورة غسيل
+                  <Receipt className="h-4 w-4" /> فاتورة غسيل جديدة
                 </Button>
               </Link>
             ) : null}

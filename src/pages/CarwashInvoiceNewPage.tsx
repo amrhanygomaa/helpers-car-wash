@@ -98,11 +98,11 @@ export function CarwashInvoiceNewPage() {
   }, []);
 
   const [invoiceNumber] = useState(() => nextInvoiceNumber(salesInvoices.map((s) => s.invoiceNumber)));
-  const [date, setDate] = useState(todayISO());
+  const [date] = useState(todayISO());
   const [customerId, setCustomerId] = useState(() => {
     if (ticket?.customerId) return ticket.customerId;
     if (customerParam && customers.some((customer) => customer.id === customerParam)) return customerParam;
-    return customers[0]?.id ?? "";
+    return "";
   });
   const [vehicleId, setVehicleId] = useState(() => ticket?.vehicleId ?? "");
   const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
@@ -283,7 +283,6 @@ export function CarwashInvoiceNewPage() {
 
   async function submit() {
     const customer = customers.find((c) => c.id === customerId);
-    if (!customer) { toast.error("اختر العميل"); return; }
     if (lines.length === 0 && productLines.length === 0) { toast.error(productOnly ? "أضف منتجاً واحداً على الأقل" : "أضف خدمة أو إضافة واحدة على الأقل"); return; }
     if (!productOnly && lines.some((l) => !l.serviceId || l.quantity <= 0)) { toast.error("تحقق من بنود الخدمات"); return; }
     if (productLines.some((l) => !l.productId || l.quantity <= 0)) { toast.error("تحقق من بنود الإضافات"); return; }
@@ -343,8 +342,8 @@ export function CarwashInvoiceNewPage() {
     const inv = addSalesInvoice({
       invoiceNumber,
       date,
-      customerId,
-      customerName: customer.name,
+      customerId: customer?.id ?? "",
+      customerName: customer?.name ?? "زائر",
       lines: invLines,
       total,
       amountReceived: total,
@@ -419,13 +418,13 @@ export function CarwashInvoiceNewPage() {
     }
 
     // Redeem the subscription that covered this wash (decrements a count package).
-    if (!productOnly && hasDb() && activeSubscription) {
+    if (!productOnly && hasDb() && activeSubscription && customer) {
       try {
         await redeemSubscription({
           redemptionId: uid("redm"),
           subscriptionId: activeSubscription.id,
           orderId: inv.id,
-          customerId,
+          customerId: customer.id,
           washesUsed: 1,
           businessDate: todayISO(),
           createdAt: new Date().toISOString(),
@@ -475,9 +474,9 @@ export function CarwashInvoiceNewPage() {
               <Input value={invoiceNumber} readOnly className="bg-slate-100 font-mono" />
             </Field>
             <Field label="التاريخ">
-              <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+              <Input type="date" value={date} readOnly className="bg-slate-100 text-slate-600" />
             </Field>
-            <Field label="العميل" required>
+            <Field label="العميل">
               <div className="flex gap-2">
                 <Select
                   title="العميل"
@@ -485,7 +484,7 @@ export function CarwashInvoiceNewPage() {
                   onChange={(e) => { setCustomerId(e.target.value); setVehicleId(""); }}
                   className="flex-1"
                 >
-                  <option value="" disabled>اختر العميل</option>
+                  <option value="">زائر / بدون عميل</option>
                   {customers.map((c) => (
                     <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
