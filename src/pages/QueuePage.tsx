@@ -712,8 +712,14 @@ export function QueuePage() {
               </Field>
               <Button
                 type="button"
-                variant={isGuest ? "brand" : "outline"}
-                className={cn(isGuest ? "bg-amber-600 hover:bg-amber-700 text-white border-amber-600" : "border-slate-300 text-slate-700")}
+                variant={isGuest ? "primary" : "outline"}
+                size="lg"
+                className={cn(
+                  "font-semibold rounded-lg transition-all",
+                  isGuest
+                    ? "bg-amber-600 hover:bg-amber-700 text-white border-amber-600 active:bg-amber-800 shadow-sm"
+                    : "border-slate-300 text-slate-700 hover:bg-slate-50"
+                )}
                 onClick={() => {
                   if (isGuest) {
                     setIsGuest(false);
@@ -731,7 +737,7 @@ export function QueuePage() {
                   }
                 }}
               >
-                {isGuest ? "إلغاء وضع الضيف" : "دخول كضيف (بدون تسجيل)"}
+                {isGuest ? "إلغاء وضع الضيف" : "دخول كضيف"}
               </Button>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
