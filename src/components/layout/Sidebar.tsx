@@ -89,7 +89,6 @@ const GROUPS: NavGroup[] = [
       { to: "/cashbox", label: "الخزينة", icon: Wallet, permission: "cashbox", feature: "cashbox" },
       { to: "/cashbox/shift", label: "وردية الخزنة", icon: DoorClosed, permission: "cashbox", feature: "cashbox" },
       { to: "/workers", label: "الصنايعية", icon: Users, permissionKey: "payroll.manage" },
-      { to: "/workers/attendance", label: "حضور الصنايعية", icon: UserCheck, permissionKey: "payroll.manage" },
       { to: "/payroll/day-close", label: "قفلة اليوم", icon: ClipboardList, permissionKey: "payroll.manage" },
       { to: "/reports/end-of-day", label: "تقرير نهاية اليوم", icon: CalendarDays, permission: "reports", feature: "reports" },
       { to: "/reports/employees", label: "تقرير الموظفين", icon: Users, permissionKey: "payroll.manage", feature: "employeesReport" },
