@@ -307,9 +307,77 @@ export function QueuePage() {
     toast.success("تم تحديث حالة السيارة", `${ticket.customerName} - ${STATUS_LABEL[status]}`);
   }
 
+  async function handleAddGuest() {
+    if (!guest) return;
+    if (!guest.name.trim()) {
+      toast.error("اكتب اسم الزائر");
+      return;
+    }
+    if (!guestVehicle.brand.trim()) {
+      toast.error("أدخل ماركة السيارة");
+      return;
+    }
+    const plateNumber = normalizeEgyptPlateNumber(guestVehicle.plateNumber);
+    if (plateNumber && !isValidEgyptPlateNumber(plateNumber)) {
+      toast.error(
+        "رقم اللوحة غير صحيح. استخدم 2-3 حروف مفصولة بمسافة ثم 3-4 أرقام مثل: ن هـ 7535"
+      );
+      return;
+    }
+    const arrivalDate = parseLocalInput(arrival);
+    const pickupDate = requestedPickupAt ? parseLocalInput(requestedPickupAt) : null;
+    if (pickupDate && arrivalDate && pickupDate.getTime() <= arrivalDate.getTime()) {
+      toast.error("وقت الاستلام لازم يكون بعد وقت الوصول");
+      return;
+    }
+
+    const selectedServices = activeServices.filter((service) => serviceIds.includes(service.id));
+    const keyTime = keyReceived ? new Date().toISOString() : undefined;
+    const [ticket] = addQueueTickets([
+      {
+        customerName: guest.name.trim(),
+        phone: guest.phone.trim() || undefined,
+        vehicleBrand: guestVehicle.brand.trim(),
+        vehicleLabel: vehicleLabel({
+          brand: guestVehicle.brand.trim(),
+          model: guestVehicle.model.trim() || undefined,
+          plateNumber,
+        }),
+        serviceIds: selectedServices.map((service) => service.id),
+        serviceNames: selectedServices.map((service) => service.name),
+        arrivalTime: arrival ? new Date(arrival).toISOString() : new Date().toISOString(),
+        requestedPickupAt: requestedPickupAt ? new Date(requestedPickupAt).toISOString() : undefined,
+        note: note.trim() || undefined,
+        delayNote: note.trim() || undefined,
+        keyReceived,
+        keyReceivedAt: keyTime,
+        keyReceivedBy: keyReceived ? currentUser?.id : undefined,
+        keyReceivedByName: keyReceived ? currentUser?.name : undefined,
+      },
+    ]);
+
+    if (printOnAdd) {
+      const carsAlreadyWaiting = queueTickets.filter((t) => ACTIVE_QUEUE_STATUSES.has(t.status)).length;
+      const result = await printIntakeTicket({
+        ticket,
+        carsAhead: carsAlreadyWaiting,
+        services: selectedServices.map((service) => service.name),
+      });
+      if (!result.ok) toast.error("تعذر فتح الطباعة", result.error);
+    }
+
+    toast.success("تمت إضافة السيارة للطابور", `#${ticket.number}`);
+    resetForm();
+    setOpen(false);
+  }
+
   async function handleAdd() {
+    if (guest) {
+      await handleAddGuest();
+      return;
+    }
     if (!selectedCustomer) {
-      toast.error("اختر عميلاً مسجلاً");
+      toast.error("اختر عميلاً مسجلاً أو سجّله كزائر");
       return;
     }
     if (selectedVehicleIds.some((id) => !id)) {
