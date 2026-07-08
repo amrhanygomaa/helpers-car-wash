@@ -47,15 +47,14 @@ export function uid(prefix = "id"): string {
  * to UTC first, so on UTC+ machines it returns yesterday near midnight and
  * shifts month/quarter boundaries by a day (BUG-04, report 09).
  */
+import { businessDateInCairo } from "./dates";
+
 export function localISODate(d: Date = new Date()): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+  return businessDateInCairo(d);
 }
 
 export function todayISO(): string {
-  return localISODate();
+  return businessDateInCairo();
 }
 
 export function isToday(dateStr: string): boolean {
