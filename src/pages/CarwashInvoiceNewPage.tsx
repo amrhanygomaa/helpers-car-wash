@@ -722,8 +722,7 @@ export function CarwashInvoiceNewPage() {
                             onChange={(e) => updateProductLine(l.id, { quantity: Number(e.target.value) })} />
                         </TD>
                         <TD>
-                          <Input type="number" min={0} step="0.01" value={l.price}
-                            onChange={(e) => updateProductLine(l.id, { price: Number(e.target.value) })} />
+                          <Input type="number" min={0} step="0.01" value={l.price} readOnly className="bg-slate-50 text-slate-600" />
                         </TD>
                         <TD className="text-end font-medium">
                           {formatCurrency(l.price * l.quantity, settings.currency)}
