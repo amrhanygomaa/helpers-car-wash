@@ -263,10 +263,9 @@ export function VehiclesPage() {
             </Field>
             <Field
               label="رقم اللوحة"
-              required
               hint="مثال: ن هـ 7535 — 2-3 حروف مفصولة بمسافة ثم 3-4 أرقام"
             >
-              <PlateNumberInput name="plateNumber" defaultValue={editing?.plateNumber} required />
+              <PlateNumberInput name="plateNumber" defaultValue={editing?.plateNumber} />
             </Field>
             <Field label="اللون">
               <Input name="color" defaultValue={editing?.color} />
