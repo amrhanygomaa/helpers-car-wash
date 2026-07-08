@@ -107,3 +107,14 @@ export function monthLabel(yyyymm: string): string {
   const [y, m] = yyyymm.split("-").map(Number);
   return `${MONTH_NAMES_AR[m - 1]} ${y}`;
 }
+
+export interface VehicleTypeForLabel {
+  brand: string;
+  model?: string | null;
+  plateNumber: string;
+}
+
+export function vehicleLabel(v: VehicleTypeForLabel): string {
+  const make = [v.brand, v.model].filter(Boolean).join(" ").trim();
+  return v.plateNumber ? `${make} · ${v.plateNumber}` : make;
+}
