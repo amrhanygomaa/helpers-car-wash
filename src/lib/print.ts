@@ -157,10 +157,11 @@ export function printServiceInvoice({
 
   const lineRows = serviceLines
     .map((l) => {
+      // Worker commission is internal (treasury/payroll) — never printed for the customer.
       const workers = lineWorkers(l);
       const workerRow = workers.length
         ? `<tr class="worker-row"><td colspan="4" class="muted small">↳ ${workers
-            .map((w) => `${escapeHtml(w.workerName ?? "صنايعي")}${w.commissionAmount ? ` (${fmtPrice(w.commissionAmount, currency)})` : ""}`)
+            .map((w) => escapeHtml(w.workerName ?? "صنايعي"))
             .join("، ")}</td></tr>`
         : "";
       return `
@@ -190,11 +191,6 @@ export function printServiceInvoice({
   const discountRow =
     discountLabel && subtotalForDisplay != null
       ? `<div class="row"><span>${escapeHtml(discountLabel)}</span><span class="ltr">(${fmtPrice(subtotalForDisplay - invoice.total, currency)})</span></div>`
-      : "";
-
-  const commissionRow =
-    invoice.commissionTotal && !invoice.commissionInTotal
-      ? `<div class="row muted small"><span>إجمالي العمولات (على المحل)</span><span class="ltr">${fmtPrice(invoice.commissionTotal, currency)}</span></div>`
       : "";
 
   const remaining = invoice.remaining ?? Math.max(0, invoice.total - invoice.amountReceived);

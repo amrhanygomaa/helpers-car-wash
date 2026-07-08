@@ -852,6 +852,19 @@ export function CarwashInvoiceNewPage() {
                 <span className="font-semibold text-amber-700">{formatCurrency(remainingDue, settings.currency)}</span>
               </div>
             )}
+            {commissionTotal > 0 && (
+              <div className="rounded-lg bg-slate-50 border border-slate-100 px-3 py-2 space-y-1 text-xs">
+                <div className="flex items-center justify-between text-rose-700">
+                  <span>عمولة الصنايعي (تُخصم من الخزنة)</span>
+                  <span className="font-semibold">{formatCurrency(commissionTotal, settings.currency)}</span>
+                </div>
+                <div className="flex items-center justify-between text-emerald-700">
+                  <span>صافي المحل</span>
+                  <span className="font-semibold">{formatCurrency(Math.max(0, total - commissionTotal), settings.currency)}</span>
+                </div>
+                <div className="text-slate-400">داخلي فقط — لا يظهر في الفاتورة المطبوعة</div>
+              </div>
+            )}
           </CardBody>
         </Card>
       </div>
