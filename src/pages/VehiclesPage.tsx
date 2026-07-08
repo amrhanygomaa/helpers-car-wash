@@ -25,7 +25,7 @@ import { hasPermission } from "../lib/permissions";
 /** "Toyota Corolla · ABC-123" — shared label used across queue/invoices. */
 export function vehicleLabel(v: Pick<Vehicle, "brand" | "model" | "plateNumber">): string {
   const make = [v.brand, v.model].filter(Boolean).join(" ").trim();
-  return make ? `${make} · ${v.plateNumber}` : v.plateNumber;
+  return v.plateNumber ? `${make} · ${v.plateNumber}` : make;
 }
 
 export function VehiclesPage() {
