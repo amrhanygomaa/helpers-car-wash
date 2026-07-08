@@ -55,7 +55,13 @@ function startElectron() {
   const electronBin = require("electron");
   const env = { ...process.env, ELECTRON_RENDERER_URL: VITE_URL };
   delete env.ELECTRON_RUN_AS_NODE;
-  electronProc = spawn(electronBin, ["."], { cwd: ROOT, stdio: "inherit", env, shell: false });
+  
+  const electronArgs = ["."];
+  if (process.platform === "linux") {
+    electronArgs.push("--no-sandbox");
+  }
+
+  electronProc = spawn(electronBin, electronArgs, { cwd: ROOT, stdio: "inherit", env, shell: false });
   electronProc.on("exit", () => {
     electronProc = null;
     if (restartingElectron) { restartingElectron = false; setTimeout(() => { if (!shuttingDown) startElectron(); }, 900); }
