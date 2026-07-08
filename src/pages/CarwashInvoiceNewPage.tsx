@@ -22,7 +22,6 @@ import { listActiveRawMaterials, recordMaterialConsumption, type RawMaterial } f
 import { listUsableSubscriptions, redeemSubscription, type CustomerSubscription } from "../features/subscriptions/queries";
 import { expandServiceMaterials, splitCommissionEvenly } from "../store/_pure";
 import { printServiceInvoice } from "../lib/print";
-import { computeServiceCommission } from "../lib/carwash";
 import { CustomerFormDialog } from "../features/customers/CustomerFormDialog";
 import { VehicleFormDialog } from "../features/vehicles/VehicleFormDialog";
 import type { InvoiceLine, PaymentMethod, SalesPaymentType } from "../types";
@@ -530,7 +529,11 @@ export function CarwashInvoiceNewPage() {
                     </Button>
                   </div>
                 </Field>
-                <Field label="الصنايعي">
+                <Field
+                  label="الصنايعي"
+                  required={hasCommissionLines}
+                  hint={hasCommissionLines && !invoiceWorkerId ? "مطلوب — توجد خدمات بعمولة تُسجَّل على الصنايعي" : undefined}
+                >
                   <Select value={invoiceWorkerId} onChange={(e) => setInvoiceWorkerId(e.target.value)}>
                     <option value="">— بدون صنايعي —</option>
                     {dbWorkers.map((worker) => (
@@ -598,6 +601,7 @@ export function CarwashInvoiceNewPage() {
                 <TR>
                   <TH>الخدمة</TH>
                   <TH className="w-32">السعر</TH>
+                  {hasCommissionLines && <TH className="w-36">عمولة الصنايعي</TH>}
                   <TH className="w-32 text-end">الإجمالي</TH>
                   <TH className="w-10"></TH>
                 </TR>
@@ -665,6 +669,18 @@ export function CarwashInvoiceNewPage() {
                           <Input type="number" min={0} step="0.01" value={l.price}
                             onChange={(e) => onPriceChange(l.id, Number(e.target.value))} />
                         </TD>
+                        {hasCommissionLines && (
+                          <TD>
+                            {lineHasCommission ? (
+                              <Input type="number" min={0} step="0.01" placeholder="0"
+                                aria-label="عمولة الصنايعي" title="مبلغ عمولة الصنايعي — لا يظهر للعميل ولا يُطبع"
+                                value={l.commission || ""}
+                                onChange={(e) => onCommissionChange(l.id, Number(e.target.value))} />
+                            ) : (
+                              <span className="text-slate-300 text-xs">—</span>
+                            )}
+                          </TD>
+                        )}
                         <TD className="text-end font-medium">
                           {formatCurrency(l.price * l.quantity, settings.currency)}
                         </TD>
