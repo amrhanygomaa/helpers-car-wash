@@ -29,6 +29,7 @@ export function CustomerCombobox({
   onGuest,
   placeholder = "ابحث بالاسم أو رقم الهاتف أو كود العميل…",
   autoFocus,
+  disabled,
 }: {
   customers: Customer[];
   selectedCustomer: Customer | undefined;
@@ -38,6 +39,7 @@ export function CustomerCombobox({
   onGuest: (query: string) => void;
   placeholder?: string;
   autoFocus?: boolean;
+  disabled?: boolean;
 }) {
   const [text, setText] = useState(selectedCustomer?.name ?? "");
   const [open, setOpen] = useState(false);
@@ -120,18 +122,20 @@ export function CustomerCombobox({
         <Search className="w-4 h-4 absolute top-1/2 -translate-y-1/2 start-3 text-slate-400 pointer-events-none" />
         <input
           value={text}
-          placeholder={placeholder}
+          placeholder={disabled ? "العميل الحالي: ضيف غير مسجل" : placeholder}
           autoFocus={autoFocus}
           autoComplete="off"
+          disabled={disabled}
           onChange={(e) => change(e.target.value)}
-          onFocus={() => setOpen(true)}
+          onFocus={() => !disabled && setOpen(true)}
           onKeyDown={onKeyDown}
           className={cn(
             "w-full h-11 ps-9 pe-9 text-base rounded-lg border border-slate-300 bg-white",
-            "placeholder:text-slate-400 focus-ring"
+            "placeholder:text-slate-400 focus-ring",
+            disabled && "bg-slate-50 text-slate-400 border-slate-200 cursor-not-allowed"
           )}
         />
-        {text ? (
+        {text && !disabled ? (
           <button
             type="button"
             tabIndex={-1}

@@ -151,6 +151,15 @@ export function QueuePage() {
   const [keyReceived, setKeyReceived] = useState(true);
   const [printOnAdd, setPrintOnAdd] = useState(true);
 
+  // Guest Mode states
+  const [isGuest, setIsGuest] = useState(false);
+  const [guestName, setGuestName] = useState("");
+  const [guestPhone, setGuestPhone] = useState("");
+  const [guestBrand, setGuestBrand] = useState("");
+  const [guestModel, setGuestModel] = useState("");
+  const [guestPlate, setGuestPlate] = useState("");
+  const [guestColor, setGuestColor] = useState("");
+
   const activeServices = useMemo(
     () => washServices.filter((s) => s.active).sort((a, b) => (a.sortOrder ?? 999) - (b.sortOrder ?? 999)),
     [washServices]
