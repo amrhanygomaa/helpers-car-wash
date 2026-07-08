@@ -811,8 +811,7 @@ export function QueuePage() {
         onClose={() => setCustomerDialogOpen(false)}
         initialName={customerDialogPrefill}
         onCreated={(customer) => {
-          setCustomerId(customer.id);
-          setSelectedVehicleIds([""]);
+          onPickCustomer(customer.id);
         }}
       />
       <VehicleFormDialog
