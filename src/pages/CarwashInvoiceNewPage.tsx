@@ -37,6 +37,8 @@ interface ServiceLineDraft {
   serviceId: string;
   quantity: number;
   price: number;
+  /** Worker commission for this line — fixed EGP amount entered by the cashier. Never printed. */
+  commission: number;
   /** One or more صنايعية sharing this line's commission. Empty = unassigned. */
   workers: LineWorkerDraft[];
 }
@@ -112,7 +114,7 @@ export function CarwashInvoiceNewPage() {
     const selectedIds = ticket?.serviceIds?.filter((id) => activeServices.some((s) => s.id === id)) ?? [];
     return selectedIds.map((serviceId) => {
       const service = activeServices.find((s) => s.id === serviceId)!;
-      return { id: uid("ln"), serviceId, quantity: 1, price: service.defaultPrice, workers: [] };
+      return { id: uid("ln"), serviceId, quantity: 1, price: service.defaultPrice, commission: 0, workers: [] };
     });
   });
 

@@ -331,7 +331,7 @@ export interface WashService {
   category: WashServiceCategory;
   defaultPrice: number;
   hasCommission?: boolean;
-  /** Commission rate (%) auto-applied to the line and split across its workers. */
+  /** @deprecated Legacy percentage commission. The commission is now a fixed EGP amount entered per invoice line. */
   commissionPct?: number;
   pricingMode?: "variable" | "fixed";
   active: boolean;
