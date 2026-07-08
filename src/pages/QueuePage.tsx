@@ -647,50 +647,64 @@ export function QueuePage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="md:col-span-2 rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-end gap-3">
-              <Field label="العميل المسجّل" required className="flex-1">
+              <Field label="العميل المسجّل" required={!isGuest} className="flex-1">
                 <CustomerCombobox
                   customers={customers.filter((customer) => !customer.archived)}
-                  selectedCustomer={selectedCustomer}
-                  onPick={(customer) => onPickCustomer(customer.id)}
+                  selectedCustomer={isGuest ? undefined : selectedCustomer}
+                  onPick={(customer) => {
+                    setIsGuest(false);
+                    onPickCustomer(customer.id);
+                  }}
                   onClear={() => onPickCustomer("")}
                   onAddNew={openAddCustomerDialog}
                   onGuest={quickRegisterGuest}
+                  disabled={isGuest}
                 />
               </Field>
+              <Button
+                type="button"
+                variant={isGuest ? "brand" : "outline"}
+                className={cn(isGuest ? "bg-amber-600 hover:bg-amber-700 text-white border-amber-600" : "border-slate-300 text-slate-700")}
+                onClick={() => {
+                  if (isGuest) {
+                    setIsGuest(false);
+                    onPickCustomer("");
+                  } else {
+                    setIsGuest(true);
+                    setCustomerId("");
+                    setCustomerName("");
+                    setCustomerPhone("");
+                    setGuestBrand("");
+                    setGuestModel("");
+                    setGuestPlate("");
+                    setGuestColor("");
+                    setSelectedVehicleIds(["guest-slot"]);
+                  }
+                }}
+              >
+                {isGuest ? "إلغاء وضع الضيف" : "دخول كضيف (بدون تسجيل)"}
+              </Button>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Field label="اسم العميل" required>
                 <Input
                   value={customerName}
                   readOnly={Boolean(selectedCustomer)}
-                  onChange={(e) => setCustomerName(e.target.value)}
-                  className={cn(selectedCustomer ? "bg-slate-50 text-slate-600" : "bg-white")}
-                />
-              </Field>
-              <Field label="رقم الهاتف">
-                <Input
-                  value={customerPhone}
-                  readOnly={Boolean(selectedCustomer)}
-                  inputMode="tel"
-                  onChange={(e) => setCustomerPhone(e.target.value)}
-                  className={cn(selectedCustomer ? "bg-slate-50 text-slate-600" : "bg-white")}
-                />
-              </Field>
-            </div>
-          </div>
-
-          <div className="md:col-span-2 space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
+                  onChange={(e) => setCust            <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <div className="text-sm font-semibold text-slate-800">مركبات الاستقبال</div>
-                <div className="text-xs text-slate-500">اختر مركبة محفوظة من ملف العميل لكل تذكرة غسيل.</div>
+                <div className="text-xs text-slate-500">
+                  {isGuest
+                    ? "أدخل بيانات مركبة الضيف مباشرة."
+                    : "اختر مركبة محفوظة من ملف العميل لكل تذكرة غسيل."}
+                </div>
               </div>
               <div className="flex flex-wrap gap-2">
                 <Button
                   type="button"
                   size="sm"
                   variant="outline"
-                  disabled={!customerId && !customerName.trim()}
+                  disabled={isGuest || (!customerId && !customerName.trim())}
                   onClick={openVehicleDialog}
                 >
                   <Plus className="w-4 h-4" /> مركبة جديدة
@@ -699,7 +713,7 @@ export function QueuePage() {
                   type="button"
                   size="sm"
                   variant="secondary"
-                  disabled={(!customerId && !customerName.trim()) || selectedVehicleIds.some((id) => !id)}
+                  disabled={isGuest || (!customerId && !customerName.trim()) || selectedVehicleIds.some((id) => !id)}
                   onClick={addVehicleSlot}
                 >
                   <Plus className="w-4 h-4" /> سيارة أخرى للغسيل
@@ -707,47 +721,103 @@ export function QueuePage() {
               </div>
             </div>
 
-            {selectedVehicleIds.map((selectedId, index) => {
-              const vehicle = customerVehicles.find((item) => item.id === selectedId);
-              return (
-                <div key={index} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
-                      <span className="grid h-7 w-7 place-items-center rounded-full bg-brand-50 text-brand-700">{index + 1}</span>
-                      السيارة {index + 1}
+            {isGuest ? (
+              <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
+                <div className="text-sm font-semibold text-slate-800 flex items-center gap-2">
+                  <span className="grid h-7 w-7 place-items-center rounded-full bg-amber-50 text-amber-700">1</span>
+                  بيانات مركبة الضيف
+                </div>
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                  <Field label="الماركة">
+                    <Input
+                      value={guestBrand}
+                      onChange={(e) => setGuestBrand(e.target.value)}
+                      placeholder="مثال: هيونداي"
+                    />
+                  </Field>
+                  <Field label="الموديل">
+                    <Input
+                      value={guestModel}
+                      onChange={(e) => setGuestModel(e.target.value)}
+                      placeholder="مثال: إلنترا"
+                    />
+                  </Field>
+                  <Field label="رقم اللوحة">
+                    <Input
+                      value={guestPlate}
+                      onChange={(e) => setGuestPlate(e.target.value)}
+                      placeholder="أ ب ج 1 2 3"
+                      className="font-mono"
+                    />
+                  </Field>
+                  <Field label="اللون">
+                    <Input
+                      value={guestColor}
+                      onChange={(e) => setGuestColor(e.target.value)}
+                      placeholder="مثال: كحلي"
+                    />
+                  </Field>
+                </div>
+              </div>
+            ) : (
+              selectedVehicleIds.map((selectedId, index) => {
+                const vehicle = customerVehicles.find((item) => item.id === selectedId);
+                return (
+                  <div key={index} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+                        <span className="grid h-7 w-7 place-items-center rounded-full bg-brand-50 text-brand-700">{index + 1}</span>
+                        السيارة {index + 1}
+                      </div>
+                      {selectedVehicleIds.length > 1 ? (
+                        <Button type="button" size="sm" variant="ghost" onClick={() => removeVehicleSlot(index)}>
+                          <X className="w-4 h-4" /> حذف
+                        </Button>
+                      ) : null}
                     </div>
-                    {selectedVehicleIds.length > 1 ? (
-                      <Button type="button" size="sm" variant="ghost" onClick={() => removeVehicleSlot(index)}>
-                        <X className="w-4 h-4" /> حذف
-                      </Button>
+                    <Field label="المركبة المحفوظة" required>
+                      <Select
+                        value={selectedId}
+                        disabled={!customerId}
+                        onChange={(event) => onPickVehicle(index, event.target.value)}
+                      >
+                        <option value="">{customerId ? "اختر المركبة" : "اختر العميل أولاً"}</option>
+                        {customerVehicles.map((item) => (
+                          <option
+                            key={item.id}
+                            value={item.id}
+                            disabled={selectedVehicleIds.some((id, slotIndex) => slotIndex !== index && id === item.id)}
+                          >
+                            {vehicleLabel(item)}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                    {customerId && customerVehicles.length === 0 ? (
+                      <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                        لا توجد مركبات محفوظة لهذا العميل. استخدم زر «مركبة جديدة» لإضافتها إلى ملفه.
+                      </div>
+                    ) : null}
+                    {vehicle ? (
+                      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                        <Field label="الماركة">
+                          <Input value={vehicle.brand} readOnly className="bg-slate-50 text-slate-600" />
+                        </Field>
+                        <Field label="الموديل">
+                          <Input value={vehicle.model ?? ""} readOnly className="bg-slate-50 text-slate-600" />
+                        </Field>
+                        <Field label="رقم اللوحة">
+                          <Input value={vehicle.plateNumber} readOnly className="bg-slate-50 text-slate-600 font-mono" />
+                        </Field>
+                        <Field label="اللون">
+                          <Input value={vehicle.color ?? ""} readOnly className="bg-slate-50 text-slate-600" />
+                        </Field>
+                      </div>
                     ) : null}
                   </div>
-                  <Field label="المركبة المحفوظة" required>
-                    <Select
-                      value={selectedId}
-                      disabled={!customerId}
-                      onChange={(event) => onPickVehicle(index, event.target.value)}
-                    >
-                      <option value="">{customerId ? "اختر المركبة" : "اختر العميل أولاً"}</option>
-                      {customerVehicles.map((item) => (
-                        <option
-                          key={item.id}
-                          value={item.id}
-                          disabled={selectedVehicleIds.some((id, slotIndex) => slotIndex !== index && id === item.id)}
-                        >
-                          {vehicleLabel(item)}
-                        </option>
-                      ))}
-                    </Select>
-                  </Field>
-                  {customerId && customerVehicles.length === 0 ? (
-                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                      لا توجد مركبات محفوظة لهذا العميل. استخدم زر «مركبة جديدة» لإضافتها إلى ملفه.
-                    </div>
-                  ) : null}
-                  {vehicle ? (
-                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                      <Field label="الماركة">
+                );
+              })
+            )}           <Field label="الماركة">
                         <Input value={vehicle.brand} readOnly className="bg-slate-50 text-slate-600" />
                       </Field>
                       <Field label="الموديل">
