@@ -600,14 +600,16 @@ export function QueuePage() {
           <div className="md:col-span-2 rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-end gap-3">
               <Field label="العميل المسجّل" required className="flex-1">
-                <Select value={customerId} onChange={(e) => onPickCustomer(e.target.value)}>
-                  <option value="">اختر العميل</option>
-                  {customers.filter((customer) => !customer.archived).map((customer) => (
-                    <option key={customer.id} value={customer.id}>{customer.name}</option>
-                  ))}
-                </Select>
+                <CustomerCombobox
+                  customers={customers.filter((customer) => !customer.archived)}
+                  selectedCustomer={selectedCustomer}
+                  onPick={(customer) => onPickCustomer(customer.id)}
+                  onClear={() => onPickCustomer("")}
+                  onAddNew={openAddCustomerDialog}
+                  onGuest={quickRegisterGuest}
+                />
               </Field>
-              <Button type="button" variant="outline" onClick={() => setCustomerDialogOpen(true)}>
+              <Button type="button" variant="outline" onClick={() => openAddCustomerDialog("")}>
                 <Plus className="w-4 h-4" /> عميل جديد
               </Button>
             </div>
@@ -805,6 +807,7 @@ export function QueuePage() {
       <CustomerFormDialog
         open={customerDialogOpen}
         onClose={() => setCustomerDialogOpen(false)}
+        initialName={customerDialogPrefill}
         onCreated={(customer) => {
           setCustomerId(customer.id);
           setSelectedVehicleIds([""]);

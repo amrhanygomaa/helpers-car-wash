@@ -17,8 +17,8 @@ function matchesQuery(customer: Customer, query: string): boolean {
 
 /**
  * Searchable customer picker: type to filter by name, phone, or customer
- * code. When nothing matches, offers to open the "add customer" dialog or to
- * proceed as a walk-in guest without saving a permanent customer record.
+ * code. When nothing matches, offers to open the full "add customer" dialog
+ * or to quick-register the typed name as a walk-in guest.
  */
 export function CustomerCombobox({
   customers,
@@ -204,7 +204,7 @@ export function CustomerCombobox({
                   highlight === results.length + 1 ? "bg-amber-50" : ""
                 )}
               >
-                <UserRound className="w-4 h-4" /> تسجيل "{text.trim()}" كزائر (بدون حفظ بيانات)
+                <UserRound className="w-4 h-4" /> تسجيل "{text.trim()}" كزائر سريع (بدون نموذج تسجيل كامل)
               </button>
             </div>
           ) : null}
