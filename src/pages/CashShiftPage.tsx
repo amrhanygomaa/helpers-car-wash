@@ -62,6 +62,16 @@ export function CashShiftPage() {
     );
   }, [open, cashEntries]);
 
+  // The same cash-only entries feeding expectedCash, kept as a list so the
+  // cashier can see which invoices/movements made up the net total.
+  const shiftMovements = useMemo(() => {
+    if (!open) return [];
+    return cashEntries
+      .filter((e) => e.date === open.businessDate && (!e.paymentMethod || e.paymentMethod === "cash"))
+      .slice()
+      .reverse();
+  }, [open, cashEntries]);
+
   const counted = parseFloat(countedCash || "0");
   const variance = drawerVariance(Number.isFinite(counted) ? counted : 0, expectedCash);
 
@@ -149,7 +159,41 @@ export function CashShiftPage() {
             <Stat label="صافي حركة النقدية" value={formatCurrency(expectedCash - piastresToEgp(open.openingFloat), currency)} tone="green" />
           </CardBody>
         </Card>
-      ) : (
+      ) : null}
+
+      {open && (
+        <Card className="mb-4">
+          <CardHeader title="حركات النقدية في الوردية" subtitle="تفاصيل المبالغ التي كوّنت صافي الحركة أعلاه" />
+          <CardBody className="p-0">
+            {shiftMovements.length === 0 ? (
+              <div className="p-6"><EmptyState title="لا توجد حركات نقدية بعد" /></div>
+            ) : (
+              <Table>
+                <THead>
+                  <TR>
+                    <TH>الوصف</TH>
+                    <TH>النوع</TH>
+                    <TH className="text-end">المبلغ</TH>
+                  </TR>
+                </THead>
+                <TBody>
+                  {shiftMovements.map((e) => (
+                    <TR key={e.id}>
+                      <TD>{e.description}</TD>
+                      <TD>{cashEntryTypeLabel(e.type)}</TD>
+                      <TD className={`text-end font-semibold ${e.amount < 0 ? "text-rose-700" : "text-emerald-700"}`}>
+                        {e.amount > 0 ? "+" : ""}{formatCurrency(e.amount, currency)}
+                      </TD>
+                    </TR>
+                  ))}
+                </TBody>
+              </Table>
+            )}
+          </CardBody>
+        </Card>
+      )}
+
+      {!loading && !open && (
         <Card className="mb-4">
           <CardBody>
             <EmptyState icon={<DoorOpen className="w-6 h-6" />} title="لا توجد وردية مفتوحة" description="افتح وردية لبدء متابعة درج النقدية." />
