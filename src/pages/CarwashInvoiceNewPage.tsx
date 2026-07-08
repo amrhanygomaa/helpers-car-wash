@@ -176,30 +176,36 @@ export function CarwashInvoiceNewPage() {
   const effectiveRedeem = Math.max(0, Math.min(redeemPoints, maxRedeemablePoints));
   const loyaltyDiscount = effectiveRedeem * pointValue;
   const total = Math.max(0, preLoyaltyTotal - loyaltyDiscount);
+  // Lines whose service participates in worker commission (تدخل في العمولة).
+  const hasCommissionLines = useMemo(
+    () => lines.some((line) => activeServices.find((item) => item.id === line.serviceId)?.hasCommission),
+    [lines, activeServices]
+  );
   const commissionTotal = useMemo(
     () => lines.reduce((sum, line) => {
       const service = activeServices.find((item) => item.id === line.serviceId);
-      return sum + (invoiceWorkerId ? targetCommission(service, line.price, 1) : 0);
+      return sum + lineCommission(service, line.commission);
     }, 0),
-    [lines, activeServices, invoiceWorkerId]
+    [lines, activeServices]
   );
   const remainingDue = Math.max(0, total - (paymentType === "cash" ? amountReceived : 0));
 
-  // Service line CRUD ─ commission is auto-calculated from the service's % and
-  // split evenly across the line's assigned صنايعية (each share editable).
-  function targetCommission(svc: (typeof activeServices)[number] | undefined, price: number, qty: number): number {
-    return svc?.hasCommission ? computeServiceCommission(price, qty, svc.commissionPct) : 0;
+  // Service line CRUD ─ commission is a fixed EGP amount typed by the cashier
+  // per line (internal only — never shown to the customer or printed), split
+  // evenly across the line's assigned صنايعية (each share editable).
+  function lineCommission(svc: (typeof activeServices)[number] | undefined, amount: number): number {
+    return svc?.hasCommission && amount > 0 ? amount : 0;
   }
 
-  function resplit(workers: LineWorkerDraft[], svc: (typeof activeServices)[number] | undefined, price: number, qty: number): LineWorkerDraft[] {
-    const shares = splitCommissionEvenly(targetCommission(svc, price, qty), workers.length);
+  function resplit(workers: LineWorkerDraft[], svc: (typeof activeServices)[number] | undefined, amount: number): LineWorkerDraft[] {
+    const shares = splitCommissionEvenly(lineCommission(svc, amount), workers.length);
     return workers.map((w, i) => ({ ...w, commissionAmount: shares[i] ?? 0 }));
   }
 
   function addLine() {
     const svc = activeServices[0];
     if (!svc) { toast.error("لا توجد خدمات مفعّلة — أضف خدمات أولاً"); return; }
-    setLines((l) => [...l, { id: uid("ln"), serviceId: svc.id, quantity: 1, price: svc.defaultPrice, workers: [] }]);
+    setLines((l) => [...l, { id: uid("ln"), serviceId: svc.id, quantity: 1, price: svc.defaultPrice, commission: 0, workers: [] }]);
   }
 
   function removeLine(id: string) {
@@ -209,22 +215,23 @@ export function CarwashInvoiceNewPage() {
   function onServiceChange(id: string, serviceId: string) {
     const svc = activeServices.find((s) => s.id === serviceId);
     const price = svc?.defaultPrice ?? 0;
-    setLines((l) => l.map((row) => (row.id === id ? { ...row, serviceId, price, workers: resplit(row.workers, svc, price, row.quantity) } : row)));
+    // Switching the service resets the commission — the cashier types the new amount.
+    setLines((l) => l.map((row) => (row.id === id ? { ...row, serviceId, price, commission: 0, workers: resplit(row.workers, svc, 0) } : row)));
   }
 
   function onPriceChange(lineId: string, newPrice: number) {
-    setLines((l) => l.map((row) => {
-      if (row.id !== lineId) return row;
-      const svc = activeServices.find((s) => s.id === row.serviceId);
-      return { ...row, price: newPrice, workers: resplit(row.workers, svc, newPrice, row.quantity) };
-    }));
+    setLines((l) => l.map((row) => (row.id === lineId ? { ...row, price: newPrice } : row)));
   }
 
   function onQuantityChange(lineId: string, newQty: number) {
+    setLines((l) => l.map((row) => (row.id === lineId ? { ...row, quantity: newQty } : row)));
+  }
+
+  function onCommissionChange(lineId: string, amount: number) {
     setLines((l) => l.map((row) => {
       if (row.id !== lineId) return row;
       const svc = activeServices.find((s) => s.id === row.serviceId);
-      return { ...row, quantity: newQty, workers: resplit(row.workers, svc, row.price, newQty) };
+      return { ...row, commission: amount, workers: resplit(row.workers, svc, amount) };
     }));
   }
 
@@ -237,7 +244,7 @@ export function CarwashInvoiceNewPage() {
       if (!next) return row;
       const svc = activeServices.find((s) => s.id === row.serviceId);
       const workers = [...row.workers, { workerId: next.id, commissionAmount: 0 }];
-      return { ...row, workers: resplit(workers, svc, row.price, row.quantity) };
+      return { ...row, workers: resplit(workers, svc, row.commission) };
     }));
   }
 
@@ -246,7 +253,7 @@ export function CarwashInvoiceNewPage() {
       if (row.id !== lineId) return row;
       const svc = activeServices.find((s) => s.id === row.serviceId);
       const workers = row.workers.filter((_, i) => i !== index);
-      return { ...row, workers: resplit(workers, svc, row.price, row.quantity) };
+      return { ...row, workers: resplit(workers, svc, row.commission) };
     }));
   }
 
@@ -287,6 +294,12 @@ export function CarwashInvoiceNewPage() {
     if (lines.length === 0 && productLines.length === 0) { toast.error(productOnly ? "أضف منتجاً واحداً على الأقل" : "أضف خدمة أو إضافة واحدة على الأقل"); return; }
     if (!productOnly && lines.some((l) => !l.serviceId || l.quantity <= 0)) { toast.error("تحقق من بنود الخدمات"); return; }
     if (productLines.some((l) => !l.productId || l.quantity <= 0)) { toast.error("تحقق من بنود الإضافات"); return; }
+    // Commission services must be attributed to a specific صنايعي so the
+    // treasury and payroll record who received the commission.
+    if (!productOnly && hasCommissionLines && !invoiceWorkerId) {
+      toast.error("اختر الصنايعي", "الفاتورة تحتوي خدمات بعمولة — يجب تحديد الصنايعي لتسجيل العمولة عليه");
+      return;
+    }
 
     // Stock validation — can't go negative
     for (const pl of productLines) {
@@ -300,12 +313,12 @@ export function CarwashInvoiceNewPage() {
     const vehicle = vehicles.find((v) => v.id === vehicleId);
     const serviceInvLines: InvoiceLine[] = lines.map((l) => {
       const svc = activeServices.find((s) => s.id === l.serviceId)!;
+      const commission = lineCommission(svc, l.commission);
       const assigned = invoiceWorkerId ? [{
         workerId: invoiceWorkerId,
         workerName: dbWorkers.find((d) => d.id === invoiceWorkerId)?.name,
-        commissionAmount: targetCommission(svc, l.price, 1),
+        commissionAmount: commission,
       }] : [];
-      const lineCommission = assigned.reduce((s, w) => s + (w.commissionAmount ?? 0), 0);
       return {
         id: uid("sline"),
         productId: "",
@@ -320,8 +333,8 @@ export function CarwashInvoiceNewPage() {
         employeeId: assigned[0]?.workerId,
         employeeName: assigned[0]?.workerName,
         workers: assigned.length > 0 ? assigned : undefined,
-        commissionAmount: lineCommission > 0 ? lineCommission : undefined,
-        commissionInTotal: lineCommission > 0 ? false : undefined,
+        commissionAmount: commission > 0 ? commission : undefined,
+        commissionInTotal: commission > 0 ? false : undefined,
       };
     });
 
