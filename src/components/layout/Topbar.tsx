@@ -153,16 +153,6 @@ export function Topbar({
           </div>
         ) : null}
       </div>
-      <div className="flex items-center gap-2 ms-auto">
-        {settings.branchName ? (
-          <div
-            className="hidden lg:flex h-8 max-w-48 items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2 text-xs text-slate-600"
-            title={settings.branchName}
-          >
-            <Building2 className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-            <span className="truncate">{settings.branchName}</span>
-          </div>
-        ) : null}
         {canViewAlerts ? (
           <button
             onClick={() => navigate("/cashbox")}
