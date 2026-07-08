@@ -259,10 +259,10 @@ export function QueuePage() {
   function ensureCustomerFromForm() {
     if (selectedCustomer) return selectedCustomer;
 
-    const name = customerName.trim();
+    const name = customerName.trim() || (customerPhone.trim() ? "ضيف" : "");
     const phone = customerPhone.trim();
     if (!name) {
-      toast.error("اكتب اسم العميل أولاً");
+      toast.error("اختر عميلاً مسجلاً أو أدخل بيانات العميل");
       return null;
     }
 
@@ -365,12 +365,8 @@ export function QueuePage() {
     if (isGuest) {
       const name = customerName.trim() || "ضيف";
       const phone = customerPhone.trim();
-      if (!guestBrand.trim()) {
-        toast.error("يرجى كتابة ماركة مركبة الضيف");
-        return;
-      }
 
-      const make = [guestBrand.trim(), guestModel.trim()].filter(Boolean).join(" ").trim();
+      const make = [guestBrand.trim(), guestModel.trim()].filter(Boolean).join(" ").trim() || "سيارة";
       const plate = guestPlate.trim();
       const color = guestColor.trim();
       const label = [
@@ -742,7 +738,7 @@ export function QueuePage() {
               </Button>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Field label="اسم العميل" required>
+              <Field label="اسم العميل">
                 <Input
                   value={customerName}
                   readOnly={Boolean(selectedCustomer)}
