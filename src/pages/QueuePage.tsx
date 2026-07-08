@@ -218,8 +218,8 @@ export function QueuePage() {
     );
   }
 
-  function handlePrint(ticket: QueueTicket) {
-    const result = printIntakeTicket({
+  async function handlePrint(ticket: QueueTicket) {
+    const result = await printIntakeTicket({
       ticket,
       carsAhead: carsAheadForTicket(ticket, queueTickets),
       services: ticketServices(ticket, washServices),
@@ -264,7 +264,7 @@ export function QueuePage() {
     toast.success("تم تحديث حالة السيارة", `${ticket.customerName} - ${STATUS_LABEL[status]}`);
   }
 
-  function handleAdd() {
+  async function handleAdd() {
     const cleanName = name.trim();
     const cleanPhone = phone.trim();
     const cleanBrand = vehicleBrand.trim();
@@ -332,7 +332,7 @@ export function QueuePage() {
     });
 
     if (printOnAdd) {
-      const result = printIntakeTicket({
+      const result = await printIntakeTicket({
         ticket,
         carsAhead: queueTickets.filter((t) => ACTIVE_QUEUE_STATUSES.has(t.status)).length,
         services: selectedServices.map((service) => service.name),

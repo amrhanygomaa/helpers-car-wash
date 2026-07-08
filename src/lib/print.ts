@@ -30,7 +30,7 @@ function formatReceiptDate(iso?: string): string {
   }).format(date);
 }
 
-export function printIntakeTicket({
+export async function printIntakeTicket({
   ticket,
   carsAhead,
   services,
@@ -38,7 +38,11 @@ export function printIntakeTicket({
   ticket: QueueTicket;
   carsAhead: number;
   services: string[];
-}): { ok: boolean; error?: string } {
+}): Promise<{ ok: boolean; error?: string }> {
+  if (window.desktopAPI?.print) {
+    return window.desktopAPI.print.intakeTicket({ ticket, carsAhead, services });
+  }
+
   if (typeof document === "undefined") return { ok: false, error: "document_unavailable" };
 
   const frame = document.createElement("iframe");

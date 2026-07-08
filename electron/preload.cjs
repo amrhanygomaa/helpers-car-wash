@@ -45,6 +45,7 @@ contextBridge.exposeInMainWorld("desktopAPI", {
   print: {
     route: (route) => ipcRenderer.invoke("print:route", route),
     testReceipt: () => ipcRenderer.invoke("print:test-receipt"),
+    intakeTicket: (payload) => ipcRenderer.invoke("print:intake-ticket", payload),
   },
   storage: {
     get: (key) => sync("storage:get", key),

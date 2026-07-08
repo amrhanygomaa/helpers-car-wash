@@ -904,7 +904,7 @@ function receiptPageSize(settings) {
 
 function getInvoicePrintOptions(documentName = "") {
   const settings = getPrintSettings();
-  const isReceipt = String(documentName).startsWith("test-80mm");
+  const isReceipt = /^(?:test|receipt)-80mm/.test(String(documentName));
   return {
     silent: false,
     printBackground: true,
@@ -917,7 +917,7 @@ function getInvoicePrintOptions(documentName = "") {
 
 function getInvoicePdfOptions(documentName = "") {
   const settings = getPrintSettings();
-  const isReceipt = String(documentName).startsWith("test-80mm");
+  const isReceipt = /^(?:test|receipt)-80mm/.test(String(documentName));
   return {
     printBackground: true,
     landscape: false,
@@ -1543,6 +1543,84 @@ function buildInvoicePrintHtml(route) {
 </html>`;
 }
 
+function buildIntakeTicketHtml(payload, settings) {
+  const ticket = payload && typeof payload.ticket === "object" ? payload.ticket : {};
+  const widthMm = Math.min(110, Math.max(58, Number(settings.receiptWidthMm) || 80));
+  const companyName = settings.arabicLabels ? settings.companyNameAr : settings.companyName;
+  const ticketNumber = String(ticket.number ?? "-").slice(0, 30);
+  const carsAhead = Math.max(0, Math.floor(Number(payload?.carsAhead) || 0));
+  const services = Array.isArray(payload?.services) ? payload.services.slice(0, 30) : [];
+  const serviceRows = services.length
+    ? services.map((name) => `<li>${escapeHtml(String(name).slice(0, 160))}</li>`).join("")
+    : "<li>غير محدد</li>";
+  const formatDateTime = (value) => {
+    if (!value) return "-";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "-";
+    return new Intl.DateTimeFormat("ar-EG", { dateStyle: "short", timeStyle: "short" }).format(date);
+  };
+  const damageAreas = Array.isArray(ticket.damageAreas)
+    ? ticket.damageAreas.slice(0, 30).map((area) => escapeHtml(String(area).slice(0, 100))).join("، ")
+    : "";
+  const condition = String(ticket.conditionNotes || "").slice(0, 1000);
+  const conditionBlock = damageAreas || condition
+    ? `<div class="footer"><strong>حالة السيارة عند الاستلام:</strong>${damageAreas ? `<br>أماكن بها ملاحظات: ${damageAreas}` : ""}${condition ? `<br>${escapeHtml(condition)}` : ""}</div>`
+    : "";
+  const note = String(ticket.note || "").slice(0, 1000);
+
+  return `<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'none'; connect-src 'none'; base-uri 'none'; form-action 'none';" />
+  <title>تذكرة استقبال #${escapeHtml(ticketNumber)}</title>
+  <style>
+    @page { size: ${widthMm}mm auto; margin: 4mm; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #f1f5f9; color: #111827; font-family: Tahoma, Arial, sans-serif; direction: rtl; }
+    .print-toolbar { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; justify-content: flex-start; gap: 8px; padding: 10px 14px; background: #241f62; color: white; box-shadow: 0 2px 10px rgba(15,23,42,.18); }
+    .print-toolbar button { border: 0; border-radius: 6px; padding: 8px 14px; background: white; color: #241f62; font-family: inherit; font-weight: 700; cursor: pointer; }
+    .print-toolbar .secondary { background: rgba(255,255,255,.14); color: white; border: 1px solid rgba(255,255,255,.32); }
+    .print-status { min-width: 150px; color: rgba(255,255,255,.82); font-size: 11px; }
+    .receipt { width: ${widthMm}mm; margin: 18px auto; padding: 4mm; background: white; box-shadow: 0 10px 28px rgba(15,23,42,.16); font-size: 11px; line-height: 1.55; }
+    .center { text-align: center; }
+    .brand { font-size: 16px; font-weight: 800; }
+    .muted { color: #4b5563; }
+    .ticket { font-size: 28px; font-weight: 900; border: 1px dashed #111827; padding: 6px; margin: 8px 0; }
+    .row { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px solid #e5e7eb; padding: 3px 0; }
+    ul { margin: 4px 0 0; padding: 0 14px 0 0; }
+    .footer { margin-top: 8px; padding-top: 6px; border-top: 1px dashed #111827; }
+    @media print { body { background: white; } .print-toolbar { display: none; } .receipt { margin: 0; box-shadow: none; } }
+  </style>
+</head>
+<body>
+  <div class="print-toolbar">
+    <button type="button" id="print-now-button">طباعة</button>
+    <button type="button" id="save-pdf-button">حفظ PDF</button>
+    <button type="button" class="secondary" id="close-window-button">إغلاق</button>
+    <span id="print-status" class="print-status"></span>
+  </div>
+  <main class="receipt">
+    <div class="center">
+      <div class="brand">${escapeHtml(companyName || "Top Gear Car Wash")}</div>
+      <div class="muted">تذكرة استقبال غسيل</div>
+      <div class="ticket">#${escapeHtml(ticketNumber)}</div>
+    </div>
+    <div class="row"><span>العميل</span><strong>${escapeHtml(String(ticket.customerName || "زائر").slice(0, 160))}</strong></div>
+    <div class="row"><span>الهاتف</span><strong>${escapeHtml(String(ticket.phone || "-").slice(0, 60))}</strong></div>
+    <div class="row"><span>السيارة</span><strong>${escapeHtml(String(ticket.vehicleLabel || ticket.vehicleBrand || "-").slice(0, 200))}</strong></div>
+    <div class="row"><span>الاستقبال</span><strong>${escapeHtml(formatDateTime(ticket.arrivalTime))}</strong></div>
+    <div class="row"><span>الاستلام المتوقع</span><strong>${escapeHtml(formatDateTime(ticket.requestedPickupAt))}</strong></div>
+    <div class="row"><span>سيارات قبلك</span><strong>${carsAhead}</strong></div>
+    <div><strong>الخدمات</strong><ul>${serviceRows}</ul></div>
+    ${note ? `<div class="footer"><strong>ملاحظة:</strong> ${escapeHtml(note)}</div>` : ""}
+    ${conditionBlock}
+    <div class="center footer muted">احتفظ بهذه التذكرة حتى الاستلام</div>
+  </main>
+</body>
+</html>`;
+}
+
 function buildTestReceiptHtml(settings) {
   const companyName = settings.arabicLabels ? settings.companyNameAr : settings.companyName;
   const widthMm = Math.min(110, Math.max(58, Number(settings.receiptWidthMm) || 80));
@@ -1680,6 +1758,16 @@ function printTestReceipt() {
     html: buildTestReceiptHtml(settings),
     windowTitle: "اختبار طباعة 80mm",
     fileBaseName: "test-80mm-receipt",
+  });
+}
+
+function printIntakeTicket(payload) {
+  const settings = getPrintSettings();
+  const ticketNumber = String(payload?.ticket?.number ?? "ticket").slice(0, 30);
+  return openPrintHtml({
+    html: buildIntakeTicketHtml(payload, settings),
+    windowTitle: `تذكرة استقبال #${ticketNumber}`,
+    fileBaseName: sanitizeFileName(`receipt-80mm-intake-${ticketNumber}`),
   });
 }
 
@@ -2001,6 +2089,10 @@ function registerIpc() {
   ipcMain.handle("print:test-receipt", (event) => {
     if (!getSession(event)) return { ok: false, error: "not_authenticated" };
     return printTestReceipt();
+  });
+  ipcMain.handle("print:intake-ticket", (event, payload) => {
+    if (!getSession(event)) return { ok: false, error: "not_authenticated" };
+    return printIntakeTicket(payload);
   });
   ipcMain.handle("print:current-window", async (event) => {
     try {

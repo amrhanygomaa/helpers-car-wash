@@ -1,4 +1,4 @@
-import type { AppUser, LicenseStatus, LoginResult } from "./index";
+import type { AppUser, LicenseStatus, LoginResult, QueueTicket } from "./index";
 
 export {};
 
@@ -84,6 +84,11 @@ declare global {
       print: {
         route: (route: string) => Promise<{ ok: boolean; error?: string }>;
         testReceipt: () => Promise<{ ok: boolean; error?: string }>;
+        intakeTicket: (payload: {
+          ticket: QueueTicket;
+          carsAhead: number;
+          services: string[];
+        }) => Promise<{ ok: boolean; error?: string }>;
       };
       storage: {
         get: (key: string) => string | null;
