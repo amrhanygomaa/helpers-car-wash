@@ -971,6 +971,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setAuth({ isAuthenticated: true, username, userId: user.id });
     return { ok: true };
   }, [loadStoredStateFromDesktop, users]);
+
+  const devLogin = useCallback(async () => {
+    if (window.desktopAPI?.auth.devLogin) {
+      const result = await window.desktopAPI.auth.devLogin();
+      if (!result.ok) return result;
+      await reloadStorageCache();
+      loadStoredStateFromDesktop();
+      if (result.user) {
+        const updatedUser = normalizeUser(result.user);
+        setUsers((list) =>
+          list.some((u) => u.id === updatedUser.id)
+            ? list.map((u) => (u.id === updatedUser.id ? updatedUser : u))
+            : [updatedUser, ...list]
+        );
+      }
+      setAuth({ isAuthenticated: true, username: result.user?.username || "dev", userId: result.user?.id });
+      return { ok: true };
+    }
+    return { ok: false, error: "not_available" };
+  }, [loadStoredStateFromDesktop]);
+
   const logout = useCallback(() => {
     if (window.desktopAPI?.auth.logout) {
       void window.desktopAPI.auth.logout();
@@ -3242,6 +3263,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       ownerCheckPending,
       isLocked,
       login,
+      devLogin,
       logout,
       lockSession,
       unlockSession,
@@ -3259,6 +3281,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       ownerCheckPending,
       isLocked,
       login,
+      devLogin,
       logout,
       lockSession,
       unlockSession,

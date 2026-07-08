@@ -49,7 +49,14 @@ function runElectron() {
   const env = { ...process.env, ELECTRON_RENDERER_URL: VITE_URL };
   delete env.ELECTRON_RUN_AS_NODE;
 
-  electronProc = spawn(electronPath, ["."], {
+  const electronArgs = ["."];
+  // On Linux, disable the SUID sandbox to avoid permission issues
+  // (especially on NTFS-mounted drives where chmod/chown is not possible).
+  if (process.platform === "linux") {
+    electronArgs.push("--no-sandbox");
+  }
+
+  electronProc = spawn(electronPath, electronArgs, {
     cwd: ROOT,
     env,
     stdio: "inherit",

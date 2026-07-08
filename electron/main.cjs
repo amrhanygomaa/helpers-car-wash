@@ -2038,6 +2038,20 @@ function registerIpc() {
     }
     return result;
   });
+  ipcMain.handle("auth:dev-login", async (event) => {
+    let users = getUsers();
+    let owner = users.find((u) => u.role === "owner");
+    if (!owner) {
+      const result = await createOwner("dev", "1234");
+      if (result.ok && result.user) {
+        owner = result.user;
+      } else {
+        return { ok: false, error: "could_not_create_dev_owner" };
+      }
+    }
+    setSession(event, owner);
+    return { ok: true, user: safeUserForRenderer(owner) };
+  });
   ipcMain.handle("auth:logout", (event) => {
     clearSession(event);
     return { ok: true };

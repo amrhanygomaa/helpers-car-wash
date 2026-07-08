@@ -20,6 +20,8 @@ contextBridge.exposeInMainWorld("desktopAPI", {
   auth: {
     login: (username, password) =>
       ipcRenderer.invoke("auth:login", { username, password }),
+    devLogin: () =>
+      ipcRenderer.invoke("auth:dev-login"),
     logout: () => ipcRenderer.invoke("auth:logout"),
     hashPassword: (password) => ipcRenderer.invoke("auth:hash-password", password),
     changePassword: (userId, currentPassword, newPassword) =>

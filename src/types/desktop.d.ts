@@ -43,6 +43,7 @@ declare global {
           username: string,
           password: string
         ) => Promise<LoginResult & { user?: AppUser }>;
+        devLogin?: () => Promise<LoginResult & { user?: AppUser }>;
         logout: () => Promise<{ ok: boolean }>;
         hashPassword: (password: string) => Promise<string>;
         changePassword: (

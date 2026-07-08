@@ -37,6 +37,7 @@ export interface AuthContextValue {
   ownerCheckPending: boolean;
   isLocked: boolean;
   login: (username: string, password: string) => Promise<LoginResult>;
+  devLogin?: () => Promise<LoginResult>;
   logout: () => void;
   lockSession: () => void;
   unlockSession: (username: string, password: string) => Promise<LoginResult>;

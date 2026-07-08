@@ -8,7 +8,7 @@ import { useToast } from "../components/ui/Toast";
 import type { LoginResult } from "../types";
 
 export function LoginPage() {
-  const { login } = useAuth();
+  const { login, devLogin } = useAuth();
   const navigate = useNavigate();
   const toast = useToast();
   const [username, setUsername] = useState("");
@@ -77,6 +77,24 @@ export function LoginPage() {
     }
     submitInFlight.current = false;
     setSubmitting(false);
+  }
+
+  async function onDevLogin() {
+    if (!devLogin) return;
+    setSubmitting(true);
+    try {
+      const result = await devLogin();
+      if (result.ok) {
+        toast.success("تم تسجيل الدخول السريع (مطور)");
+        navigate("/", { replace: true });
+      } else {
+        toast.error("فشل تسجيل الدخول السريع", result.error || "خطأ غير معروف");
+      }
+    } catch (e: any) {
+      toast.error("حدث خطأ أثناء تسجيل الدخول السريع", e.message || String(e));
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   async function resetOwnerPassword() {
@@ -226,6 +244,18 @@ export function LoginPage() {
               ? "جاري التحقق..."
               : "تسجيل الدخول"}
           </Button>
+          {import.meta.env.DEV && devLogin && (
+            <Button
+              type="button"
+              variant="outline"
+              size="lg"
+              className="w-full border-dashed border-amber-500 text-amber-600 hover:bg-amber-50"
+              onClick={onDevLogin}
+              disabled={submitting}
+            >
+              دخول سريع للمطور (Dev Login)
+            </Button>
+          )}
           {lockRemaining > 0 ? (
             <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
               تم قفل تسجيل الدخول مؤقتاً بسبب محاولات فاشلة كثيرة.
