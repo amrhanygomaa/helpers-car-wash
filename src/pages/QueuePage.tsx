@@ -203,6 +203,8 @@ export function QueuePage() {
   function resetForm() {
     setCustomerId("");
     setSelectedVehicleIds([""]);
+    setGuest(null);
+    setGuestVehicle({ brand: "", model: "", plateNumber: "", color: "" });
     setRequestedPickupAt("");
     setPickupDropdownOpen(false);
     setNote("");
@@ -220,6 +222,13 @@ export function QueuePage() {
   function onPickCustomer(id: string) {
     setCustomerId(id);
     setSelectedVehicleIds([""]);
+    setGuest(null);
+  }
+
+  function onGuestFromSearch(name: string) {
+    setCustomerId("");
+    setSelectedVehicleIds([""]);
+    setGuest({ name, phone: "" });
   }
 
   function onPickVehicle(index: number, id: string) {
