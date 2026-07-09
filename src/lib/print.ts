@@ -1,5 +1,4 @@
 import type { QueueTicket, SalesInvoice } from "../types";
-import { lineWorkers } from "../store/_pure";
 
 export async function printAppRoute(route: string): Promise<{ ok: boolean; error?: string }> {
   if (window.desktopAPI?.print) {
@@ -24,7 +23,7 @@ function formatReceiptDate(iso?: string): string {
   if (!iso) return "";
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
-  return new Intl.DateTimeFormat("ar-EG", {
+  return new Intl.DateTimeFormat("ar-EG-u-nu-latn", {
     dateStyle: "short",
     timeStyle: "short",
   }).format(date);
@@ -134,7 +133,7 @@ export async function printIntakeTicket({
 
 function fmtPrice(amount: number | undefined, currency: string): string {
   if (!Number.isFinite(amount)) return "—";
-  return `${new Intl.NumberFormat("ar-EG", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount ?? 0)} ${currency}`;
+  return `${new Intl.NumberFormat("ar-EG-u-nu-latn", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount ?? 0)} ${currency}`;
 }
 
 /**
@@ -157,23 +156,15 @@ export function printServiceInvoice({
   const documentTitle = invoice.invoiceKind === "product" ? "فاتورة منتجات" : "فاتورة غسيل سيارات";
 
   const lineRows = serviceLines
-    .map((l) => {
-      // Worker commission is internal (treasury/payroll) — never printed for the customer.
-      const workers = lineWorkers(l);
-      const workerRow = workers.length
-        ? `<tr class="worker-row"><td colspan="4" class="muted small">↳ ${workers
-            .map((w) => escapeHtml(w.workerName ?? "صنايعي"))
-            .join("، ")}</td></tr>`
-        : "";
-      return `
+    .map(
+      (l) => `
       <tr>
         <td>${escapeHtml(l.productName)}</td>
         <td class="center">${escapeHtml(l.quantity)}</td>
         <td class="ltr">${fmtPrice(l.price, currency)}</td>
         <td class="ltr">${fmtPrice(l.subtotal ?? l.price * l.quantity, currency)}</td>
-      </tr>
-      ${workerRow}`;
-    })
+      </tr>`
+    )
     .join("");
 
   const discountLabel = (() => {
@@ -195,11 +186,18 @@ export function printServiceInvoice({
       : "";
 
   const remaining = invoice.remaining ?? Math.max(0, invoice.total - invoice.amountReceived);
+  // Preserve what the customer actually handed over (see cashTendered on the
+  // type) so the receipt still shows "دفع كام" and the change given back —
+  // amountReceived alone is capped at the total for accounting purposes.
+  const cashTendered = invoice.cashTendered ?? 0;
+  const changeGiven = cashTendered > invoice.total ? cashTendered - invoice.total : 0;
+  const amountPaidForDisplay = cashTendered > 0 ? cashTendered : invoice.amountReceived;
 
   const paymentRow =
     invoice.paymentType === "account"
       ? `<div class="row"><span>آجل</span><span class="ltr">${fmtPrice(invoice.total, currency)}</span></div>`
-      : `<div class="row"><span>مستلم</span><span class="ltr">${fmtPrice(invoice.amountReceived, currency)}</span></div>
+      : `<div class="row"><span>مدفوع</span><span class="ltr">${fmtPrice(amountPaidForDisplay, currency)}</span></div>
+         ${changeGiven > 0 ? `<div class="row change"><span>الباقي</span><span class="ltr">${fmtPrice(changeGiven, currency)}</span></div>` : ""}
          ${remaining > 0 ? `<div class="row warn"><span>متبقي</span><span class="ltr">${fmtPrice(remaining, currency)}</span></div>` : ""}`;
 
   const frame = document.createElement("iframe");
@@ -222,11 +220,11 @@ export function printServiceInvoice({
     .small { font-size: 10px; }
     .row { display: flex; justify-content: space-between; border-bottom: 1px solid #e5e7eb; padding: 3px 0; }
     .row.warn { color: #b45309; font-weight: 700; }
+    .row.change { color: #047857; font-weight: 700; }
     .divider { border-top: 1px dashed #111827; margin: 5px 0; }
     table { width: 100%; border-collapse: collapse; font-size: 10px; }
     th { background: #f1f5f9; padding: 2px 4px; border-bottom: 1px solid #e5e7eb; }
     td { padding: 2px 4px; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
-    .worker-row td { padding: 0 4px 2px; background: #fafafa; }
     .total-row { font-size: 13px; font-weight: 800; display: flex; justify-content: space-between; padding: 5px 0; }
     .footer { margin-top: 8px; padding-top: 6px; border-top: 1px dashed #111827; text-align: center; }
   </style>

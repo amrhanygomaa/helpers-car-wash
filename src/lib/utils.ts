@@ -11,6 +11,24 @@ export function isValidEgyptPhoneNumber(value: string): boolean {
 
 export const PHONE_VALIDATION_ERROR = "يجب أن يتكون رقم الهاتف من 11 رقماً ويبدأ بـ 01";
 
+/** Validate and normalize Egyptian owner phone number. Must start with 01 and be exactly 11 digits, prepending +20 automatically. */
+export function validateAndNormalizeOwnerPhone(phone: string): { valid: boolean; normalized?: string; error?: string } {
+  const trimmed = phone.trim();
+  if (!trimmed) {
+    return { valid: false, error: "رقم واتساب المالك مطلوب" };
+  }
+  let checkNumber = trimmed;
+  if (trimmed.startsWith("+20")) {
+    checkNumber = "0" + trimmed.slice(3);
+  } else if (trimmed.startsWith("20") && trimmed.length === 12) {
+    checkNumber = "0" + trimmed.slice(2);
+  }
+  if (checkNumber.length !== 11 || !checkNumber.startsWith("01")) {
+    return { valid: false, error: "رقم واتساب المالك يجب أن يكون 11 رقماً ويبدأ بـ 01" };
+  }
+  return { valid: true, normalized: "+20" + checkNumber.slice(1) };
+}
+
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }

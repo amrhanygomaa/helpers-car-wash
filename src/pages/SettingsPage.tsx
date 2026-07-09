@@ -9,7 +9,7 @@ import { EmptyState } from "../components/ui/EmptyState";
 import { useApp } from "../store/AppContext";
 import { useToast } from "../components/ui/Toast";
 import { lsGet } from "../lib/storage";
-import { uid } from "../lib/utils";
+import { uid, validateAndNormalizeOwnerPhone } from "../lib/utils";
 import { hasDb } from "../db/client";
 import {
   listAllCarBrands,
@@ -18,8 +18,7 @@ import {
   deleteCarBrand,
   type CarBrandRow,
 } from "../features/vehicles/brand-queries";
-import { FEATURE_MAP, defaultFeatureState, isAllowedByLicense, type FeatureKey } from "../lib/features";
-import { Save, Printer, Download, Upload, Database, FileSpreadsheet, ShieldCheck, Clock, Image as ImageIcon, Trash2, FolderOpen, Boxes, Lock, Copy, KeyRound, MessageCircle, Car, Plus, Pencil } from "lucide-react";
+import { Save, Printer, Download, Upload, Database, FileSpreadsheet, ShieldCheck, Clock, Image as ImageIcon, Trash2, FolderOpen, Copy, KeyRound, MessageCircle, Car, Plus, Pencil } from "lucide-react";
 
 const SUPPORT_WHATSAPP = "201118445625";
 
@@ -29,27 +28,6 @@ const PLAN_LABELS: Record<string, string> = {
   full: "الباقة الكاملة",
   custom: "باقة مخصّصة",
 };
-
-const TOP_GEAR_HIDDEN_FEATURES = new Set<FeatureKey>([
-  "products",
-  "inventory",
-  "stocktakes",
-  "alerts",
-  "dues",
-  "vehicles",
-]);
-
-// Display order for the Top Gear feature toggles — follows the actual daily
-// workflow (queue → invoice → services → customers → cash → reports) instead
-// of the generic FEATURES array order.
-const TOP_GEAR_FEATURE_ORDER: FeatureKey[] = [
-  "carwashQueue",
-  "salesInvoices",
-  "washServices",
-  "customers",
-  "cashbox",
-  "reports",
-];
 
 function subscriptionDurationLabel(type: string, months: number): string {
   if (type === "lifetime") return "مدى الحياة";
@@ -218,7 +196,17 @@ export function SettingsPage() {
   }
 
   function save() {
-    updateSettings(form);
+    const phoneRes = validateAndNormalizeOwnerPhone(form.ownerPhone || "");
+    if (!phoneRes.valid) {
+      toast.error("خطأ في حفظ الإعدادات", phoneRes.error ?? "رقم واتساب المالك غير صحيح");
+      return;
+    }
+    const updatedForm = {
+      ...form,
+      ownerPhone: phoneRes.normalized,
+    };
+    updateSettings(updatedForm);
+    setForm(updatedForm);
     toast.success("تم حفظ الإعدادات");
   }
 
@@ -295,11 +283,6 @@ export function SettingsPage() {
     }
   }
 
-  const license = licenseStatus?.license ?? null;
-  const featureChecked = (key: FeatureKey) => form.features?.[key] ?? defaultFeatureState(key, license);
-  const toggleFeature = (key: FeatureKey, value: boolean) =>
-    setForm({ ...form, features: { ...(form.features ?? {}), [key]: value } });
-
   function getRemainingDays(startDate: string, months: number) {
     if (!startDate || months <= 0) return 0;
     const start = new Date(startDate);
@@ -321,7 +304,7 @@ export function SettingsPage() {
         }
       />
 
-      <div className="grid grid-cols-1 items-start lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 items-stretch lg:grid-cols-2 gap-4">
         <Card>
           <CardHeader title="بيانات الشركة" subtitle="تظهر في الفواتير وأعلى التطبيق" />
           <CardBody className="space-y-3">
@@ -419,10 +402,12 @@ export function SettingsPage() {
                   onChange={(e) => setForm({ ...form, ownerName: e.target.value })}
                 />
               </Field>
-              <Field label="رقم واتساب المالك" required hint="يستخدم للتأكد من هوية مرسل طلب كود الدعم">
+              <Field label="رقم واتساب المالك" required hint="يجب أن يتكون من 11 رقماً ويبدأ بـ 01">
                 <Input
-                  value={form.ownerPhone || ""}
-                  onChange={(e) => setForm({ ...form, ownerPhone: e.target.value })}
+                  value={form.ownerPhone ? (form.ownerPhone.startsWith("+20") ? "0" + form.ownerPhone.slice(3) : form.ownerPhone) : ""}
+                  maxLength={11}
+                  onChange={(e) => setForm({ ...form, ownerPhone: e.target.value.replace(/\D/g, "").slice(0, 11) })}
+                  placeholder="مثال: 01xxxxxxxxx"
                 />
               </Field>
             </div>
@@ -430,7 +415,7 @@ export function SettingsPage() {
         </Card>
 
         <Card>
-          <CardHeader title="الإعدادات العامة" subtitle="التسعير والتنبيهات" />
+          <CardHeader title="الإعدادات العامة" subtitle="التسعير والتنبيهات والطباعة" />
           <CardBody className="space-y-3">
             <Field label="طريقة تسعير الخدمات" hint="الوضع الافتراضي عند إضافة خدمة للفاتورة">
               <Select
@@ -482,6 +467,31 @@ export function SettingsPage() {
                 <option value="60">ساعة كاملة</option>
               </Select>
             </Field>
+            <Field label="مجلد حفظ الفواتير (PDF)">
+              <div className="flex flex-col sm:flex-row gap-2">
+                <Button type="button" variant="outline" onClick={testReceiptPrinter} className="shrink-0">
+                  <Printer className="w-4 h-4" /> اختبار إيصال 80mm
+                </Button>
+                <Input
+                  value={form.invoicesSavePath}
+                  readOnly
+                  placeholder="اختر مجلداً..."
+                  className="bg-slate-50"
+                />
+                <Button
+                  variant="outline"
+                  className="shrink-0"
+                  onClick={async () => {
+                    if (window.desktopAPI?.setup?.selectDirectory) {
+                      const path = await window.desktopAPI.setup.selectDirectory();
+                      if (path) setForm({ ...form, invoicesSavePath: path });
+                    }
+                  }}
+                >
+                  <FolderOpen className="w-4 h-4" />
+                </Button>
+              </div>
+            </Field>
           </CardBody>
         </Card>
 
@@ -489,7 +499,7 @@ export function SettingsPage() {
           <CardHeader title="بيانات الاشتراك والضمان" subtitle="تفاصيل الترخيص والدعم الفني الفعلي للنسخة" />
           <CardBody className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             {/* Subscription Section */}
-            <div className="space-y-4">
+            <div className="flex flex-col gap-4 h-full">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-brand-700 font-bold">
                   <ShieldCheck className="w-5 h-5" />
@@ -506,7 +516,7 @@ export function SettingsPage() {
                 </button>
               </div>
 
-              <div className="grid grid-cols-2 gap-6 p-4 rounded-xl bg-white border border-brand-100 shadow-sm">
+              <div className="grid grid-cols-2 content-start gap-6 p-4 rounded-xl bg-white border border-brand-100 shadow-sm flex-1">
                 <div>
                   <div className="text-[10px] text-slate-400 uppercase font-bold mb-1">مدة الاشتراك</div>
                   <div className="text-sm font-bold text-slate-900">
@@ -525,34 +535,32 @@ export function SettingsPage() {
                     {form.subscriptionStartDate ? new Date(form.subscriptionStartDate).toLocaleDateString("ar-EG") : "غير محدد"}
                   </div>
                 </div>
-                <div className="col-span-2 pt-3 border-t border-slate-50 flex items-center justify-between">
-                  <div>
-                    <div className="text-[10px] text-slate-400 uppercase font-bold mb-1">الوضع الحالي</div>
-                    <div className="text-sm font-bold text-emerald-600 flex items-center gap-1.5">
-                      <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                      نشط ومفعل
+                <div>
+                  <div className="text-[10px] text-slate-400 uppercase font-bold mb-1">الوضع الحالي</div>
+                  <div className="text-sm font-bold text-emerald-600 flex items-center gap-1.5">
+                    <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    نشط ومفعل
+                  </div>
+                </div>
+                {form.subscriptionType === "limited" && (
+                  <div className="col-span-2 pt-3 border-t border-slate-50">
+                    <div className="text-[10px] text-slate-400 uppercase font-bold mb-1">المتبقي</div>
+                    <div className="text-sm font-mono font-bold text-brand-600 bg-brand-50 px-2 py-0.5 rounded inline-block">
+                      {Math.max(0, getRemainingDays(form.subscriptionStartDate, form.subscriptionMonths))} يوم
                     </div>
                   </div>
-                  {form.subscriptionType === "limited" && (
-                    <div className="text-left">
-                      <div className="text-[10px] text-slate-400 uppercase font-bold mb-1">المتبقي</div>
-                      <div className="text-sm font-mono font-bold text-brand-600 bg-brand-50 px-2 py-0.5 rounded">
-                        {Math.max(0, getRemainingDays(form.subscriptionStartDate, form.subscriptionMonths))} يوم
-                      </div>
-                    </div>
-                  )}
-                </div>
+                )}
               </div>
             </div>
 
             {/* Warranty Section */}
-            <div className="space-y-4 border-r border-slate-100 pr-0 lg:pr-8 lg:border-r">
+            <div className="flex flex-col gap-4 h-full border-r border-slate-100 pr-0 lg:pr-8 lg:border-r">
               <div className="flex items-center gap-2 text-indigo-700 font-bold">
                 <Clock className="w-5 h-5" />
                 <span>حالة الضمان والصيانة</span>
               </div>
 
-              <div className="grid grid-cols-2 gap-6 p-4 rounded-xl bg-white border border-slate-100 shadow-sm">
+              <div className="grid grid-cols-2 content-start gap-6 p-4 rounded-xl bg-white border border-slate-100 shadow-sm flex-1">
                 <div>
                   <div className="text-[10px] text-slate-400 uppercase font-bold mb-1">مدة الضمان</div>
                   <div className="text-sm font-bold text-slate-900">
@@ -672,126 +680,6 @@ export function SettingsPage() {
         </Dialog>
 
         <Card className="lg:col-span-2">
-          <CardHeader
-            title={
-              <div className="flex items-center gap-2">
-                <Boxes className="w-4 h-4 text-brand-600" />
-                <span>المميزات والوحدات</span>
-              </div>
-            }
-            subtitle="تحكّم في الوحدات الظاهرة للعميل — الوحدات المقفولة في الباقة لا يمكن تفعيلها"
-          />
-          <CardBody>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-              {TOP_GEAR_FEATURE_ORDER.map((key) => FEATURE_MAP[key])
-                .filter((f) => !TOP_GEAR_HIDDEN_FEATURES.has(f.key))
-                .map((f) => {
-                const allowed = isAllowedByLicense(f.key, license);
-                const checked = allowed && featureChecked(f.key);
-                return (
-                  <label
-                    key={f.key}
-                    className={`flex items-start gap-3 rounded-lg border p-3 transition-colors ${
-                      allowed
-                        ? "border-slate-200 hover:bg-slate-50 cursor-pointer"
-                        : "border-slate-100 bg-slate-50/60 cursor-not-allowed"
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      className="mt-0.5"
-                      checked={checked}
-                      disabled={!allowed}
-                      onChange={(e) => toggleFeature(f.key, e.target.checked)}
-                    />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5 text-sm font-semibold text-slate-800">
-                        {f.label}
-                        {!allowed && (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-100 rounded px-1.5 py-0.5">
-                            <Lock className="w-3 h-3" /> غير متاح في الباقة
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-xs text-slate-500 mt-0.5">{f.description}</div>
-                    </div>
-                  </label>
-                );
-              })}
-            </div>
-            <div className="mt-3 text-xs text-slate-500">
-              إخفاء وحدة هنا يزيلها من القائمة الجانبية ويمنع الوصول إليها. الباقة المرتبطة بالسيريال
-              تحدّد الوحدات المتاحة أصلاً، ولا يمكن تجاوزها من هنا.
-            </div>
-          </CardBody>
-        </Card>
-
-        <Card className="lg:col-span-2">
-          <CardHeader title="إعدادات الطباعة" subtitle="تنسيق الفاتورة المطبوعة" />
-          <CardBody className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <Field label="اسم الطابعة">
-              <Input
-                value={form.printerName ?? ""}
-                onChange={(e) => setForm({ ...form, printerName: e.target.value })}
-                placeholder="اتركه فارغاً للطابعة الافتراضية"
-              />
-            </Field>
-            <Field label="عرض الإيصال (مم)">
-              <Input
-                type="number"
-                min={58}
-                max={110}
-                value={form.receiptWidthMm ?? 80}
-                onChange={(e) => setForm({ ...form, receiptWidthMm: Number(e.target.value) })}
-              />
-            </Field>
-            <Field label="مقاس الورق">
-              <Select
-                value={form.printPaperSize}
-                onChange={(e) =>
-                  setForm({ ...form, printPaperSize: e.target.value as "A4" | "A5" })
-                }
-              >
-                <option value="A4">A4</option>
-                <option value="A5">A5</option>
-              </Select>
-            </Field>
-            <div className="flex items-center gap-3 bg-slate-50 border border-slate-100 rounded-lg p-3 md:col-span-2">
-              <Printer className="w-5 h-5 text-slate-600" />
-              <div className="text-sm text-slate-700">
-                يتم إرسال الفاتورة للطباعة من داخل التطبيق مباشرة عند الضغط على زر "طباعة".
-              </div>
-            </div>
-            <Field label="اختبار الطابعة">
-              <Button type="button" variant="outline" onClick={testReceiptPrinter} className="w-full justify-center">
-                <Printer className="w-4 h-4" /> اختبار إيصال 80mm
-              </Button>
-            </Field>
-            <Field label="مجلد حفظ الفواتير (PDF)" className="md:col-span-3">
-              <div className="flex gap-2">
-                <Input
-                  value={form.invoicesSavePath}
-                  readOnly
-                  placeholder="اختر مجلداً..."
-                  className="bg-slate-50"
-                />
-                <Button
-                  variant="outline"
-                  onClick={async () => {
-                    if (window.desktopAPI?.setup?.selectDirectory) {
-                      const path = await window.desktopAPI.setup.selectDirectory();
-                      if (path) setForm({ ...form, invoicesSavePath: path });
-                    }
-                  }}
-                >
-                  <FolderOpen className="w-4 h-4" />
-                </Button>
-              </div>
-            </Field>
-          </CardBody>
-        </Card>
-
-        <Card className="lg:col-span-2">
           <CardHeader title="إعدادات النسخ الاحتياطي التلقائي" subtitle="جدولة حفظ البيانات تلقائياً" />
           <CardBody className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Field label="تفعيل النسخ التلقائي">
@@ -857,17 +745,15 @@ export function SettingsPage() {
                 >
                   <FolderOpen className="w-4 h-4" />
                 </Button>
+                <Button
+                  variant="outline"
+                  onClick={backupNow}
+                  disabled={!form.backupPath?.trim()}
+                  className="shrink-0"
+                >
+                  <Database className="w-4 h-4" /> نسخ احتياطي الآن
+                </Button>
               </div>
-            </Field>
-            <Field label="نسخ احتياطي فوري">
-              <Button
-                variant="outline"
-                onClick={backupNow}
-                disabled={!form.backupPath?.trim()}
-                className="w-full justify-center"
-              >
-                <Database className="w-4 h-4" /> نسخ احتياطي الآن
-              </Button>
             </Field>
             <div className="md:col-span-3 text-xs text-slate-500">
               يتم حفظ نسخة كاملة من البيانات (بصيغة JSON) في المجلد المحدد. يمكن استعادتها لاحقاً عبر "استيراد نسخة احتياطية".
@@ -877,10 +763,10 @@ export function SettingsPage() {
         </Card>
 
 
-        <div className="grid grid-cols-1 items-start gap-4 lg:col-span-2 lg:grid-cols-2">
-        <Card>
+        <div className="grid grid-cols-1 items-stretch gap-4 lg:col-span-2 lg:grid-cols-2">
+        <Card className="flex flex-col">
           <CardHeader title="النسخة الاحتياطية" subtitle="حفظ واستعادة كل بيانات النظام" />
-          <CardBody className="space-y-4">
+          <CardBody className="space-y-4 flex-1">
             <div className="flex flex-col gap-2">
               <Button onClick={exportBackup} variant="outline" className="w-full justify-start">
                 <Download className="w-4 h-4" /> تصدير نسخة احتياطية (Backup)
@@ -934,23 +820,21 @@ export function SettingsPage() {
                 <Database className="w-3.5 h-3.5" /> استعادة من النسخة التلقائية الداخلية
               </Button>
             </div>
+            <div className="pt-2 border-t border-slate-100 space-y-2">
+              <div className="text-xs font-bold text-slate-600">تصدير بيانات المغسلة (Excel)</div>
+              <div className="grid grid-cols-2 gap-2">
+                <Button onClick={() => exportToExcel("customers")} variant="outline" size="sm" className="justify-start">
+                  <FileSpreadsheet className="w-4 h-4" /> العملاء
+                </Button>
+                <Button onClick={() => exportToExcel("sales")} variant="outline" size="sm" className="justify-start">
+                  <FileSpreadsheet className="w-4 h-4" /> فواتير الغسيل
+                </Button>
+              </div>
+            </div>
           </CardBody>
         </Card>
 
-        <div className="space-y-4">
-        <Card>
-          <CardHeader title="تصدير بيانات المغسلة (Excel)" subtitle="تصدير بيانات العملاء وفواتير الغسيل" />
-          <CardBody className="grid grid-cols-2 gap-2">
-            <Button onClick={() => exportToExcel("customers")} variant="outline" size="sm" className="justify-start">
-              <FileSpreadsheet className="w-4 h-4" /> العملاء
-            </Button>
-            <Button onClick={() => exportToExcel("sales")} variant="outline" size="sm" className="justify-start">
-              <FileSpreadsheet className="w-4 h-4" /> فواتير الغسيل
-            </Button>
-          </CardBody>
-        </Card>
-
-        <Card>
+        <Card className="flex flex-col">
           <CardHeader
             title="ماركات السيارات"
             subtitle="أضف ماركات مش موجودة في القائمة الجاهزة"
@@ -960,9 +844,10 @@ export function SettingsPage() {
               </Button>
             }
           />
-          <CardBody className="p-0">
+          <CardBody className="p-0 flex-1 flex flex-col">
             {carBrands.length === 0 ? (
               <EmptyState
+                className="flex-1"
                 icon={<Car className="w-8 h-8" />}
                 title="لسه مفيش ماركات مضافة"
                 description="أي ماركة مش في القائمة الجاهزة، ضيفها هنا مع شعارها."
@@ -1022,7 +907,6 @@ export function SettingsPage() {
             )}
           </CardBody>
         </Card>
-        </div>
         </div>
       </div>
 

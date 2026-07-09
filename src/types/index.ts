@@ -267,6 +267,14 @@ export interface SalesInvoice {
   amountReceived: number;
   remaining: number;
   overpayment?: number;
+  /**
+   * Actual cash the customer handed over, when it exceeds `total` (e.g. paid
+   * 4500 for a 500 invoice and got 4000 change back on the spot). Purely an
+   * audit/receipt detail — `amountReceived` stays capped at `total` since the
+   * change was returned immediately and isn't held revenue or customer credit
+   * (that's what `overpayment` means elsewhere). Absent ⇒ paid exactly.
+   */
+  cashTendered?: number;
   paymentType: SalesPaymentType;
   paymentMethod?: PaymentMethod;
   paymentMethodLabel?: string;

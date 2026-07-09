@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowRight, Ban, HandCoins, MessageCircle, Printer, Trash2 } from "lucide-react";
+import { ArrowRight, MessageCircle, Printer, Trash2 } from "lucide-react";
 import { PageHeader } from "../components/layout/AppLayout";
 import { Card, CardBody, CardHeader } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -11,10 +11,8 @@ import { useAuth } from "../store/AuthContext";
 import { useSettings } from "../store/SettingsContext";
 import { lineWorkers } from "../store/_pure";
 import { useToast } from "../components/ui/Toast";
-import { formatCurrency, formatDate, PAYMENT_METHOD_LABELS } from "../lib/format";
-import { ConfirmDialog, Dialog } from "../components/ui/Dialog";
-import { Field, Input, Select, Textarea } from "../components/ui/Input";
-import type { PaymentMethod } from "../types";
+import { formatCurrency, formatDate } from "../lib/format";
+import { ConfirmDialog } from "../components/ui/Dialog";
 import { printServiceInvoice } from "../lib/print";
 import { hasPermission } from "../lib/permissions";
 
@@ -22,19 +20,12 @@ export function SalesInvoiceDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const toast = useToast();
-  const { salesInvoices, recordSalesReceipt, cancelSalesInvoice, deleteSalesInvoice } = useInvoicing();
+  const { salesInvoices, deleteSalesInvoice } = useInvoicing();
   const { customers } = useCatalog();
   const { currentUser } = useAuth();
   const { settings } = useSettings();
   const inv = salesInvoices.find((s) => s.id === id);
-  const canReceiveSales = hasPermission(currentUser, "salesInvoices", "receive");
-  const canCancelSales = hasPermission(currentUser, "salesInvoices", "cancel");
   const canDeleteSales = hasPermission(currentUser, "salesInvoices", "delete");
-  const [payOpen, setPayOpen] = useState(false);
-  const [payAmount, setPayAmount] = useState(0);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
-  const [payNotes, setPayNotes] = useState("");
-  const [cancelOpen, setCancelOpen] = useState(false);
   const [delOpen, setDelOpen] = useState(false);
 
   if (!inv) {
@@ -54,6 +45,12 @@ export function SalesInvoiceDetailPage() {
 
   const customer = customers.find((c) => c.id === inv.customerId);
   const totalCollected = inv.amountReceived + (inv.overpayment ?? 0);
+  // The customer may have handed over more cash than the invoice total and
+  // gotten change back on the spot — cashTendered preserves that real amount
+  // so it isn't lost the moment amountReceived gets capped at the total.
+  const cashTendered = inv.cashTendered ?? 0;
+  const changeGiven = cashTendered > inv.total ? cashTendered - inv.total : 0;
+  const amountPaidForDisplay = cashTendered > 0 ? cashTendered : totalCollected;
 
   return (
     <>
@@ -104,16 +101,6 @@ export function SalesInvoiceDetailPage() {
                 <MessageCircle className="w-4 h-4" /> واتساب
               </Button>
             ) : null}
-            {!inv.cancelled && inv.remaining > 0 && canReceiveSales ? (
-              <Button onClick={() => { setPayAmount(inv.remaining); setPayOpen(true); }}>
-                <HandCoins className="w-4 h-4" /> تسجيل دفعة
-              </Button>
-            ) : null}
-            {!inv.cancelled && canCancelSales ? (
-              <Button variant="outline" onClick={() => setCancelOpen(true)}>
-                <Ban className="w-4 h-4" /> إلغاء
-              </Button>
-            ) : null}
             {canDeleteSales ? (
               <Button variant="danger" onClick={() => setDelOpen(true)}>
                 <Trash2 className="w-4 h-4" /> حذف
@@ -140,6 +127,17 @@ export function SalesInvoiceDetailPage() {
         ) : null}
         {inv.discount && inv.discount > 0 ? (
           <Stat label="الإجمالي بعد الخصم" value={formatCurrency(inv.total, settings.currency)} />
+        ) : null}
+        <Stat
+          label="المبلغ المدفوع"
+          value={formatCurrency(amountPaidForDisplay, settings.currency)}
+          tone="blue"
+        />
+        {changeGiven > 0 ? (
+          <Stat label="الباقي المسلّم للعميل" value={formatCurrency(changeGiven, settings.currency)} tone="green" />
+        ) : null}
+        {inv.remaining > 0 ? (
+          <Stat label="المتبقي" value={formatCurrency(inv.remaining, settings.currency)} tone="amber" />
         ) : null}
         <Stat
           label="الحالة"
@@ -211,123 +209,6 @@ export function SalesInvoiceDetailPage() {
           </Table>
         </CardBody>
       </Card>
-
-      <Dialog
-        open={payOpen}
-        onClose={() => setPayOpen(false)}
-        title="تسجيل دفعة"
-        subtitle={`المتبقي: ${formatCurrency(inv.remaining, settings.currency)} — الدفع الزائد يُسجَّل رصيداً دائناً`}
-        footer={
-          <>
-            <Button variant="outline" onClick={() => setPayOpen(false)}>إلغاء</Button>
-            <Button
-              onClick={() => {
-                if (payAmount <= 0) {
-                  toast.error("المبلغ يجب أن يكون أكبر من صفر");
-                  return;
-                }
-                recordSalesReceipt(inv.id, payAmount, paymentMethod, payNotes);
-                const msg = payAmount > inv.remaining
-                  ? `تم التسجيل — رصيد دائن: ${formatCurrency(payAmount - inv.remaining, settings.currency)}`
-                  : "تم تسجيل الدفعة";
-                toast.success(msg);
-                setPayOpen(false);
-                setPaymentMethod("cash");
-                setPayNotes("");
-              }}
-            >
-              تسجيل
-            </Button>
-          </>
-        }
-      >
-        <div className="space-y-3">
-          <Field label="المبلغ" required>
-            <Input
-              type="number"
-              min={0.01}
-              step="0.01"
-              value={payAmount}
-              onChange={(e) => setPayAmount(Number(e.target.value))}
-            />
-          </Field>
-          <Field label="وسيلة الدفع">
-            <Select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}>
-              {Object.entries(PAYMENT_METHOD_LABELS).map(([k, v]) => (
-                <option key={k} value={k}>{v}</option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="ملاحظات (اختياري)">
-            <Textarea rows={2} value={payNotes} onChange={(e) => setPayNotes(e.target.value)} placeholder="مثل: تحويل بنكي رقم ..." />
-          </Field>
-        </div>
-      </Dialog>
-
-      {totalCollected > 0 ? (
-        <Dialog
-          open={cancelOpen}
-          onClose={() => setCancelOpen(false)}
-          title="إلغاء الفاتورة"
-          subtitle={`المُحصَّل: ${formatCurrency(totalCollected, settings.currency)}`}
-          width="sm"
-          footer={
-            <>
-              <Button variant="outline" onClick={() => setCancelOpen(false)}>
-                تراجع
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  cancelSalesInvoice(inv.id, "credit");
-                  setCancelOpen(false);
-                  toast.success("تم إلغاء الفاتورة", "تم تحويل المبلغ رصيداً دائناً للعميل");
-                }}
-              >
-                تحويل رصيد دائن
-              </Button>
-              <Button
-                variant="danger"
-                onClick={() => {
-                  cancelSalesInvoice(inv.id, "cash");
-                  setCancelOpen(false);
-                  toast.success("تم إلغاء الفاتورة", "تم ردّ النقدية للعميل");
-                }}
-              >
-                ردّ نقدي
-              </Button>
-            </>
-          }
-        >
-          <div className="text-sm text-slate-700 mb-3">
-            هذه الفاتورة عليها مبلغ مُحصَّل. كيف تريد معالجة المبلغ؟
-          </div>
-          <div className="space-y-2">
-            <div className="p-3 rounded-lg border border-slate-200 text-sm">
-              <div className="font-medium text-slate-900">ردّ نقدي</div>
-              <div className="text-slate-500 text-xs mt-0.5">يُخصم المبلغ من الخزنة فوراً ويُسجَّل قيد ردّ نقدي</div>
-            </div>
-            <div className="p-3 rounded-lg border border-slate-200 text-sm">
-              <div className="font-medium text-slate-900">تحويل رصيد دائن</div>
-              <div className="text-slate-500 text-xs mt-0.5">يبقى المبلغ بالخزنة كرصيد للعميل يُستخدم في الفواتير القادمة</div>
-            </div>
-          </div>
-        </Dialog>
-      ) : (
-        <ConfirmDialog
-          open={cancelOpen}
-          onClose={() => setCancelOpen(false)}
-          onConfirm={() => {
-            cancelSalesInvoice(inv.id);
-            setCancelOpen(false);
-            toast.success("تم إلغاء الفاتورة");
-          }}
-          title="إلغاء الفاتورة"
-          message="هل أنت متأكد من إلغاء هذه الفاتورة؟"
-          variant="danger"
-          confirmText="تأكيد الإلغاء"
-        />
-      )}
 
       <ConfirmDialog
         open={delOpen}

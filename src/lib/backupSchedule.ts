@@ -38,3 +38,13 @@ export function backupFileName(date: Date): string {
     `-${pad(date.getHours())}${pad(date.getMinutes())}-${pad(date.getSeconds())}`;
   return `helpers-backup-${stamp}.json`;
 }
+
+/**
+ * Per-day backup file name (e.g. `helpers-backup-2026-06-10.json`). Used for the
+ * on-close backup so repeated opens/closes on the same day overwrite one file
+ * instead of piling up a new file every time the app is shut down.
+ */
+export function backupFileNameDaily(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `helpers-backup-${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}.json`;
+}

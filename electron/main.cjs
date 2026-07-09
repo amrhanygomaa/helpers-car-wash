@@ -869,7 +869,7 @@ function formatDate(value) {
   if (!value) return "-";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return escapeHtml(value);
-  return new Intl.DateTimeFormat("ar-EG", {
+  return new Intl.DateTimeFormat("ar-EG-u-nu-latn", {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -878,7 +878,7 @@ function formatDate(value) {
 
 function formatCurrency(value, currency) {
   const amount = Number(value || 0);
-  return `${new Intl.NumberFormat("ar-EG", {
+  return `${new Intl.NumberFormat("ar-EG-u-nu-latn", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(amount)} ${currency || ""}`.trim();
@@ -903,6 +903,92 @@ function sanitizeImageSrc(value) {
     return raw;
   }
   return "";
+}
+
+/**
+ * Print windows load via `data:text/html,...` — a relative logo path like
+ * "./helpers_tech_logo.png" has no base URL to resolve against there, so it
+ * shows as a broken image. Inline it as base64 instead. Already-uploaded logos
+ * (stored as data: URIs from Settings) pass through sanitizeImageSrc unchanged.
+ */
+function resolveLogoDataUri(value) {
+  const safe = sanitizeImageSrc(value);
+  if (!safe) return "";
+  if (safe.startsWith("data:")) return safe;
+
+  const relative = safe.replace(/^\.\//, "");
+  const candidates = [
+    path.join(__dirname, "..", "dist", relative),
+    path.join(__dirname, "..", "public", relative),
+  ];
+  for (const candidate of candidates) {
+    try {
+      const buffer = fs.readFileSync(candidate);
+      const ext = path.extname(candidate).slice(1).toLowerCase();
+      const mime = ext === "jpg" ? "jpeg" : ext || "png";
+      return `data:image/${mime};base64,${buffer.toString("base64")}`;
+    } catch {
+      // try next candidate
+    }
+  }
+  return "";
+}
+
+/** Keep only the newest N `helpers-backup-*.json` files in a folder; delete older ones. */
+const MAX_BACKUP_FILES = 30;
+function pruneOldBackups(dir, keep = MAX_BACKUP_FILES) {
+  try {
+    const files = fs
+      .readdirSync(dir)
+      .filter((name) => /^helpers-backup-.*\.json$/i.test(name))
+      .map((name) => {
+        const full = path.join(dir, name);
+        let mtime = 0;
+        try { mtime = fs.statSync(full).mtimeMs; } catch { /* ignore */ }
+        return { full, mtime };
+      })
+      .sort((a, b) => b.mtime - a.mtime); // newest first
+    for (const file of files.slice(keep)) {
+      try { fs.unlinkSync(file.full); } catch { /* ignore individual failures */ }
+    }
+  } catch {
+    // pruning is best-effort — never let it break a successful backup write
+  }
+}
+
+let cachedCairoFontFaceCss = null;
+
+/**
+ * Inlines the Cairo font (Arabic + Latin subsets, regular + bold) as base64
+ * @font-face rules so print windows — which load via `data:text/html,...` and
+ * so can't reach the app's own bundled font files — still render the invoice
+ * in Cairo instead of falling back to whatever sans-serif the OS has.
+ * Computed once and cached; returns "" (silent fallback) if the font package
+ * isn't present for any reason.
+ */
+function loadCairoFontFaceCss() {
+  if (cachedCairoFontFaceCss !== null) return cachedCairoFontFaceCss;
+  try {
+    const cairoDir = path.join(__dirname, "..", "node_modules", "@fontsource", "cairo");
+    const css = ["400.css", "700.css"]
+      .map((file) => fs.readFileSync(path.join(cairoDir, file), "utf8"))
+      .join("\n")
+      // Drop the .woff fallback src — Electron's bundled Chromium always
+      // supports woff2 — then inline the woff2 file as base64.
+      .replace(/,\s*url\(\.\/files\/[^)]+\.woff\)\s*format\('woff'\)/g, "")
+      .replace(/url\(\.\/files\/([^)]+\.woff2)\)/g, (match, fileName) => {
+        try {
+          const buffer = fs.readFileSync(path.join(cairoDir, "files", fileName));
+          return `url(data:font/woff2;base64,${buffer.toString("base64")})`;
+        } catch {
+          return match;
+        }
+      });
+    cachedCairoFontFaceCss = css;
+  } catch {
+    cachedCairoFontFaceCss = "";
+  }
+  return cachedCairoFontFaceCss;
 }
 
 function ensurePdfExtension(filePath) {
@@ -951,7 +1037,11 @@ function getInvoicePdfOptions(documentName = "") {
     landscape: false,
     pageSize: isReceipt ? receiptPageSize(settings) : settings.printPaperSize || "A4",
     margins: { marginType: isReceipt ? "none" : "default" },
-    preferCSSPageSize: true,
+    // "@page { size: Xmm auto }" (used for the 80mm receipts) isn't a valid CSS
+    // page-size value — auto can't be mixed with a fixed length — so letting
+    // Chromium prefer it here made printToPDF fall back to a blank page.
+    // The explicit pageSize above is always correct, so always use it.
+    preferCSSPageSize: false,
   };
 }
 
@@ -1130,6 +1220,176 @@ function buildQuotationPrintHtml(quot, settings) {
     <div class="footer">${escapeHtml(settings.invoiceFooter || "")}</div>
     <div class="developer-info">هيلبيرز تكنولوجي</div>
   </div>
+</body>
+</html>`;
+}
+
+/** Small inline WhatsApp glyph for the mandatory developer-credit footer line. */
+const WHATSAPP_ICON_SVG = `<svg class="wa-icon" viewBox="0 0 32 32" width="12" height="12" aria-hidden="true"><path fill="#25D366" d="M16.001 3C9.373 3 4 8.373 4 15c0 2.386.697 4.61 1.902 6.484L4 29l7.72-1.874A11.94 11.94 0 0 0 16.001 27C22.628 27 28 21.627 28 15S22.628 3 16.001 3zm6.964 16.845c-.29.816-1.435 1.5-2.303 1.68-.61.129-1.409.232-4.09-.874-3.436-1.42-5.653-4.892-5.826-5.12-.168-.228-1.386-1.846-1.386-3.523 0-1.677.879-2.5 1.19-2.842.31-.343.68-.428.907-.428.227 0 .454.002.652.012.209.01.49-.079.767.585.29.696 1.001 2.4 1.089 2.575.088.175.147.38.03.61-.117.228-.176.37-.35.57-.176.2-.37.446-.53.6-.176.17-.36.354-.155.696.206.343.916 1.51 1.966 2.446 1.351 1.204 2.49 1.577 2.836 1.755.348.176.552.15.756-.09.205-.242.878-1.024 1.113-1.375.235-.35.469-.29.79-.174.322.117 2.041.964 2.392 1.138.352.174.586.262.673.407.088.145.088.837-.202 1.667z"/></svg>`;
+
+/**
+ * Builds an 80mm thermal-receipt for a car-wash sales/product invoice — the
+ * format a wash actually hands the customer, instead of the A4 office invoice.
+ * Mirrors the on-screen receipt in src/lib/print.ts (printServiceInvoice).
+ */
+function buildInvoiceReceiptHtml(invoice, settings) {
+  const widthMm = Math.min(110, Math.max(58, Number(settings.receiptWidthMm) || 80));
+  const companyName = settings.arabicLabels ? settings.companyNameAr : settings.companyName;
+  const currency = settings.currency;
+  const logoImage = resolveLogoDataUri(settings.logoImage);
+  const logoBlock = logoImage
+    ? `<img src="${logoImage}" alt="Logo" class="receipt-logo" />`
+    : "";
+  const cairoFontFaceCss = loadCairoFontFaceCss();
+  const isProduct = invoice.invoiceKind === "product";
+  const documentTitle = isProduct ? "فاتورة منتجات" : "فاتورة غسيل سيارات";
+  const isCash = invoice.paymentType === "cash";
+
+  const money = (value) => escapeHtml(formatCurrency(value, currency));
+  const lineSubtotal = (l) =>
+    l.subtotal != null ? Number(l.subtotal) : (Number(l.price) || 0) * (Number(l.quantity) || 0);
+
+  const formatReceiptDateTime = (value) => {
+    if (!value) return "";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return escapeHtml(value);
+    return new Intl.DateTimeFormat("ar-EG-u-nu-latn", { dateStyle: "short", timeStyle: "short" }).format(date);
+  };
+
+  // Service invoices list only the wash services; product invoices list all lines.
+  const allLines = Array.isArray(invoice.lines) ? invoice.lines : [];
+  const serviceLines = allLines.filter((l) => l.kind === "service");
+  const displayLines = isProduct ? allLines : serviceLines.length ? serviceLines : allLines;
+
+  const lineRows = displayLines
+    .map(
+      (l) => `
+      <tr>
+        <td>${escapeHtml(l.productName)}</td>
+        <td class="center">${escapeHtml(l.quantity)}</td>
+        <td class="ltr">${money(l.price)}</td>
+        <td class="ltr">${money(lineSubtotal(l))}</td>
+      </tr>`
+    )
+    .join("");
+
+  const discount = Number(invoice.discount) || 0;
+  const subtotalBeforeDiscount = allLines.reduce((s, l) => s + lineSubtotal(l), 0);
+  const subtotalRow = discount > 0
+    ? `<div class="row muted small"><span>المجموع قبل الخصم</span><span class="ltr">${money(subtotalBeforeDiscount)}</span></div>`
+    : "";
+  const discountRow = discount > 0
+    ? `<div class="row"><span>الخصم</span><span class="ltr">(${money(discount)})</span></div>`
+    : "";
+
+  const remaining = invoice.remaining != null
+    ? Number(invoice.remaining)
+    : Math.max(0, (Number(invoice.total) || 0) - (Number(invoice.amountReceived) || 0));
+  // If the customer handed over more than the total, cashTendered preserves
+  // the real amount they paid so the receipt can still show it and the change
+  // given back — amountReceived alone is capped at the total for accounting.
+  const cashTendered = Number(invoice.cashTendered) || 0;
+  const changeGiven = cashTendered > invoice.total ? cashTendered - invoice.total : 0;
+  const amountPaidForDisplay = cashTendered > 0 ? cashTendered : invoice.amountReceived;
+  const paidRow = isCash
+    ? `<div class="row"><span>المدفوع (نقدي)</span><span class="ltr">${money(amountPaidForDisplay)}</span></div>`
+    : `<div class="row"><span>آجل (حساب)</span><span class="ltr">${money(invoice.total)}</span></div>
+       ${Number(invoice.amountReceived) > 0 ? `<div class="row"><span>مقدم</span><span class="ltr">${money(invoice.amountReceived)}</span></div>` : ""}`;
+  const changeRow = changeGiven > 0
+    ? `<div class="row change"><span>الباقي</span><span class="ltr">${money(changeGiven)}</span></div>`
+    : "";
+  const remainingRow = remaining > 0
+    ? `<div class="row warn"><span>المتبقي</span><span class="ltr">${money(remaining)}</span></div>`
+    : "";
+
+  const footerText = String(settings.invoiceFooter || "").trim();
+
+  return `<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'none'; connect-src 'none'; base-uri 'none'; form-action 'none'; img-src data:; font-src data:;" />
+  <title>${escapeHtml(documentTitle)} ${escapeHtml(invoice.invoiceNumber)}</title>
+  <style>
+    ${cairoFontFaceCss}
+    @page { size: ${widthMm}mm auto; margin: 4mm; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #f1f5f9; color: #111827; font-family: 'Cairo', Tahoma, Arial, sans-serif; direction: rtl; }
+    .print-toolbar { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; justify-content: flex-start; gap: 8px; padding: 10px 14px; background: #241f62; color: white; box-shadow: 0 2px 10px rgba(15,23,42,.18); }
+    .print-toolbar button { border: 0; border-radius: 6px; padding: 8px 14px; background: white; color: #241f62; font-family: inherit; font-weight: 700; cursor: pointer; }
+    .print-toolbar .secondary { background: rgba(255,255,255,.14); color: white; border: 1px solid rgba(255,255,255,.32); }
+    .print-status { min-width: 150px; color: rgba(255,255,255,.82); font-size: 11px; }
+    .receipt { width: max(${widthMm}mm, 340px); margin: 18px auto; padding: 4mm; background: white; box-shadow: 0 10px 28px rgba(15,23,42,.16); font-size: 11px; line-height: 1.55; }
+    .center { text-align: center; }
+    .ltr { direction: ltr; text-align: left; }
+    .receipt-logo { display: block; max-width: 70%; max-height: 64px; margin: 0 auto 6px; object-fit: contain; }
+    .brand { font-size: 16px; font-weight: 800; }
+    .inv-no { font-size: 20px; font-weight: 900; margin: 4px 0; }
+    .muted { color: #4b5563; }
+    .small { font-size: 10px; }
+    .row { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px solid #e5e7eb; padding: 3px 0; }
+    .row.warn { color: #b45309; font-weight: 700; }
+    .row.change { color: #047857; font-weight: 700; }
+    .row-pair { display: flex; gap: 8px; border-bottom: 1px solid #e5e7eb; padding: 3px 0; }
+    .pair-col { flex: 1; min-width: 0; }
+    .pair-col:not(:first-child) { border-inline-start: 1px dashed #e5e7eb; padding-inline-start: 8px; }
+    .divider { border-top: 1px dashed #111827; margin: 5px 0; }
+    table { width: 100%; border-collapse: collapse; font-size: 10px; }
+    th { background: #f1f5f9; padding: 2px 4px; border-bottom: 1px solid #e5e7eb; }
+    td { padding: 2px 4px; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
+    .total-row { font-size: 14px; font-weight: 800; display: flex; justify-content: space-between; padding: 5px 0; }
+    .foot { margin-top: 8px; padding-top: 6px; border-top: 1px dashed #111827; text-align: center; }
+    .dev-credit { margin-top: 4px; padding-top: 4px; text-align: center; font-size: 9.5px; color: #6b7280; }
+    .dev-credit .wa-icon { vertical-align: middle; margin: 0 2px; }
+    .dev-phones { font-weight: 600; }
+    @media print { body { background: white; } .print-toolbar { display: none; } .receipt { margin: 0; box-shadow: none; width: auto; } }
+  </style>
+</head>
+<body>
+  <div class="print-toolbar">
+    <button type="button" id="print-now-button">طباعة</button>
+    <button type="button" id="save-pdf-button">حفظ PDF</button>
+    <button type="button" class="secondary" id="close-window-button">إغلاق</button>
+    <span id="print-status" class="print-status"></span>
+  </div>
+  <main class="receipt">
+    <div class="center">
+      ${logoBlock}
+      <div class="brand">${escapeHtml(companyName || "Top Gear Car Wash")}</div>
+      <div class="inv-no">#${escapeHtml(invoice.invoiceNumber)}</div>
+      <div class="muted small">${escapeHtml(formatReceiptDateTime(invoice.finalizedAt || invoice.date))}</div>
+    </div>
+    <div class="divider"></div>
+    ${invoice.vehicleLabel
+      ? `<div class="row-pair">
+          <div class="pair-col"><span class="muted small">العميل</span><br><strong>${escapeHtml(invoice.customerName)}</strong></div>
+          <div class="pair-col"><span class="muted small">السيارة</span><br><strong>${escapeHtml(invoice.vehicleLabel)}</strong></div>
+        </div>`
+      : `<div class="row"><span>العميل</span><strong>${escapeHtml(invoice.customerName)}</strong></div>`}
+    ${invoice.driverName ? `<div class="row"><span>السائق</span><strong>${escapeHtml(invoice.driverName)}</strong></div>` : ""}
+    <div class="divider"></div>
+    <table>
+      <thead>
+        <tr><th>${isProduct ? "الصنف" : "الخدمة"}</th><th>ك</th><th>سعر</th><th>إجمالي</th></tr>
+      </thead>
+      <tbody>${lineRows || `<tr><td colspan="4" class="center muted">لا توجد بنود</td></tr>`}</tbody>
+    </table>
+    <div class="divider"></div>
+    ${subtotalRow}
+    ${discountRow}
+    <div class="total-row"><span>الإجمالي</span><span class="ltr">${money(invoice.total)}</span></div>
+    <div class="divider"></div>
+    ${paidRow}
+    ${changeRow}
+    ${remainingRow}
+    ${invoice.notes ? `<div class="muted small" style="margin-top:4px">ملاحظة: ${escapeHtml(invoice.notes)}</div>` : ""}
+    <div class="foot muted small">${footerText ? escapeHtml(footerText) : "شكراً لاختياركم — احتفظ بهذه الفاتورة"}</div>
+    <div class="dev-credit">
+      <span>تطوير وتنفيذ شركة هيلبيرز تكنولوجيز</span>
+      <span class="ltr dev-phones">01080001249 | 01118445625</span>
+      ${WHATSAPP_ICON_SVG}
+    </div>
+  </main>
 </body>
 </html>`;
 }
@@ -1529,7 +1789,7 @@ function buildIntakeTicketHtml(payload, settings) {
     if (!value) return "-";
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return "-";
-    return new Intl.DateTimeFormat("ar-EG", { dateStyle: "short", timeStyle: "short" }).format(date);
+    return new Intl.DateTimeFormat("ar-EG-u-nu-latn", { dateStyle: "short", timeStyle: "short" }).format(date);
   };
   const damageAreas = Array.isArray(ticket.damageAreas)
     ? ticket.damageAreas.slice(0, 30).map((area) => escapeHtml(String(area).slice(0, 100))).join("، ")
@@ -1712,6 +1972,17 @@ function openPrintHtml({ html, windowTitle, fileBaseName }) {
 }
 
 function printRoute(route) {
+  const { kind, invoice } = getInvoiceForPrint(route);
+  // Car-wash sales/product invoices print as an 80mm thermal receipt.
+  if (kind === "sales") {
+    const settings = getPrintSettings();
+    const docNumber = String(invoice.invoiceNumber || invoice.id || "invoice").slice(0, 40);
+    return openPrintHtml({
+      html: buildInvoiceReceiptHtml(invoice, settings),
+      windowTitle: `فاتورة ${docNumber}`,
+      fileBaseName: sanitizeFileName(`receipt-80mm-invoice-${docNumber}`),
+    });
+  }
   const meta = getInvoicePrintMeta(route);
   return openPrintHtml({
     html: buildInvoicePrintHtml(route),
@@ -2154,8 +2425,13 @@ function registerIpc() {
   });
 
   ipcMain.handle("backup:write-file", (event, payload) => {
-    // SECURITY: only an authenticated owner session may write a data backup.
-    if (!hasOwnerSession(event)) return { ok: false, error: "not_authorized" };
+    // SECURITY: any authenticated session may write a data backup so the
+    // automatic on-close backup fires whoever is logged in (usually the
+    // cashier). Non-owners are still confined to the owner-configured backup
+    // folder — they can't pick an arbitrary path — so this stays a controlled
+    // write, not a general "write any file anywhere" capability.
+    const session = getSession(event);
+    if (!session) return { ok: false, error: "not_authorized" };
     if (
       !payload ||
       typeof payload.dir !== "string" ||
@@ -2166,12 +2442,19 @@ function registerIpc() {
     }
     try {
       const dir = payload.dir;
+      if (session.role !== "owner") {
+        const configuredPath = readJsonKey(`${STORE_PREFIX}settings`, {}).backupPath;
+        if (!configuredPath || path.resolve(dir) !== path.resolve(String(configuredPath))) {
+          return { ok: false, error: "not_authorized" };
+        }
+      }
       if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) {
         return { ok: false, error: "path_not_found" };
       }
       const base = sanitizeFileName(payload.fileName.replace(/\.json$/i, "")) || "helpers-backup";
       const target = path.join(dir, `${base}.json`);
       fs.writeFileSync(target, payload.content, "utf8");
+      pruneOldBackups(dir);
       return { ok: true, path: target };
     } catch {
       return { ok: false, error: "write_failed" };

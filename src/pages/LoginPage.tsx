@@ -8,6 +8,7 @@ import { useToast } from "../components/ui/Toast";
 import { Dialog } from "../components/ui/Dialog";
 import { useSettings } from "../store/SettingsContext";
 import type { LoginResult } from "../types";
+import { validateAndNormalizeOwnerPhone } from "../lib/utils";
 
 export function LoginPage() {
   const { login } = useAuth();
@@ -155,13 +156,12 @@ export function LoginPage() {
 
     const registeredPhone = settings?.ownerPhone?.trim();
     if (registeredPhone) {
-      if (!verifyPhone.trim()) {
-        toast.error("رقم التحقق مطلوب", "يرجى إدخال رقم واتساب المالك للتحقق.");
+      const phoneRes = validateAndNormalizeOwnerPhone(verifyPhone);
+      if (!phoneRes.valid) {
+        toast.error("رقم غير صحيح", phoneRes.error ?? "يرجى إدخال رقم واتساب المالك للتحقق.");
         return;
       }
-      const cleanRegistered = registeredPhone.replace(/[^\d]/g, "");
-      const cleanVerify = verifyPhone.trim().replace(/[^\d]/g, "");
-      if (cleanVerify !== cleanRegistered) {
+      if (phoneRes.normalized !== registeredPhone) {
         toast.error(
           "رقم غير مطابق",
           "رقم واتساب المالك المدخل غير مطابق للرقم المسجل في النظام! يرجى إدخال الرقم الصحيح لحماية بيانات المحل."
@@ -357,11 +357,12 @@ export function LoginPage() {
                 </Field>
               ) : null}
               {settings.ownerPhone ? (
-                <Field label="رقم واتساب المالك (للتحقق والأمان)" required hint="أدخل رقم المالك المسجل في إعدادات النظام للمتابعة">
+                <Field label="رقم واتساب المالك (للتحقق والأمان)" required hint="أدخل رقم المالك المسجل (11 رقماً يبدأ بـ 01)">
                   <Input
                     value={verifyPhone}
-                    onChange={(e) => setVerifyPhone(e.target.value)}
-                    placeholder="مثال: +201118445625"
+                    maxLength={11}
+                    onChange={(e) => setVerifyPhone(e.target.value.replace(/\D/g, "").slice(0, 11))}
+                    placeholder="مثال: 01xxxxxxxxx"
                   />
                 </Field>
               ) : null}

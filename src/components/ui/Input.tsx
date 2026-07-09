@@ -6,7 +6,9 @@ import {
   type ChangeEvent,
   type FocusEvent,
   type InputHTMLAttributes,
+  type KeyboardEvent,
   type ReactNode,
+  type WheelEvent,
   type SelectHTMLAttributes,
   type TextareaHTMLAttributes,
 } from "react";
@@ -32,6 +34,9 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
       onChange,
       onFocus,
       onBlur,
+      onKeyDown,
+      onWheel,
+      dir,
       title: titleProp,
       ...props
     },
@@ -65,16 +70,40 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
       onBlur?.(event);
     }
 
+    // Browsers silently bump a focused number input's value on ArrowUp/Down —
+    // easy to trigger by accident while tabbing/navigating a form. Block it.
+    function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+      if (type === "number" && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+        event.preventDefault();
+      }
+      onKeyDown?.(event);
+    }
+
+    // Same idea for the mouse wheel — Chrome bumps a focused number input's
+    // value when scrolled over. Blurring lets the scroll just scroll the page.
+    function handleWheel(event: WheelEvent<HTMLInputElement>) {
+      if (type === "number") {
+        event.currentTarget.blur();
+      }
+      onWheel?.(event);
+    }
+
     return (
       <input
         ref={ref}
         title={titleProp ?? fieldLabel ?? undefined}
         type={type}
+        // Numbers read left-to-right even on an RTL page. Without forcing this,
+        // the input inherits dir="rtl" and cursor/backspace behave backwards —
+        // deleting only works from one side depending on where you click.
+        dir={dir ?? (type === "number" ? "ltr" : undefined)}
         value={inputValue}
         placeholder={showZeroAsPlaceholder ? placeholder ?? "0" : placeholder}
         onChange={handleChange}
         onFocus={handleFocus}
         onBlur={handleBlur}
+        onKeyDown={handleKeyDown}
+        onWheel={handleWheel}
         className={cn(
           "w-full h-9 px-3 text-sm rounded-lg border border-slate-300 bg-white",
           "placeholder:text-slate-400",

@@ -190,6 +190,10 @@ export function CarwashInvoiceNewPageContent() {
     if (draft && typeof draft.amountReceived === "number") return draft.amountReceived;
     return 0;
   });
+  // Once the cashier types their own "المبلغ المدفوع", stop auto-syncing it to
+  // the running total — otherwise adding another line would silently wipe out
+  // an overpayment amount they already entered.
+  const [receivedTouched, setReceivedTouched] = useState(false);
   const [paymentDueDate, setPaymentDueDate] = useState("");
 
   useEffect(() => {
@@ -269,7 +273,14 @@ export function CarwashInvoiceNewPageContent() {
     }, 0),
     [lines, activeServices]
   );
-  const remainingDue = Math.max(0, total - (paymentType === "cash" ? amountReceived : 0));
+  const remainingDue = Math.max(0, total - amountReceived);
+  const changeDue = Math.max(0, amountReceived - total);
+
+  // Default "المبلغ المدفوع" to the running total (exact payment, no extra
+  // clicks) until the cashier manually edits it to record an overpayment.
+  useEffect(() => {
+    if (!receivedTouched) setAmountReceived(total);
+  }, [total, receivedTouched]);
 
   // Service line CRUD ─ commission is a fixed EGP amount typed by the cashier
   // per line (internal only — never shown to the customer or printed), split
@@ -381,6 +392,12 @@ export function CarwashInvoiceNewPageContent() {
       toast.error("اختر الصنايعي", "يجب تحديد الصنايعي الذي قام بالخدمة قبل تأكيد الفاتورة");
       return;
     }
+    // No account/credit workflow in this build — the invoice must be paid in
+    // full (or overpaid) before it can be confirmed.
+    if (remainingDue > 0) {
+      toast.error("المبلغ المدفوع أقل من المطلوب", `متبقي ${formatCurrency(remainingDue, settings.currency)} — أكمل المبلغ قبل التأكيد`);
+      return;
+    }
 
     // Stock validation — can't go negative
     for (const pl of productLines) {
@@ -441,7 +458,15 @@ export function CarwashInvoiceNewPageContent() {
       customerName: customer?.name ?? "زائر",
       lines: invLines,
       total,
-      amountReceived: total,
+      // Cash actually kept for this invoice is capped at the total — any extra
+      // the customer handed over is change given back immediately (see
+      // "الباقي للعميل" above), not a carried customer credit (that's what the
+      // separate `overpayment` field means elsewhere in the app).
+      amountReceived: Math.min(amountReceived, total),
+      // Keep a record of what the customer actually handed over, so the
+      // receipt/invoice can still show "دفع كام" and the change given back —
+      // otherwise that number is lost the moment the invoice is saved.
+      cashTendered: changeDue > 0 ? amountReceived : undefined,
       paymentType: "cash",
       paymentMethod: "cash",
       priceType: "retail",
@@ -647,7 +672,7 @@ export function CarwashInvoiceNewPageContent() {
                 ))}
               </Select>
             </Field>
-            <Field label="المبلغ المستلم">
+            <Field label="المبلغ المدفوع">
               <Input
                 type="number"
                 min={0}
@@ -680,7 +705,7 @@ export function CarwashInvoiceNewPageContent() {
             }
           />
           <CardBody className="p-0">
-            <Table>
+            <Table overflowVisible>
               <THead>
                 <TR>
                   <TH>الخدمة</TH>
@@ -703,12 +728,82 @@ export function CarwashInvoiceNewPageContent() {
                     const lineHasCommission = svc?.hasCommission ?? false;
                     return (
                       <TR key={l.id}>
-                        <TD>
-                          <Select aria-label="الخدمة" title="الخدمة" value={l.serviceId} onChange={(e) => onServiceChange(l.id, e.target.value)}>
-                            {activeServices.map((s) => (
-                              <option key={s.id} value={s.id}>{s.name}</option>
-                            ))}
-                          </Select>
+                        <TD className="relative overflow-visible">
+                          <div className="relative w-full">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (openDropdownId === l.id) {
+                                  setOpenDropdownId(null);
+                                } else {
+                                  setOpenDropdownId(l.id);
+                                  setSearchQuery("");
+                                }
+                              }}
+                              className="flex items-center justify-between w-full px-3 py-2 text-sm text-right bg-white border border-slate-200 rounded-lg hover:border-slate-300 focus:outline-none focus:ring-1 focus:ring-slate-400 focus:border-slate-400 transition-all shadow-sm min-w-[220px]"
+                            >
+                              <span className="truncate font-medium">
+                                {svc ? svc.name : "اختر خدمة..."}
+                              </span>
+                              {openDropdownId === l.id ? (
+                                <ChevronUp className="w-4 h-4 text-slate-400 mr-2 shrink-0" />
+                              ) : (
+                                <ChevronDown className="w-4 h-4 text-slate-400 mr-2 shrink-0" />
+                              )}
+                            </button>
+
+                            {openDropdownId === l.id && (
+                              <>
+                                <div
+                                  className="fixed inset-0 z-10"
+                                  onClick={() => setOpenDropdownId(null)}
+                                />
+                                <div className="absolute right-0 top-full mt-1.5 w-full min-w-[320px] bg-slate-50 border border-slate-300 rounded-xl shadow-xl z-20 flex flex-col overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150">
+                                  <div className="flex items-center px-3 py-2 border-b border-slate-200 bg-white">
+                                    <Search className="w-4 h-4 text-slate-400 ml-2 shrink-0" />
+                                    <input
+                                      type="text"
+                                      value={searchQuery}
+                                      onChange={(e) => setSearchQuery(e.target.value)}
+                                      placeholder="بحث عن خدمة..."
+                                      className="w-full bg-transparent border-0 p-0 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-0 focus:border-0"
+                                      autoFocus
+                                    />
+                                  </div>
+                                  <div className="max-h-56 overflow-y-auto p-2 space-y-1.5 bg-slate-50">
+                                    {activeServices
+                                      .filter((s) =>
+                                        s.name.toLowerCase().includes(searchQuery.toLowerCase())
+                                      )
+                                      .map((s) => (
+                                        <button
+                                          key={s.id}
+                                          type="button"
+                                          onClick={() => {
+                                            onServiceChange(l.id, s.id);
+                                            setOpenDropdownId(null);
+                                          }}
+                                          className={`flex items-center justify-between w-full px-3 py-2 text-right text-sm rounded-lg border transition-all shadow-sm ${
+                                            l.serviceId === s.id
+                                              ? "bg-slate-200 border-slate-300 font-semibold text-slate-900"
+                                              : "bg-white border-slate-200/80 text-slate-700 hover:bg-slate-100/80 hover:text-slate-900 hover:border-slate-300 active:bg-slate-200"
+                                          }`}
+                                        >
+                                          <span className="truncate">{s.name}</span>
+                                        </button>
+                                      ))}
+                                    {activeServices.filter((s) =>
+                                      s.name.toLowerCase().includes(searchQuery.toLowerCase())
+                                    ).length === 0 && (
+                                      <div className="text-center py-4 text-xs text-slate-400 bg-white border border-slate-200 rounded-lg">
+                                        لا توجد خدمات مطابقة للبحث
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </>
+                            )}
+                          </div>
                         </TD>
                         <TD className="hidden">
                           <div className="space-y-1.5 min-w-[200px]">
@@ -940,6 +1035,80 @@ export function CarwashInvoiceNewPageContent() {
 
       {/* Discount + summary */}
       <div className="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <Card>
+          <CardBody className="space-y-2 text-sm">
+            {(loyaltyDiscount > 0 || subscriptionDiscount > 0) && (
+              <div className="flex items-center justify-between text-slate-500">
+                <span>المجموع قبل الخصم</span>
+                <span>{formatCurrency(subtotal, settings.currency)}</span>
+              </div>
+            )}
+            {subscriptionDiscount > 0 && (
+              <div className="flex items-center justify-between text-green-700">
+                <span>تغطية الاشتراك ({activeSubscription?.packageName})</span>
+                <span>({formatCurrency(subscriptionDiscount, settings.currency)})</span>
+              </div>
+            )}
+            {loyaltyDiscount > 0 && (
+              <div className="flex items-center justify-between text-green-700">
+                <span>خصم نقاط الولاء ({effectiveRedeem} نقطة)</span>
+                <span>({formatCurrency(loyaltyDiscount, settings.currency)})</span>
+              </div>
+            )}
+            <div className="rounded-lg border border-slate-200 overflow-hidden mt-1">
+              <div className="flex items-center justify-between px-3 py-2.5 bg-slate-50">
+                <span className="text-slate-500">الإجمالي</span>
+                <span className="text-lg font-bold text-slate-900">{formatCurrency(total, settings.currency)}</span>
+              </div>
+              <div className="flex items-center justify-between gap-3 px-3 py-2.5 border-t border-slate-100">
+                <span className="text-slate-500 shrink-0">المبلغ المدفوع</span>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-slate-400">{settings.currency}</span>
+                  <Input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={amountReceived}
+                    onChange={(e) => {
+                      setReceivedTouched(true);
+                      setAmountReceived(Number(e.target.value));
+                    }}
+                    className="w-28 text-end font-semibold"
+                  />
+                </div>
+              </div>
+              {changeDue > 0 && (
+                <div className="flex items-center justify-between px-3 py-2.5 border-t border-emerald-100 bg-emerald-50">
+                  <span className="font-medium text-emerald-700">الباقي للعميل</span>
+                  <span className="text-lg font-bold text-emerald-700">{formatCurrency(changeDue, settings.currency)}</span>
+                </div>
+              )}
+              {remainingDue > 0 && (
+                <div className="flex items-center justify-between px-3 py-2.5 border-t border-amber-100 bg-amber-50">
+                  <span className="font-medium text-amber-700">المتبقي</span>
+                  <span className="text-lg font-bold text-amber-700">{formatCurrency(remainingDue, settings.currency)}</span>
+                </div>
+              )}
+            </div>
+            {commissionTotal > 0 && (
+              <div className="rounded-lg bg-slate-50 border border-slate-100 px-3 py-2 space-y-1 text-xs">
+                <div className="flex items-center justify-between text-rose-700">
+                  <span>عمولة الصنايعي (تُخصم من الخزنة)</span>
+                  <span className="font-semibold">{formatCurrency(commissionTotal, settings.currency)}</span>
+                </div>
+                <div className="flex items-center justify-between text-emerald-700">
+                  <span>صافي المحل</span>
+                  <span className="font-semibold">{formatCurrency(Math.max(0, total - commissionTotal), settings.currency)}</span>
+                </div>
+                <div className="text-slate-400">داخلي فقط — لا يظهر في الفاتورة المطبوعة</div>
+              </div>
+            )}
+            <Button onClick={submit} className="w-full justify-center" size="lg">
+              <Save className="w-4 h-4" /> {productOnly ? "تأكيد فاتورة المنتجات" : "تأكيد وطباعة"}
+            </Button>
+          </CardBody>
+        </Card>
+
         <Card className="lg:col-span-2">
           <CardBody className="space-y-4">
             {!productOnly && usableSubs.length > 0 && (
@@ -983,52 +1152,6 @@ export function CarwashInvoiceNewPageContent() {
             <Field label="ملاحظات">
               <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
             </Field>
-          </CardBody>
-        </Card>
-
-        <Card>
-          <CardBody className="space-y-2 text-sm">
-            {(loyaltyDiscount > 0 || subscriptionDiscount > 0) && (
-              <div className="flex items-center justify-between text-slate-500">
-                <span>المجموع قبل الخصم</span>
-                <span>{formatCurrency(subtotal, settings.currency)}</span>
-              </div>
-            )}
-            {subscriptionDiscount > 0 && (
-              <div className="flex items-center justify-between text-green-700">
-                <span>تغطية الاشتراك ({activeSubscription?.packageName})</span>
-                <span>({formatCurrency(subscriptionDiscount, settings.currency)})</span>
-              </div>
-            )}
-            {loyaltyDiscount > 0 && (
-              <div className="flex items-center justify-between text-green-700">
-                <span>خصم نقاط الولاء ({effectiveRedeem} نقطة)</span>
-                <span>({formatCurrency(loyaltyDiscount, settings.currency)})</span>
-              </div>
-            )}
-            <div className="flex items-center justify-between border-t pt-2">
-              <span className="text-slate-500">الإجمالي</span>
-              <span className="text-lg font-bold text-slate-900">{formatCurrency(total, settings.currency)}</span>
-            </div>
-            {remainingDue > 0 && (
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500">المتبقي</span>
-                <span className="font-semibold text-amber-700">{formatCurrency(remainingDue, settings.currency)}</span>
-              </div>
-            )}
-            {commissionTotal > 0 && (
-              <div className="rounded-lg bg-slate-50 border border-slate-100 px-3 py-2 space-y-1 text-xs">
-                <div className="flex items-center justify-between text-rose-700">
-                  <span>عمولة الصنايعي (تُخصم من الخزنة)</span>
-                  <span className="font-semibold">{formatCurrency(commissionTotal, settings.currency)}</span>
-                </div>
-                <div className="flex items-center justify-between text-emerald-700">
-                  <span>صافي المحل</span>
-                  <span className="font-semibold">{formatCurrency(Math.max(0, total - commissionTotal), settings.currency)}</span>
-                </div>
-                <div className="text-slate-400">داخلي فقط — لا يظهر في الفاتورة المطبوعة</div>
-              </div>
-            )}
           </CardBody>
         </Card>
       </div>

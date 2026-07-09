@@ -22,6 +22,7 @@ import { Button } from "../components/ui/Button";
 import { Field, Input } from "../components/ui/Input";
 import { useToast } from "../components/ui/Toast";
 import { hashPassword } from "../lib/auth";
+import { validateAndNormalizeOwnerPhone } from "../lib/utils";
 import {
   createCashierPermissions,
   setPermission,
@@ -124,7 +125,8 @@ export function FirstRunSetupPage() {
       if (password.length < 4) return "كلمة المرور يجب ألا تقل عن 4 أرقام";
       if (password !== confirmPassword) return "كلمتا المرور غير متطابقتين";
       if (!ownerName.trim()) return "اسم المالك مطلوب";
-      if (!ownerPhone.trim()) return "رقم واتساب المالك مطلوب";
+      const phoneRes = validateAndNormalizeOwnerPhone(ownerPhone);
+      if (!phoneRes.valid) return phoneRes.error ?? "رقم واتساب المالك غير صحيح";
     }
     if (s === 1) {
       if (!companyNameAr.trim()) return "اسم المغسلة بالعربية مطلوب";
@@ -206,7 +208,7 @@ export function FirstRunSetupPage() {
       backupPath: backupPath.trim(),
       invoicesSavePath: invoicesSavePath.trim(),
       ownerName: ownerName.trim(),
-      ownerPhone: ownerPhone.trim(),
+      ownerPhone: validateAndNormalizeOwnerPhone(ownerPhone).normalized || ownerPhone.trim(),
     });
 
     if (includeEmployee) {
@@ -396,8 +398,13 @@ export function FirstRunSetupPage() {
                 <Field label="اسم المالك الكامل" required>
                   <Input value={ownerName} onChange={(e) => setOwnerName(e.target.value)} placeholder="مثال: محمد أحمد علي" />
                 </Field>
-                <Field label="رقم واتساب المالك" required hint="يستخدم للتواصل مع الدعم وتأكيد الهوية">
-                  <Input value={ownerPhone} onChange={(e) => setOwnerPhone(e.target.value)} placeholder="مثال: +201118445625" />
+                <Field label="رقم واتساب المالك" required hint="يجب أن يتكون من 11 رقماً ويبدأ بـ 01">
+                  <Input
+                    value={ownerPhone}
+                    maxLength={11}
+                    onChange={(e) => setOwnerPhone(e.target.value.replace(/\D/g, "").slice(0, 11))}
+                    placeholder="مثال: 01xxxxxxxxx"
+                  />
                 </Field>
                 <Field label="اسم دخول المدير" required>
                   <Input value={username} onChange={(e) => setUsername(e.target.value)} />

@@ -59,7 +59,7 @@ import {
 } from "../data/seed";
 import { localISODate, todayISO, uid } from "../lib/utils";
 import { buildXlsx } from "../lib/xlsx";
-import { isAutoBackupDue, backupFileName } from "../lib/backupSchedule";
+import { isAutoBackupDue, backupFileName, backupFileNameDaily } from "../lib/backupSchedule";
 import {
   computeStatus,
   applyPieceDeduction,
@@ -2218,7 +2218,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     logAudit(
       "invoice_sale_deleted",
       `${inv.invoiceNumber} — ${inv.customerName}`,
-      `المستلم: ${inv.amountReceived}`,
+      `المدفوع: ${inv.amountReceived}`,
       {
         kind: "sales-invoice",
         invoice: inv,
@@ -2941,15 +2941,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
   ]);
 
   // Backup-on-close: when the main process is about to close the window it
-  // pings us; take a backup to the configured folder (owner + path required),
-  // then tell main it can finish closing.
+  // pings us; take a backup to the configured folder, then tell main it can
+  // finish closing.
+  //
+  // Runs for ANY logged-in user (the cashier is usually the one closing the
+  // shop at day's end) — the backup snapshots the whole *shared* database, not
+  // per-user data, so gating it to the owner would just leave gaps. To avoid a
+  // pile-up of files, same-day closes overwrite a single per-day file, and the
+  // main process prunes old backups so the folder stays bounded.
   useEffect(() => {
     const appApi = window.desktopAPI?.app;
     if (!isDesktop || !appApi?.onRunCloseBackup) return;
     const off = appApi.onRunCloseBackup(async () => {
       try {
-        if (settings.backupOnClose && settings.backupPath?.trim() && currentUser?.role === "owner") {
-          await backupToPath();
+        const dir = settings.backupPath?.trim();
+        if (settings.backupOnClose && dir && currentUser && window.desktopAPI?.backup) {
+          const content = JSON.stringify(buildBackupData(), null, 2);
+          const res = await window.desktopAPI.backup.writeFile(dir, backupFileNameDaily(new Date()), content);
+          if (res.ok) setSettings((s) => ({ ...s, lastBackupDate: new Date().toISOString() }));
         }
       } catch {
         /* never block the quit on a backup failure */
@@ -2958,7 +2967,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     });
     return off;
-  }, [isDesktop, settings.backupOnClose, settings.backupPath, currentUser, backupToPath]);
+  }, [isDesktop, settings.backupOnClose, settings.backupPath, currentUser, buildBackupData]);
 
   const importBackup: AppActions["importBackup"] = useCallback(async (file) => {
     try {
