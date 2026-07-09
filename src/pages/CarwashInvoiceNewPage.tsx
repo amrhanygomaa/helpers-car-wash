@@ -13,17 +13,18 @@ import { useInvoicing } from "../store/InvoicingContext";
 import { useAuth } from "../store/AuthContext";
 import { useSettings } from "../store/SettingsContext";
 import { formatCurrency } from "../lib/format";
-import { piastresToEgp } from "../lib/money";
+import { piastresToEgp, egpToPiastres } from "../lib/money";
 import { todayISO, uid, vehicleLabel } from "../lib/utils";
 import { hasDb } from "../db/client";
 import { listActiveWorkers, type Worker } from "../features/workers/queries";
-import { listActiveCarwashProducts, recordProductSale, type Product as CarwashProduct } from "../features/products/carwash-queries";
+import { listActiveCarwashProducts, recordProductSale, createCarwashProduct, type Product as CarwashProduct } from "../features/products/carwash-queries";
 import { listActiveRawMaterials, recordMaterialConsumption, type RawMaterial } from "../features/materials/queries";
 import { listUsableSubscriptions, redeemSubscription, type CustomerSubscription } from "../features/subscriptions/queries";
 import { expandServiceMaterials, splitCommissionEvenly } from "../store/_pure";
 import { printServiceInvoice } from "../lib/print";
 import { CustomerFormDialog } from "../features/customers/CustomerFormDialog";
 import { VehicleFormDialog } from "../features/vehicles/VehicleFormDialog";
+import { Dialog } from "../components/ui/Dialog";
 import type { InvoiceLine, PaymentMethod, SalesPaymentType } from "../types";
 
 interface LineWorkerDraft {
@@ -131,6 +132,7 @@ export function CarwashInvoiceNewPageContent() {
   });
   const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
   const [vehicleDialogOpen, setVehicleDialogOpen] = useState(false);
+  const [productFormOpen, setProductFormOpen] = useState(false);
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -903,17 +905,29 @@ export function CarwashInvoiceNewPageContent() {
       ) : null}
 
       {/* Product add-ons */}
-      {dbProducts.length > 0 && (
-        <Card className="mt-4">
-          <CardHeader
-            title={productOnly ? "بنود فاتورة المنتجات" : "المنتجات"}
-            actions={
-              <Button variant="outline" size="sm" onClick={addProductLine}>
-                <Plus className="w-4 h-4" /> إضافة منتج
+      <Card className="mt-4">
+        <CardHeader
+          title={productOnly ? "بنود فاتورة المنتجات" : "المنتجات والإضافات"}
+          actions={
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => setProductFormOpen(true)}>
+                <Plus className="w-4 h-4" /> منتج جديد
               </Button>
-            }
-          />
-          <CardBody className="p-0 overflow-visible">
+              <Button variant="outline" size="sm" onClick={addProductLine} disabled={dbProducts.length === 0}>
+                <Plus className="w-4 h-4" /> إضافة بند
+              </Button>
+            </div>
+          }
+        />
+        <CardBody className="p-0 overflow-visible">
+          {dbProducts.length === 0 ? (
+            <div className="text-center py-8 px-4 text-slate-500 text-sm">
+              <p className="mb-3 font-medium">لا توجد منتجات مسجلة في النظام حالياً.</p>
+              <Button size="sm" onClick={() => setProductFormOpen(true)}>
+                <Plus className="w-4 h-4 ml-1" /> إضافة أول منتج الآن
+              </Button>
+            </div>
+          ) : (
             <Table overflowVisible>
               <THead>
                 <TR>
@@ -929,7 +943,7 @@ export function CarwashInvoiceNewPageContent() {
                 {productLines.length === 0 ? (
                   <TR>
                     <TD colSpan={6} className="text-center py-4 text-slate-500 text-sm">
-                      اضغط "إضافة منتج" لإضافة بند جديد
+                      اضغط "إضافة بند" أو "منتج جديد" لإضافة منتجات لهذه الفاتورة
                     </TD>
                   </TR>
                 ) : (
@@ -1052,9 +1066,9 @@ export function CarwashInvoiceNewPageContent() {
                 )}
               </TBody>
             </Table>
-          </CardBody>
-        </Card>
-      )}
+          )}
+        </CardBody>
+      </Card>
 
       {/* Discount + summary */}
       <div className="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -1191,7 +1205,116 @@ export function CarwashInvoiceNewPageContent() {
         customers={customers}
         onCreated={(vehicle) => setVehicleId(vehicle.id)}
       />
+      <ProductFormDialog
+        open={productFormOpen}
+        onClose={() => setProductFormOpen(false)}
+        onCreated={async (newProduct) => {
+          if (hasDb()) {
+            const list = await listActiveCarwashProducts();
+            setDbProducts(list);
+          }
+          setProductLines((l) => [
+            ...l,
+            { id: uid("pln"), productId: newProduct.id, quantity: 1, price: piastresToEgp(newProduct.salePrice) }
+          ]);
+        }}
+      />
     </>
+  );
+}
+
+interface ProductFormDialogProps {
+  open: boolean;
+  onClose: () => void;
+  onCreated: (product: CarwashProduct) => void;
+}
+
+export function ProductFormDialog({ open, onClose, onCreated }: ProductFormDialogProps) {
+  const [name, setName] = useState("");
+  const [salePrice, setSalePrice] = useState("");
+  const [purchasePrice, setPurchasePrice] = useState("");
+  const [stockQty, setStockQty] = useState("0");
+  const toast = useToast();
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setName("");
+      setSalePrice("");
+      setPurchasePrice("");
+      setStockQty("0");
+      setSaving(false);
+    }
+  }, [open]);
+
+  async function handleSave() {
+    if (!name.trim()) return;
+    const sp = parseFloat(salePrice);
+    const pp = parseFloat(purchasePrice || "0");
+    const sq = parseInt(stockQty || "0", 10);
+
+    if (!Number.isFinite(sp) || sp < 0) {
+      toast.error("يرجى إدخال سعر بيع صحيح");
+      return;
+    }
+    if (!Number.isFinite(pp) || pp < 0) {
+      toast.error("يرجى إدخال تكلفة شراء صحيحة");
+      return;
+    }
+    if (!Number.isFinite(sq) || sq < 0) {
+      toast.error("يرجى إدخال كمية صحيحة");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const newProduct: CarwashProduct = {
+        id: uid("prd"),
+        name: name.trim(),
+        salePrice: egpToPiastres(sp),
+        purchasePrice: egpToPiastres(pp),
+        stockQty: sq,
+        lowStockThreshold: 5,
+        active: true,
+      };
+      if (hasDb()) {
+        await createCarwashProduct(newProduct);
+      }
+      toast.success("تم إضافة المنتج بنجاح");
+      onCreated(newProduct);
+      onClose();
+    } catch (e) {
+      toast.error("حدث خطأ أثناء إضافة المنتج");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onClose={onClose} title="إضافة منتج جديد">
+      <div className="space-y-4">
+        <Field label="اسم المنتج" required>
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="مثال: معطر جو" />
+        </Field>
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="سعر البيع (ج.م)" required>
+            <Input type="number" min={0} step="0.5" value={salePrice} onChange={(e) => setSalePrice(e.target.value)} placeholder="0" />
+          </Field>
+          <Field label="تكلفة شراء الوحدة (ج.م)">
+            <Input type="number" min={0} step="0.5" value={purchasePrice} onChange={(e) => setPurchasePrice(e.target.value)} placeholder="0" />
+          </Field>
+        </div>
+        <Field label="الكمية الافتتاحية المتاحة في المخزن">
+          <Input type="number" min={0} step="1" value={stockQty} onChange={(e) => setStockQty(e.target.value)} />
+        </Field>
+        <div className="flex gap-2 justify-end pt-2">
+          <Button variant="outline" onClick={onClose} disabled={saving}>إلغاء</Button>
+          <Button onClick={handleSave} disabled={!name.trim() || !salePrice || saving}>
+            {saving ? "جاري الحفظ..." : "حفظ المنتج"}
+          </Button>
+        </div>
+      </div>
+    </Dialog>
   );
 }
 
