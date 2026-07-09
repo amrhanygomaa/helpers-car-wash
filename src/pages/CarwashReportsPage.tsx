@@ -614,7 +614,7 @@ export function CarwashReportsPage() {
                       <TH className="text-end">سيارات</TH>
                       <TH className="text-end">إيراد</TH>
                       <TH className="text-end">محصل</TH>
-                      <TH className="text-end">COGS</TH>
+                      <TH className="text-end">تكلفة الخامات</TH>
                       <TH className="text-end">مصروفات</TH>
                       <TH className="text-end">أجور</TH>
                       <TH className="text-end">صافي</TH>
