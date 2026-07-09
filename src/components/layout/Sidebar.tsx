@@ -130,6 +130,17 @@ function itemMatchesPath(item: NavItem, pathname: string, search = ""): boolean 
   return pathname === itemPath || pathname.startsWith(itemPath + "/");
 }
 
+/**
+ * Among all visible nav items, only the most specific ("/cashbox/shift" over
+ * its own parent-ish prefix "/cashbox") should light up — otherwise sibling
+ * routes that happen to be path prefixes of each other both highlight.
+ */
+function mostSpecificMatch(items: NavItem[], pathname: string, search: string): NavItem | null {
+  const candidates = items.filter((i) => itemMatchesPath(i, pathname, search));
+  if (candidates.length === 0) return null;
+  return candidates.reduce((best, cur) => (cur.to.length > best.to.length ? cur : best));
+}
+
 export function Sidebar({ collapsed }: { collapsed: boolean }) {
   const { logout, currentUser } = useAuth();
   const { settings } = useSettings();
@@ -160,9 +171,12 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
   })).filter((g) => g.items.length > 0);
   const bottomItems = BOTTOM_ITEMS.filter((i) => canSee(i, currentUser, isEnabled));
 
+  const allVisibleItems = [...topItems, ...groups.flatMap((g) => g.items), ...bottomItems];
+  const activeItem = mostSpecificMatch(allVisibleItems, pathname, search);
+
   const renderItem = (item: NavItem, indented = false) => {
     const Icon = item.icon;
-    const manuallyActive = itemMatchesPath(item, pathname, search);
+    const manuallyActive = item === activeItem;
     return (
       <NavLink
         key={item.to}
