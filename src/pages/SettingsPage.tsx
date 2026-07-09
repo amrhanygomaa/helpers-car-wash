@@ -5,7 +5,6 @@ import { Button } from "../components/ui/Button";
 import { Field, Input, Select, Textarea } from "../components/ui/Input";
 import { Dialog } from "../components/ui/Dialog";
 import { useApp } from "../store/AppContext";
-import { SyncSettingsCard } from "../features/sync/SyncSettingsCard";
 import { useToast } from "../components/ui/Toast";
 import { lsGet } from "../lib/storage";
 import { FEATURES, defaultFeatureState, isAllowedByLicense, type FeatureKey } from "../lib/features";
