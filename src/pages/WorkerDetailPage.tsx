@@ -149,6 +149,30 @@ export function WorkerDetailPage() {
       .sort((a, b) => b.businessDate.localeCompare(a.businessDate));
   }, [worker, salesInvoices, closures, selectedMonth]);
 
+  // Per-invoice commission log — every service line this worker earned a
+  // commission on this month, regardless of whether the day is closed yet.
+  const commissionLog = useMemo(() => {
+    if (!worker) return [];
+    const rows: { key: string; date: string; invoiceNumber: string; serviceName: string; amount: number }[] = [];
+    for (const inv of salesInvoices) {
+      if (inv.invoiceKind !== "service" || inv.cancelled) continue;
+      if (!inv.date.startsWith(selectedMonth)) continue;
+      for (const line of inv.lines) {
+        if (line.kind !== "service") continue;
+        const share = lineWorkers(line).find((w) => w.workerId === worker.id);
+        if (!share || (share.commissionAmount ?? 0) <= 0) continue;
+        rows.push({
+          key: `${inv.id}-${line.id}`,
+          date: inv.date,
+          invoiceNumber: inv.invoiceNumber,
+          serviceName: line.productName,
+          amount: share.commissionAmount ?? 0,
+        });
+      }
+    }
+    return rows.sort((a, b) => b.date.localeCompare(a.date));
+  }, [worker, salesInvoices, selectedMonth]);
+
   // Calculate detailed financial metrics (closed days + live unclosed days)
   const financials = useMemo(() => {
     // 1. Base wage sum
