@@ -542,7 +542,7 @@ export function WorkerDetailPage() {
                     <TR key={row.key}>
                       <TD className="text-xs whitespace-nowrap">{row.date}</TD>
                       <TD>
-                        <Link to={`/sales/${row.key.split("-")[0]}`} className="text-brand-700 hover:underline font-mono text-xs">
+                        <Link to={`/sales/${row.invoiceId}`} className="text-brand-700 hover:underline font-mono text-xs">
                           {row.invoiceNumber}
                         </Link>
                       </TD>
