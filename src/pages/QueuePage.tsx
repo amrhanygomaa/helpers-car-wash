@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   ArrowDown,
   ArrowUp,
+  CalendarDays,
   Car,
   Check,
   ChevronDown,
@@ -1216,9 +1217,9 @@ function TicketCard({
           </div>
         ) : null}
         {t.phone ? (
-          <div className="flex items-center gap-1.5 text-[12px] text-slate-500" dir="ltr">
+          <div className="flex items-center gap-1.5 text-[12px] text-slate-500">
             <Phone className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-            <span>{t.phone}</span>
+            <span dir="ltr">{t.phone}</span>
           </div>
         ) : null}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -1227,7 +1228,8 @@ function TicketCard({
             الوصول: {formatDateTime(t.arrivalTime)}
           </span>
           {t.requestedPickupAt ? (
-            <span className={cn("font-medium", pickupLate ? "text-amber-700" : "text-slate-600")}>
+            <span className={cn("flex items-center gap-1 font-medium", pickupLate ? "text-amber-700" : "text-slate-600")}>
+              <CalendarDays className="h-3.5 w-3.5 shrink-0 text-slate-400" />
               الاستلام: {formatDateTime(t.requestedPickupAt)}
             </span>
           ) : null}
