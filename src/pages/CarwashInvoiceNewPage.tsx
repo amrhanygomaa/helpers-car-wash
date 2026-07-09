@@ -531,11 +531,11 @@ export function CarwashInvoiceNewPage() {
                 </Field>
                 <Field
                   label="الصنايعي"
-                  required={hasCommissionLines}
-                  hint={hasCommissionLines && !invoiceWorkerId ? "مطلوب — توجد خدمات بعمولة تُسجَّل على الصنايعي" : undefined}
+                  required
+                  hint={!invoiceWorkerId ? "مطلوب — حدد من قام بالخدمة" : undefined}
                 >
                   <Select value={invoiceWorkerId} onChange={(e) => setInvoiceWorkerId(e.target.value)}>
-                    <option value="">— بدون صنايعي —</option>
+                    <option value="" disabled>— اختر صنايعي —</option>
                     {dbWorkers.map((worker) => (
                       <option key={worker.id} value={worker.id}>{worker.name}</option>
                     ))}
