@@ -7,6 +7,7 @@ import {
   Warehouse,
   Users,
   Receipt,
+  FileStack,
   Wallet,
   BarChart3,
   Settings,
@@ -15,14 +16,10 @@ import {
   Shield,
   ClipboardList,
   ChevronDown,
-  Car,
   ListChecks,
   Sparkles,
-  MessageCircle,
-  BadgeCheck,
   DoorClosed,
   CalendarDays,
-  UserCheck,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { lsGet, lsSet } from "../../lib/storage";
@@ -56,23 +53,22 @@ const TOP_ITEMS: NavItem[] = [
 
 const GROUPS: NavGroup[] = [
   {
-    id: "carwash",
-    label: "غسيل السيارات",
+    id: "operations",
+    label: "العمليات اليومية",
     items: [
       { to: "/queue", label: "طابور الغسيل", icon: ListChecks, permission: "queue", feature: "carwashQueue" },
       { to: "/carwash/new", label: "فاتورة غسيل جديدة", icon: Receipt, permission: "salesInvoices", feature: "washServices" },
       { to: "/carwash/new?type=products", label: "فاتورة منتجات جديدة", icon: Receipt, permission: "salesInvoices", feature: "washServices" },
-      { to: "/services", label: "خدمات الغسيل", icon: Sparkles, permission: "washServices", feature: "washServices" },
-      { to: "/carwash/products", label: "المنتجات", icon: Package, permissionKey: "products.view", feature: "washServices" },
-      { to: "/carwash/materials", label: "خامات الغسيل", icon: Warehouse, permissionKey: "materials.view", feature: "washServices" },
-      { to: "/carwash/reports", label: "تقارير الغسيل", icon: BarChart3, permission: "reports", feature: "washServices" },
+      { to: "/sales", label: "فواتير الغسيل", icon: FileStack, permission: "salesInvoices", feature: "salesInvoices" },
     ],
   },
   {
-    id: "invoices",
-    label: "الفواتير",
+    id: "catalog",
+    label: "الخدمات والمخزون",
     items: [
-      { to: "/sales", label: "فواتير الغسيل", icon: Receipt, permission: "salesInvoices", feature: "salesInvoices" },
+      { to: "/services", label: "خدمات الغسيل", icon: Sparkles, permission: "washServices", feature: "washServices" },
+      { to: "/carwash/products", label: "المنتجات", icon: Package, permissionKey: "products.view", feature: "washServices" },
+      { to: "/carwash/materials", label: "خامات الغسيل", icon: Warehouse, permissionKey: "materials.view", feature: "washServices" },
     ],
   },
   {
@@ -84,12 +80,19 @@ const GROUPS: NavGroup[] = [
   },
   {
     id: "finance",
-    label: "المالية والتقارير",
+    label: "المالية والصنايعية",
     items: [
       { to: "/cashbox", label: "الخزينة", icon: Wallet, permission: "cashbox", feature: "cashbox" },
       { to: "/cashbox/shift", label: "وردية الخزنة", icon: DoorClosed, permission: "cashbox", feature: "cashbox" },
       { to: "/workers", label: "الصنايعية", icon: Users, permissionKey: "payroll.manage" },
       { to: "/payroll/day-close", label: "قفلة اليوم", icon: ClipboardList, permissionKey: "payroll.manage" },
+    ],
+  },
+  {
+    id: "reports",
+    label: "التقارير",
+    items: [
+      { to: "/carwash/reports", label: "تقارير الغسيل", icon: BarChart3, permission: "reports", feature: "washServices" },
       { to: "/reports/end-of-day", label: "تقرير نهاية اليوم", icon: CalendarDays, permission: "reports", feature: "reports" },
     ],
   },
