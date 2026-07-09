@@ -108,13 +108,58 @@ export function WorkerDetailPage() {
     return withdrawals.filter((w) => w.businessDate.startsWith(selectedMonth));
   }, [withdrawals, selectedMonth]);
 
-  // Calculate detailed financial metrics
+  // Live (not-yet-closed) days: derive cars + commission from today's invoices so
+  // the statement reflects reality before قفلة اليوم is run. A day that has a
+  // closure record is skipped — the closure is authoritative for it.
+  const liveRows = useMemo(() => {
+    if (!worker) return [];
+    const closedDates = new Set(closures.map((c) => c.businessDate));
+    const byDate = new Map<string, { cars: Set<string>; commissionEgp: number }>();
+    for (const inv of salesInvoices) {
+      if (inv.invoiceKind !== "service" || inv.cancelled) continue;
+      if (!inv.date.startsWith(selectedMonth) || closedDates.has(inv.date)) continue;
+      for (const line of inv.lines) {
+        if (line.kind !== "service") continue;
+        const share = lineWorkers(line).find((w) => w.workerId === worker.id);
+        if (!share) continue;
+        const entry = byDate.get(inv.date) ?? { cars: new Set<string>(), commissionEgp: 0 };
+        entry.cars.add(inv.id);
+        entry.commissionEgp += share.commissionAmount ?? 0;
+        byDate.set(inv.date, entry);
+      }
+    }
+    // Today earns the base wage even with no cars yet (matches day-close behaviour
+    // where every active worker gets a row for the business date).
+    const today = todayISO();
+    if (worker.active && today.startsWith(selectedMonth) && !closedDates.has(today) && !byDate.has(today)) {
+      byDate.set(today, { cars: new Set<string>(), commissionEgp: 0 });
+    }
+    return Array.from(byDate.entries())
+      .map(([businessDate, v]) => {
+        const commissionTotal = egpToPiastres(v.commissionEgp);
+        const baseAmount = dailyBaseAmount(worker, businessDate);
+        return {
+          businessDate,
+          carsCount: v.cars.size,
+          commissionTotal,
+          baseAmount,
+          netDue: baseAmount + commissionTotal,
+        };
+      })
+      .sort((a, b) => b.businessDate.localeCompare(a.businessDate));
+  }, [worker, salesInvoices, closures, selectedMonth]);
+
+  // Calculate detailed financial metrics (closed days + live unclosed days)
   const financials = useMemo(() => {
     // 1. Base wage sum
-    const totalBase = monthClosures.reduce((sum, c) => sum + c.baseAmount, 0);
+    const totalBase =
+      monthClosures.reduce((sum, c) => sum + c.baseAmount, 0) +
+      liveRows.reduce((sum, r) => sum + r.baseAmount, 0);
 
     // 2. Commissions sum
-    const totalCommissions = monthClosures.reduce((sum, c) => sum + c.commissionTotal, 0);
+    const totalCommissions =
+      monthClosures.reduce((sum, c) => sum + c.commissionTotal, 0) +
+      liveRows.reduce((sum, r) => sum + r.commissionTotal, 0);
 
     // 3. Advances / sulafeh (amount > 0, reason does not start with "خصم" or "جزاء")
     const totalAdvances = monthWithdrawals
@@ -136,7 +181,9 @@ export function WorkerDetailPage() {
     const netDue = totalBase + totalCommissions + Math.round(monthWithdrawals.reduce((sum, w) => sum - w.amount, 0));
 
     // Performance indicators
-    const totalCars = monthClosures.reduce((sum, c) => sum + c.carsCount, 0);
+    const totalCars =
+      monthClosures.reduce((sum, c) => sum + c.carsCount, 0) +
+      liveRows.reduce((sum, r) => sum + r.carsCount, 0);
 
     return {
       totalBase: piastresToEgp(totalBase),
@@ -147,7 +194,7 @@ export function WorkerDetailPage() {
       netDue: piastresToEgp(netDue),
       totalCars,
     };
-  }, [monthClosures, monthWithdrawals]);
+  }, [monthClosures, monthWithdrawals, liveRows]);
 
   // Handles adding transaction (advance, deduction, bonus)
   async function handleAddTxn() {
