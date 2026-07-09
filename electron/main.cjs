@@ -1360,12 +1360,8 @@ function buildInvoiceReceiptHtml(invoice, settings) {
       <div class="muted small">${escapeHtml(formatReceiptDateTime(invoice.finalizedAt || invoice.date))}</div>
     </div>
     <div class="divider"></div>
-    ${invoice.vehicleLabel
-      ? `<div class="row-pair">
-          <div class="pair-col"><span class="muted small">العميل</span><br><strong>${escapeHtml(invoice.customerName)}</strong></div>
-          <div class="pair-col"><span class="muted small">السيارة</span><br><strong>${escapeHtml(invoice.vehicleLabel)}</strong></div>
-        </div>`
-      : `<div class="row"><span>العميل</span><strong>${escapeHtml(invoice.customerName)}</strong></div>`}
+    <div class="row"><span>العميل</span><strong>${escapeHtml(invoice.customerName)}</strong></div>
+    ${invoice.vehicleLabel ? `<div class="row"><span>السيارة</span><strong>${escapeHtml(invoice.vehicleLabel)}</strong></div>` : ""}
     ${invoice.driverName ? `<div class="row"><span>السائق</span><strong>${escapeHtml(invoice.driverName)}</strong></div>` : ""}
     <div class="divider"></div>
     <table>
