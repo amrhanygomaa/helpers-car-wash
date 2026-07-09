@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowRight, MessageCircle, Printer, Trash2 } from "lucide-react";
+import { ArrowRight, Printer, Trash2 } from "lucide-react";
 import { PageHeader } from "../components/layout/AppLayout";
 import { Card, CardBody, CardHeader } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -78,29 +78,6 @@ export function SalesInvoiceDetailPage() {
             >
               <Printer className="w-4 h-4" /> طباعة
             </Button>
-            {customer?.phone ? (
-              <Button
-                variant="outline"
-                onClick={() => {
-                  const phone = String(customer.phone ?? "").replace(/\D/g, "");
-                  const normalized = phone.startsWith("0") ? `20${phone.slice(1)}` : phone;
-                  const msg = [
-                    `مرحباً ${inv.customerName}،`,
-                    ``,
-                    `تفاصيل فاتورة الغسيل رقم *${inv.invoiceNumber}*:`,
-                    `📅 التاريخ: ${formatDate(inv.date)}`,
-                    `💰 الإجمالي: ${formatCurrency(inv.total, settings.currency)}`,
-                    inv.remaining > 0 ? `⏳ المتبقي: ${formatCurrency(inv.remaining, settings.currency)}` : `✅ الفاتورة مكتملة بالكامل`,
-                    ``,
-                    settings.companyNameAr || settings.companyName,
-                  ].join("\n");
-                  const href = `https://wa.me/${normalized}?text=${encodeURIComponent(msg)}`;
-                  window.open(href, "_blank");
-                }}
-              >
-                <MessageCircle className="w-4 h-4" /> واتساب
-              </Button>
-            ) : null}
             {canDeleteSales ? (
               <Button variant="danger" onClick={() => setDelOpen(true)}>
                 <Trash2 className="w-4 h-4" /> حذف
