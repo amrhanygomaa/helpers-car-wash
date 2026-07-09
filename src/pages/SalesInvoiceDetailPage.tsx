@@ -93,7 +93,7 @@ export function SalesInvoiceDetailPage() {
                     `تفاصيل فاتورة الغسيل رقم *${inv.invoiceNumber}*:`,
                     `📅 التاريخ: ${formatDate(inv.date)}`,
                     `💰 الإجمالي: ${formatCurrency(inv.total, settings.currency)}`,
-                    inv.remaining > 0 ? `⏳ المتبقي: ${formatCurrency(inv.remaining, settings.currency)}` : `✅ الفاتورة مسددة بالكامل`,
+                    inv.remaining > 0 ? `⏳ المتبقي: ${formatCurrency(inv.remaining, settings.currency)}` : `✅ الفاتورة مكتملة بالكامل`,
                     ``,
                     settings.companyNameAr || settings.companyName,
                   ].join("\n");
@@ -143,7 +143,7 @@ export function SalesInvoiceDetailPage() {
         ) : null}
         <Stat
           label="الحالة"
-          value={inv.cancelled ? "ملغاة" : "مسددة"}
+          value={inv.cancelled ? "ملغاة" : "مكتملة"}
           tone={inv.cancelled ? "slate" : "green"}
         />
       </div>

@@ -50,6 +50,8 @@ export const seedSettings: Settings = {
   loyaltyEnabled: false,
   loyaltyEgpPerPoint: 10,
   loyaltyPointValue: 1,
+  ownerName: "",
+  ownerPhone: "",
   // Car-wash profile for the Top Gear build: the operator sees a pure
   // car-wash system. Legacy warehouse screens stay hidden; car-wash products
   // and raw materials have their own pages under "غسيل السيارات".

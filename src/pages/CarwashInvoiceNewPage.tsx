@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { AlertTriangle, ArrowRight, Plus, Save, Trash2 } from "lucide-react";
+import { AlertTriangle, ArrowRight, Plus, Save, Trash2, Search, ChevronDown, ChevronUp } from "lucide-react";
 import { PageHeader } from "../components/layout/AppLayout";
 import { Card, CardBody, CardHeader } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -49,13 +49,15 @@ interface ProductLineDraft {
   price: number; // EGP decimal (from piastresToEgp(product.salePrice))
 }
 
-function nextInvoiceNumber(existing: string[]): string {
+function nextInvoiceNumber(existing: string[], prefix: "INV" | "PRD"): string {
   const nums = existing
+    .filter((x) => x.startsWith(prefix))
     .map((x) => parseInt(x.replace(/\D/g, ""), 10))
     .filter((n) => !Number.isNaN(n));
   const currentMax = nums.length ? Math.max(...nums) : 1000;
-  const storedMax = parseInt(localStorage.getItem("seq_sales_invoice") || "0", 10);
-  return `INV-${Math.max(currentMax, storedMax) + 1}`;
+  const localStorageKey = prefix === "PRD" ? "seq_sales_invoice_prd" : "seq_sales_invoice";
+  const storedMax = parseInt(localStorage.getItem(localStorageKey) || "0", 10);
+  return `${prefix}-${Math.max(currentMax, storedMax) + 1}`;
 }
 
 const PAYMENT_METHODS: { value: PaymentMethod; label: string }[] = [
@@ -66,7 +68,7 @@ const PAYMENT_METHODS: { value: PaymentMethod; label: string }[] = [
   { value: "other", label: "أخرى" },
 ];
 
-export function CarwashInvoiceNewPage() {
+export function CarwashInvoiceNewPageContent() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const queueId = params.get("queue") ?? "";
@@ -97,44 +99,124 @@ export function CarwashInvoiceNewPage() {
     }
   }, []);
 
-  const [invoiceNumber] = useState(() => nextInvoiceNumber(salesInvoices.map((s) => s.invoiceNumber)));
+  const draftKey = productOnly ? "draft_invoice_products" : "draft_invoice_wash";
+
+  const getDraft = () => {
+    try {
+      const stored = localStorage.getItem(draftKey);
+      if (stored) return JSON.parse(stored);
+    } catch (e) {}
+    return null;
+  };
+
+  const [invoiceNumber] = useState(() =>
+    nextInvoiceNumber(
+      salesInvoices.map((s) => s.invoiceNumber),
+      productOnly ? "PRD" : "INV"
+    )
+  );
   const [date] = useState(todayISO());
   const [customerId, setCustomerId] = useState(() => {
     if (ticket?.customerId) return ticket.customerId;
     if (customerParam && customers.some((customer) => customer.id === customerParam)) return customerParam;
+    const draft = getDraft();
+    if (draft && draft.customerId) return draft.customerId;
     return "";
   });
-  const [vehicleId, setVehicleId] = useState(() => ticket?.vehicleId ?? "");
+  const [vehicleId, setVehicleId] = useState(() => {
+    if (ticket?.vehicleId) return ticket.vehicleId;
+    const draft = getDraft();
+    if (draft && draft.vehicleId) return draft.vehicleId;
+    return "";
+  });
   const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
   const [vehicleDialogOpen, setVehicleDialogOpen] = useState(false);
+  const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const [lines, setLines] = useState<ServiceLineDraft[]>(() => {
     if (productOnly) return [];
-    const selectedIds = ticket?.serviceIds?.filter((id) => activeServices.some((s) => s.id === id)) ?? [];
-    return selectedIds.map((serviceId) => {
-      const service = activeServices.find((s) => s.id === serviceId)!;
-      return { id: uid("ln"), serviceId, quantity: 1, price: service.defaultPrice, commission: 0, workers: [] };
-    });
+    if (ticket) {
+      const selectedIds = ticket.serviceIds?.filter((id) => activeServices.some((s) => s.id === id)) ?? [];
+      return selectedIds.map((serviceId) => {
+        const service = activeServices.find((s) => s.id === serviceId)!;
+        return { id: uid("ln"), serviceId, quantity: 1, price: service.defaultPrice, commission: 0, workers: [] };
+      });
+    }
+    const draft = getDraft();
+    if (draft && Array.isArray(draft.lines)) return draft.lines;
+    return [];
   });
 
-  const [productLines, setProductLines] = useState<ProductLineDraft[]>([]);
-  const [invoiceWorkerId, setInvoiceWorkerId] = useState("");
+  const [productLines, setProductLines] = useState<ProductLineDraft[]>(() => {
+    const draft = getDraft();
+    if (draft && Array.isArray(draft.productLines)) return draft.productLines;
+    return [];
+  });
+  const [invoiceWorkerId, setInvoiceWorkerId] = useState(() => {
+    const draft = getDraft();
+    if (draft && draft.invoiceWorkerId) return draft.invoiceWorkerId;
+    return "";
+  });
 
   useEffect(() => {
-    if (!productOnly || productLines.length > 0 || dbProducts.length === 0) return;
+    if (!productOnly || dbProducts.length === 0) return;
+    const hasStoredDraft = !!localStorage.getItem(draftKey);
+    if (hasStoredDraft || productLines.length > 0) return;
     const prod = dbProducts[0];
     setProductLines([{ id: uid("pln"), productId: prod.id, quantity: 1, price: piastresToEgp(prod.salePrice) }]);
-  }, [dbProducts, productLines.length, productOnly]);
+  }, [dbProducts, productLines.length, productOnly, draftKey]);
 
-
-  const [notes, setNotes] = useState("");
+  const [notes, setNotes] = useState(() => {
+    const draft = getDraft();
+    if (draft && draft.notes) return draft.notes;
+    return "";
+  });
   const [redeemPoints, setRedeemPoints] = useState(0);
   const [usableSubs, setUsableSubs] = useState<CustomerSubscription[]>([]);
   const [useSubscriptionId, setUseSubscriptionId] = useState("");
-  const [paymentType, setPaymentType] = useState<SalesPaymentType>("cash");
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
-  const [amountReceived, setAmountReceived] = useState<number>(0);
+  const [paymentType, setPaymentType] = useState<SalesPaymentType>(() => {
+    const draft = getDraft();
+    if (draft && draft.paymentType) return draft.paymentType;
+    return "cash";
+  });
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(() => {
+    const draft = getDraft();
+    if (draft && draft.paymentMethod) return draft.paymentMethod;
+    return "cash";
+  });
+  const [amountReceived, setAmountReceived] = useState<number>(() => {
+    const draft = getDraft();
+    if (draft && typeof draft.amountReceived === "number") return draft.amountReceived;
+    return 0;
+  });
   const [paymentDueDate, setPaymentDueDate] = useState("");
+
+  useEffect(() => {
+    const draft = {
+      customerId,
+      vehicleId,
+      lines,
+      productLines,
+      invoiceWorkerId,
+      notes,
+      paymentType,
+      paymentMethod,
+      amountReceived,
+    };
+    localStorage.setItem(draftKey, JSON.stringify(draft));
+  }, [
+    draftKey,
+    customerId,
+    vehicleId,
+    lines,
+    productLines,
+    invoiceWorkerId,
+    notes,
+    paymentType,
+    paymentMethod,
+    amountReceived,
+  ]);
 
   const customerVehicles = useMemo(
     () => vehicles.filter((v) => v.customerId === customerId && !v.archived),
@@ -382,8 +464,9 @@ export function CarwashInvoiceNewPage() {
 
     const issuedNum = parseInt(inv.invoiceNumber.replace(/\D/g, ""), 10);
     if (!Number.isNaN(issuedNum)) {
-      const storedMax = parseInt(localStorage.getItem("seq_sales_invoice") || "0", 10);
-      localStorage.setItem("seq_sales_invoice", Math.max(storedMax, issuedNum).toString());
+      const localStorageKey = productOnly ? "seq_sales_invoice_prd" : "seq_sales_invoice";
+      const storedMax = parseInt(localStorage.getItem(localStorageKey) || "0", 10);
+      localStorage.setItem(localStorageKey, Math.max(storedMax, issuedNum).toString());
     }
 
     // Decrement product stock (FR-PROD-3)
@@ -457,6 +540,7 @@ export function CarwashInvoiceNewPage() {
       toast.error("تعذر فتح الطباعة", "تأكد من إعدادات الطابعة وحاول مرة أخرى");
     }
 
+    localStorage.removeItem(draftKey);
     toast.success(productOnly ? "تم تأكيد فاتورة المنتجات" : "تم تأكيد فاتورة الغسيل", `رقم ${inv.invoiceNumber}`);
     navigate(`/sales/${inv.id}`);
   }
@@ -711,11 +795,12 @@ export function CarwashInvoiceNewPage() {
               </Button>
             }
           />
-          <CardBody className="p-0">
-            <Table>
+          <CardBody className="p-0 overflow-visible">
+            <Table overflowVisible>
               <THead>
                 <TR>
                   <TH>الإضافة</TH>
+                  <TH className="w-32">الكمية المتاحة</TH>
                   <TH className="w-20">الكمية</TH>
                   <TH className="w-32">سعر البيع</TH>
                   <TH className="w-32 text-end">الإجمالي</TH>
@@ -735,25 +820,104 @@ export function CarwashInvoiceNewPage() {
                     const stockWarning = prod && prod.stockQty < l.quantity;
                     return (
                       <TR key={l.id}>
-                        <TD>
-                          <Select aria-label="المنتج" title="المنتج" value={l.productId} onChange={(e) => onProductChange(l.id, e.target.value)}>
-                            {dbProducts.map((p) => (
-                              <option key={p.id} value={p.id}>{p.name}</option>
-                            ))}
-                          </Select>
+                        <TD className="relative overflow-visible">
+                          <div className="relative w-full">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (openDropdownId === l.id) {
+                                  setOpenDropdownId(null);
+                                } else {
+                                  setOpenDropdownId(l.id);
+                                  setSearchQuery("");
+                                }
+                              }}
+                              className="flex items-center justify-between w-full px-3 py-2 text-sm text-right bg-white border border-slate-200 rounded-lg hover:border-slate-300 focus:outline-none focus:ring-1 focus:ring-slate-400 focus:border-slate-400 transition-all shadow-sm min-w-[280px]"
+                            >
+                              <span className="truncate font-medium">
+                                {prod ? prod.name : "اختر منتج..."}
+                              </span>
+                              {openDropdownId === l.id ? (
+                                <ChevronUp className="w-4 h-4 text-slate-400 mr-2 shrink-0" />
+                              ) : (
+                                <ChevronDown className="w-4 h-4 text-slate-400 mr-2 shrink-0" />
+                              )}
+                            </button>
+
+                            {openDropdownId === l.id && (
+                              <>
+                                <div
+                                  className="fixed inset-0 z-10"
+                                  onClick={() => setOpenDropdownId(null)}
+                                />
+                                <div className="absolute right-0 top-full mt-1.5 w-full min-w-[320px] bg-slate-50 border border-slate-300 rounded-xl shadow-xl z-20 flex flex-col overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150">
+                                  <div className="flex items-center px-3 py-2 border-b border-slate-200 bg-white">
+                                    <Search className="w-4 h-4 text-slate-400 ml-2 shrink-0" />
+                                    <input
+                                      type="text"
+                                      value={searchQuery}
+                                      onChange={(e) => setSearchQuery(e.target.value)}
+                                      placeholder="بحث عن منتج..."
+                                      className="w-full bg-transparent border-0 p-0 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-0 focus:border-0"
+                                      autoFocus
+                                    />
+                                  </div>
+                                  <div className="max-h-56 overflow-y-auto p-2 space-y-1.5 bg-slate-50">
+                                    {dbProducts
+                                      .filter((p) =>
+                                        p.name.toLowerCase().includes(searchQuery.toLowerCase())
+                                      )
+                                      .map((p) => {
+                                        const isOutOfStock = p.stockQty <= 0;
+                                        return (
+                                          <button
+                                            key={p.id}
+                                            type="button"
+                                            disabled={isOutOfStock}
+                                            onClick={() => {
+                                              onProductChange(l.id, p.id);
+                                              setOpenDropdownId(null);
+                                            }}
+                                            className={`flex items-center justify-between w-full px-3 py-2 text-right text-sm rounded-lg border transition-all shadow-sm ${
+                                              isOutOfStock
+                                                ? "text-slate-400 bg-slate-100 border-slate-200 cursor-not-allowed"
+                                                : l.productId === p.id
+                                                ? "bg-slate-200 border-slate-300 font-semibold text-slate-900"
+                                                : "bg-white border-slate-200/80 text-slate-700 hover:bg-slate-100/80 hover:text-slate-900 hover:border-slate-300 active:bg-slate-200"
+                                            }`}
+                                          >
+                                            <span className="truncate">{p.name}</span>
+                                            <span className={`text-xs mr-2 shrink-0 ${isOutOfStock ? "text-rose-500 font-semibold" : "text-slate-400"}`}>
+                                              {isOutOfStock ? "نفد" : `المتاح: ${p.stockQty}`}
+                                            </span>
+                                          </button>
+                                        );
+                                      })}
+                                    {dbProducts.filter((p) =>
+                                      p.name.toLowerCase().includes(searchQuery.toLowerCase())
+                                    ).length === 0 && (
+                                      <div className="text-center py-4 text-xs text-slate-400 bg-white border border-slate-200 rounded-lg">
+                                        لا توجد منتجات مطابقة للبحث
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </>
+                            )}
+                          </div>
                         </TD>
-                        <TD className="hidden">
-                          <span className={stockWarning ? "text-amber-700 font-bold flex items-center gap-1" : "text-slate-600"}>
-                            {stockWarning && <AlertTriangle className="w-3.5 h-3.5" />}
-                            {prod?.stockQty ?? "—"}
+                        <TD>
+                          <span className={stockWarning ? "text-rose-600 font-bold flex items-center gap-1 text-sm" : "text-slate-600 font-medium text-sm"}>
+                            {stockWarning && <AlertTriangle className="w-4 h-4 shrink-0" />}
+                            {prod?.stockQty ?? 0}
                           </span>
                         </TD>
                         <TD>
                           <Input type="number" min={1} value={l.quantity}
                             onChange={(e) => updateProductLine(l.id, { quantity: Number(e.target.value) })} />
                         </TD>
-                        <TD>
-                          <Input type="number" min={0} step="0.01" value={l.price} readOnly className="bg-slate-50 text-slate-600" />
+                        <TD className="text-slate-700 font-medium py-3">
+                          {formatCurrency(l.price, settings.currency)}
                         </TD>
                         <TD className="text-end font-medium">
                           {formatCurrency(l.price * l.quantity, settings.currency)}
@@ -883,4 +1047,13 @@ export function CarwashInvoiceNewPage() {
       />
     </>
   );
+}
+
+export function CarwashInvoiceNewPage() {
+  const [params] = useSearchParams();
+  const type = params.get("type") || "wash";
+  const queue = params.get("queue") || "";
+  const customerId = params.get("customerId") || "";
+  const componentKey = `${type}-${queue}-${customerId}`;
+  return <CarwashInvoiceNewPageContent key={componentKey} />;
 }

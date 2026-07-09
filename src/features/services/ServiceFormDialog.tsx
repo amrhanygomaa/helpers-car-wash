@@ -66,7 +66,7 @@ export function ServiceFormDialog({
   function addMaterialRow() {
     const firstMaterial = dbMaterials[0];
     if (!firstMaterial) {
-      toast.error("لا توجد خامات في المخزون لربطها — أضف خامات من صفحة خامات الغسيل");
+      toast.error("لا توجد خامات في المخزون لربطها — أضف خامات من صفحة خامات المغسلة");
       return;
     }
     const row: ServiceMaterial = { id: uid("mat"), materialId: firstMaterial.id, quantity: 1 };
@@ -218,7 +218,7 @@ export function ServiceFormDialog({
           </div>
           {dbMaterials.length === 0 ? (
             <div className="text-xs text-slate-400 border border-dashed border-slate-200 rounded-lg p-3 text-center">
-              لا توجد خامات في المخزون — أضف الشامبو والواكس وغيرها من صفحة "خامات الغسيل" أولاً.
+              لا توجد خامات في المخزون — أضف الشامبو والواكس وغيرها من صفحة "خامات المغسلة" أولاً.
             </div>
           ) : materials.length === 0 ? (
             <div className="text-xs text-slate-400 border border-dashed border-slate-200 rounded-lg p-3 text-center">

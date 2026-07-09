@@ -59,7 +59,7 @@ const GROUPS: NavGroup[] = [
       { to: "/queue", label: "طابور الغسيل", icon: ListChecks, permission: "queue", feature: "carwashQueue" },
       { to: "/carwash/new", label: "فاتورة غسيل جديدة", icon: Receipt, permission: "salesInvoices", feature: "washServices" },
       { to: "/carwash/new?type=products", label: "فاتورة منتجات جديدة", icon: Receipt, permission: "salesInvoices", feature: "washServices" },
-      { to: "/sales", label: "فواتير الغسيل", icon: FileStack, permission: "salesInvoices", feature: "salesInvoices" },
+      { to: "/sales", label: "الفواتير", icon: FileStack, permission: "salesInvoices", feature: "salesInvoices" },
     ],
   },
   {
@@ -68,7 +68,7 @@ const GROUPS: NavGroup[] = [
     items: [
       { to: "/services", label: "خدمات الغسيل", icon: Sparkles, permission: "washServices", feature: "washServices" },
       { to: "/carwash/products", label: "المنتجات", icon: Package, permissionKey: "products.view", feature: "washServices" },
-      { to: "/carwash/materials", label: "خامات الغسيل", icon: Warehouse, permissionKey: "materials.view", feature: "washServices" },
+      { to: "/carwash/materials", label: "خامات المغسلة", icon: Warehouse, permissionKey: "materials.view", feature: "washServices" },
     ],
   },
   {
@@ -85,14 +85,14 @@ const GROUPS: NavGroup[] = [
       { to: "/cashbox", label: "الخزينة", icon: Wallet, permission: "cashbox", feature: "cashbox" },
       { to: "/cashbox/shift", label: "وردية الخزنة", icon: DoorClosed, permission: "cashbox", feature: "cashbox" },
       { to: "/workers", label: "الصنايعية", icon: Users, permissionKey: "payroll.manage" },
-      { to: "/payroll/day-close", label: "قفلة اليوم", icon: ClipboardList, permissionKey: "payroll.manage" },
+      { to: "/payroll/day-close", label: "تقفيل اليوم", icon: ClipboardList, permissionKey: "payroll.manage" },
     ],
   },
   {
     id: "reports",
     label: "التقارير",
     items: [
-      { to: "/carwash/reports", label: "تقارير الغسيل", icon: BarChart3, permission: "reports", feature: "washServices" },
+      { to: "/carwash/reports", label: "تقارير المغسلة", icon: BarChart3, permission: "reports", feature: "washServices" },
       { to: "/reports/end-of-day", label: "تقرير نهاية اليوم", icon: CalendarDays, permission: "reports", feature: "reports" },
     ],
   },
@@ -101,7 +101,7 @@ const GROUPS: NavGroup[] = [
     label: "الإدارة",
     items: [
       { to: "/users", label: "المستخدمين", icon: Users, ownerOnly: true },
-      { to: "/audit-log", label: "سجل التدقيق", icon: Shield, ownerOnly: true },
+      { to: "/audit-log", label: "سجل النشاط", icon: Shield, ownerOnly: true },
       { to: "/settings", label: "الإعدادات", icon: Settings, permissionKey: "settings.manage" },
     ],
   },

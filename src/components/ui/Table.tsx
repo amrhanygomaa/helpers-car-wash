@@ -1,9 +1,24 @@
 import type { HTMLAttributes, ReactNode, TdHTMLAttributes, ThHTMLAttributes } from "react";
 import { cn } from "../../lib/utils";
 
-export function Table({ className, children, ...props }: HTMLAttributes<HTMLTableElement>) {
+export function Table({
+  className,
+  wrapperClassName,
+  overflowVisible,
+  children,
+  ...props
+}: HTMLAttributes<HTMLTableElement> & {
+  wrapperClassName?: string;
+  overflowVisible?: boolean;
+}) {
   return (
-    <div className="w-full overflow-x-auto">
+    <div
+      className={cn(
+        "w-full",
+        overflowVisible ? "overflow-visible" : "overflow-x-auto",
+        wrapperClassName
+      )}
+    >
       <table
         className={cn("w-full text-sm border-collapse", className)}
         {...props}

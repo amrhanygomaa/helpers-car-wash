@@ -19,7 +19,7 @@ import { useSettings } from "../store/SettingsContext";
 import { useUsers } from "../store/UsersContext";
 import { BRANDING } from "../branding";
 import { Button } from "../components/ui/Button";
-import { Field, Input, Select } from "../components/ui/Input";
+import { Field, Input } from "../components/ui/Input";
 import { useToast } from "../components/ui/Toast";
 import { hashPassword } from "../lib/auth";
 import {
@@ -81,6 +81,8 @@ export function FirstRunSetupPage() {
   const [username, setUsername] = useState("admin");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [ownerName, setOwnerName] = useState("");
+  const [ownerPhone, setOwnerPhone] = useState("");
 
   // Step 2 — company (pre-filled from per-client branding when present)
   const [companyNameAr, setCompanyNameAr] = useState(BRANDING.companyNameAr);
@@ -89,7 +91,7 @@ export function FirstRunSetupPage() {
 
   // Step 3 — financial
   const [openingBalance, setOpeningBalance] = useState(0);
-  const [paymentTermDays, setPaymentTermDays] = useState(7);
+  const [paymentTermDays] = useState(7);
   const [lowStockThreshold, setLowStockThreshold] = useState(10);
 
   // Step 4 — folders
@@ -119,8 +121,10 @@ export function FirstRunSetupPage() {
   function validateStep(s: number): string | null {
     if (s === 0) {
       if (!username.trim()) return "اسم الدخول مطلوب";
-      if (password.length < 4) return "PIN يجب ألا يقل عن 4 أرقام";
-      if (password !== confirmPassword) return "رقما PIN غير متطابقين";
+      if (password.length < 4) return "كلمة المرور يجب ألا تقل عن 4 أرقام";
+      if (password !== confirmPassword) return "كلمتا المرور غير متطابقتين";
+      if (!ownerName.trim()) return "اسم المالك مطلوب";
+      if (!ownerPhone.trim()) return "رقم واتساب المالك مطلوب";
     }
     if (s === 1) {
       if (!companyNameAr.trim()) return "اسم المغسلة بالعربية مطلوب";
@@ -201,6 +205,8 @@ export function FirstRunSetupPage() {
       lowStockThreshold: Math.max(0, lowStockThreshold),
       backupPath: backupPath.trim(),
       invoicesSavePath: invoicesSavePath.trim(),
+      ownerName: ownerName.trim(),
+      ownerPhone: ownerPhone.trim(),
     });
 
     if (includeEmployee) {
@@ -226,7 +232,7 @@ export function FirstRunSetupPage() {
   const ActiveIcon = STEPS[step].icon;
 
   return (
-    <div className="min-h-screen grid md:grid-cols-2 bg-slate-50" dir="rtl">
+    <div className="min-h-screen grid md:grid-cols-2 bg-slate-100" dir="rtl">
       {showWelcome && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-gradient-to-br from-brand-700 via-brand-800 to-brand-900 text-white overflow-hidden">
           <style
@@ -383,21 +389,29 @@ export function FirstRunSetupPage() {
           <div className="space-y-4 min-h-[280px]">
             {step === 0 && (
               <>
-                <Field label="اسم الدخول" required>
+                <div className="text-right leading-relaxed bg-brand-50 border border-brand-200 rounded-xl p-3 text-xs text-brand-800 space-y-1.5" dir="rtl">
+                  🔒 <strong>تنبيه أمني هام:</strong>
+                  <p>رقم الواتساب المسجل هنا هو الرقم المعتمد لدى الدعم الفني لاستعادة كلمة المرور أو تحديث الترخيص. لن يتم إرسال أكواد استعادة إلا من خلال هذا الرقم لحماية بياناتك من السرقة.</p>
+                </div>
+                <Field label="اسم المالك الكامل" required>
+                  <Input value={ownerName} onChange={(e) => setOwnerName(e.target.value)} placeholder="مثال: محمد أحمد علي" />
+                </Field>
+                <Field label="رقم واتساب المالك" required hint="يستخدم للتواصل مع الدعم وتأكيد الهوية">
+                  <Input value={ownerPhone} onChange={(e) => setOwnerPhone(e.target.value)} placeholder="مثال: +201118445625" />
+                </Field>
+                <Field label="اسم دخول المدير" required>
                   <Input value={username} onChange={(e) => setUsername(e.target.value)} />
                 </Field>
-                <Field label="PIN المدير" required hint="4 أرقام على الأقل">
+                <Field label="كلمة مرور المدير" required hint="4 أرقام أو أحرف على الأقل">
                   <Input
                     type="password"
-                    inputMode="numeric"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                   />
                 </Field>
-                <Field label="تأكيد PIN" required>
+                <Field label="تأكيد كلمة المرور" required>
                   <Input
                     type="password"
-                    inputMode="numeric"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                   />
@@ -511,21 +525,6 @@ export function FirstRunSetupPage() {
                     value={lowStockThreshold}
                     onChange={(e) => setLowStockThreshold(Number(e.target.value))}
                   />
-                </Field>
-                <Field
-                  label="مدة تنبيه تأخر السداد"
-                  hint="المدة التي تُعتبر بعدها فاتورة العميل الآجلة متأخرة"
-                >
-                  <Select
-                    value={String(paymentTermDays)}
-                    onChange={(e) => setPaymentTermDays(Number(e.target.value))}
-                  >
-                    <option value="7">أسبوع (7 أيام)</option>
-                    <option value="14">أسبوعين (14 يوم)</option>
-                    <option value="30">شهر (30 يوم)</option>
-                    <option value="60">شهرين (60 يوم)</option>
-                    <option value="90">3 شهور (90 يوم)</option>
-                  </Select>
                 </Field>
               </>
             )}

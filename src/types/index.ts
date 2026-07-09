@@ -560,6 +560,9 @@ export interface Settings {
   loyaltyEgpPerPoint?: number;
   /** Redemption value: each point is worth this many EGP off a future invoice. */
   loyaltyPointValue?: number;
+  /** Registered owner details for verification and security */
+  ownerName?: string;
+  ownerPhone?: string;
   /**
    * Owner-controlled per-module visibility. Keys are FeatureKey (see
    * lib/features.ts). Missing key ⇒ that module's default state. This is the

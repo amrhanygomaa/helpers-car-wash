@@ -1,16 +1,19 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
-import { Boxes, Eye, EyeOff, MessageCircle, ShieldCheck } from "lucide-react";
+import { Boxes, Eye, EyeOff, MessageCircle } from "lucide-react";
 import { useAuth } from "../store/AuthContext";
 import { Button } from "../components/ui/Button";
 import { Field, Input } from "../components/ui/Input";
 import { useToast } from "../components/ui/Toast";
+import { Dialog } from "../components/ui/Dialog";
+import { useSettings } from "../store/SettingsContext";
 import type { LoginResult } from "../types";
 
 export function LoginPage() {
-  const { login, devLogin } = useAuth();
+  const { login } = useAuth();
   const navigate = useNavigate();
   const toast = useToast();
+  const { settings } = useSettings();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -23,6 +26,11 @@ export function LoginPage() {
   const [machineCode, setMachineCode] = useState("");
   const [lockRemaining, setLockRemaining] = useState(0);
   const [showPassword, setShowPassword] = useState(false);
+  const [failedAttempts, setFailedAttempts] = useState(0);
+  const [showPaidNotice, setShowPaidNotice] = useState(false);
+  const [showFreeNotice, setShowFreeNotice] = useState(false);
+  const [daysRemaining, setDaysRemaining] = useState(0);
+  const [verifyPhone, setVerifyPhone] = useState("");
   const submitInFlight = useRef(false);
 
   useEffect(() => {
@@ -73,29 +81,14 @@ export function LoginPage() {
         result.attemptsRemaining !== undefined
           ? `المتبقي قبل القفل: ${result.attemptsRemaining} محاولات.`
           : "بعد 5 محاولات فاشلة سيتم قفل الحساب لمدة دقيقة.";
-      toast.error("فشل تسجيل الدخول", `اسم الدخول أو الـ PIN غير صحيح. ${attemptsText}`);
+      toast.error("فشل تسجيل الدخول", `اسم الدخول أو كلمة المرور غير صحيحة. ${attemptsText}`);
     }
+    setFailedAttempts((prev) => prev + 1);
     submitInFlight.current = false;
     setSubmitting(false);
   }
 
-  async function onDevLogin() {
-    if (!devLogin) return;
-    setSubmitting(true);
-    try {
-      const result = await devLogin();
-      if (result.ok) {
-        toast.success("تم تسجيل الدخول السريع (مطور)");
-        navigate("/", { replace: true });
-      } else {
-        toast.error("فشل تسجيل الدخول السريع", result.error || "خطأ غير معروف");
-      }
-    } catch (e: any) {
-      toast.error("حدث خطأ أثناء تسجيل الدخول السريع", e.message || String(e));
-    } finally {
-      setSubmitting(false);
-    }
-  }
+
 
   async function resetOwnerPassword() {
     if (!window.desktopAPI?.auth) return;
@@ -123,12 +116,24 @@ export function LoginPage() {
         machine_mismatch: "الكود صادر لجهاز مختلف. استخدم كود الجهاز الظاهر في هذه الشاشة.",
         support_code_expired: "كود الدعم منتهي الصلاحية. ولّد كود دعم جديد.",
         owner_missing: "لا يوجد مدير مسجل على هذا الجهاز.",
-        invalid_input: "اسم المدير والـ PIN الجديد مطلوبان.",
+        invalid_input: "اسم المدير وكلمة المرور الجديدة مطلوبان.",
         rate_limited: `محاولات كثيرة غير صحيحة. حاول مرة أخرى بعد ${result.remainSeconds ?? 600} ثانية.`,
       };
       toast.error("فشل كود الدعم", messages[result.error ?? "invalid_support_code"]);
     }
   }
+
+  const checkFreeRequestLimit = () => {
+    const savedStr = localStorage.getItem("freeSupportRequestDate");
+    if (!savedStr) return { used: false, daysLeft: 0 };
+    const savedTime = parseInt(savedStr, 10);
+    if (isNaN(savedTime)) return { used: false, daysLeft: 0 };
+    const daysElapsed = (Date.now() - savedTime) / (1000 * 60 * 60 * 24);
+    if (daysElapsed >= 45) {
+      return { used: false, daysLeft: 0 };
+    }
+    return { used: true, daysLeft: Math.ceil(45 - daysElapsed) };
+  };
 
   async function requestSupportCode() {
     setSupportCodeRequesting(true);
@@ -148,15 +153,78 @@ export function LoginPage() {
       setSupportCodeRequesting(false);
     }
 
-    const message = encodeURIComponent(
-      `مرحباً، نسيت كود الدعم الخاص باستعادة دخول المدير.\nكود الجهاز: ${currentMachineCode}\nاسم الدخول الحالي: ${username.trim() || "غير محدد"}`
-    );
+    const registeredPhone = settings?.ownerPhone?.trim();
+    if (registeredPhone) {
+      if (!verifyPhone.trim()) {
+        toast.error("رقم التحقق مطلوب", "يرجى إدخال رقم واتساب المالك للتحقق.");
+        return;
+      }
+      const cleanRegistered = registeredPhone.replace(/[^\d]/g, "");
+      const cleanVerify = verifyPhone.trim().replace(/[^\d]/g, "");
+      if (cleanVerify !== cleanRegistered) {
+        toast.error(
+          "رقم غير مطابق",
+          "رقم واتساب المالك المدخل غير مطابق للرقم المسجل في النظام! يرجى إدخال الرقم الصحيح لحماية بيانات المحل."
+        );
+        return;
+      }
+    }
+
+    const { used, daysLeft } = checkFreeRequestLimit();
+    if (used) {
+      setDaysRemaining(daysLeft);
+      setShowPaidNotice(true);
+    } else {
+      setShowFreeNotice(true);
+    }
+  }
+
+  function proceedWithFreeRequest() {
+    setShowFreeNotice(false);
+    localStorage.setItem("freeSupportRequestDate", Date.now().toString());
+
+    const currentMachineCode = machineCode || "غير متاح";
+    const company = settings.companyNameAr || settings.companyName || "غير محدد";
+    const ownerName = settings.ownerName || "غير محدد";
+    const registeredPhone = settings.ownerPhone || "غير محدد";
+    const enteredPhone = verifyPhone.trim() || "غير محدد";
+
+    const text = `مرحباً، أود طلب كود الدعم المجاني الخاص باستعادة دخول المدير (مرة واحدة كل 45 يوم).
+بيانات التحقق والترخيص:
+- اسم المالك: ${ownerName}
+- اسم الشركة/المحل: ${company}
+- كود الجهاز: ${currentMachineCode}
+- رقم الواتساب المسجل: ${registeredPhone}
+- الرقم الذي يتم الإرسال منه: ${enteredPhone}
+- اسم الدخول الحالي: ${username.trim() || "غير محدد"}`;
+
+    const message = encodeURIComponent(text);
+    window.open(`https://wa.me/201118445625?text=${message}`, "_blank", "noopener,noreferrer");
+  }
+
+  function openPaidSupportWhatsApp() {
+    const currentMachineCode = machineCode || "غير متاح";
+    const company = settings.companyNameAr || settings.companyName || "غير محدد";
+    const ownerName = settings.ownerName || "غير محدد";
+    const registeredPhone = settings.ownerPhone || "غير محدد";
+    const enteredPhone = verifyPhone.trim() || "غير محدد";
+
+    const text = `مرحباً، أود الحصول على كود دعم مدفوع لاستعادة دخول المدير (لقد استنفدت المحاولة المجانية).
+بيانات التحقق والترخيص:
+- اسم المالك: ${ownerName}
+- اسم الشركة/المحل: ${company}
+- كود الجهاز: ${currentMachineCode}
+- رقم الواتساب المسجل: ${registeredPhone}
+- الرقم الذي يتم الإرسال منه: ${enteredPhone}
+- اسم الدخول الحالي: ${username.trim() || "غير محدد"}`;
+
+    const message = encodeURIComponent(text);
     window.open(`https://wa.me/201118445625?text=${message}`, "_blank", "noopener,noreferrer");
   }
 
   return (
     <div
-      className="min-h-screen grid md:grid-cols-2 bg-slate-50"
+      className="min-h-screen grid md:grid-cols-2 bg-slate-100"
       dir="rtl"
     >
       <div className="hidden md:flex relative bg-gradient-to-br from-brand-700 to-brand-900 text-white p-10 flex-col justify-between">
@@ -182,7 +250,7 @@ export function LoginPage() {
             <li>• استقبال السيارات وإدارة طابور الغسيل</li>
             <li>• فواتير خدمات سريعة وطباعة احترافية</li>
             <li>• تتبع الموظف المنفّذ لكل خدمة وعمولته</li>
-            <li>• خصم خامات الغسيل من المخزون تلقائياً</li>
+            <li>• خصم خامات المغسلة من المخزون تلقائياً</li>
           </ul>
         </div>
         <div className="text-xs text-white/60">
@@ -195,10 +263,6 @@ export function LoginPage() {
           onSubmit={onSubmit}
           className="w-full max-w-md bg-white border border-slate-200 rounded-2xl shadow-card p-6 space-y-5"
         >
-          <div className="flex items-center gap-2 text-brand-700">
-            <ShieldCheck className="w-5 h-5" />
-            <div className="text-sm font-medium">بوابة الدخول الآمنة</div>
-          </div>
           <div>
             <h1 className="text-2xl font-semibold text-slate-900">أهلاً بك مجدداً 👋</h1>
             <p className="text-sm text-slate-500 mt-1">
@@ -212,14 +276,13 @@ export function LoginPage() {
               placeholder="Login username"
             />
           </Field>
-          <Field label="PIN" required>
+          <Field label="كلمة المرور" required>
             <div className="relative">
               <Input
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="أدخل PIN"
+                placeholder="أدخل كلمة المرور"
                 type={showPassword ? "text" : "password"}
-                inputMode="numeric"
                 className="pl-10"
               />
               <button
@@ -244,18 +307,6 @@ export function LoginPage() {
               ? "جاري التحقق..."
               : "تسجيل الدخول"}
           </Button>
-          {import.meta.env.DEV && devLogin && (
-            <Button
-              type="button"
-              variant="outline"
-              size="lg"
-              className="w-full border-dashed border-amber-500 text-amber-600 hover:bg-amber-50"
-              onClick={onDevLogin}
-              disabled={submitting}
-            >
-              دخول سريع للمطور (Dev Login)
-            </Button>
-          )}
           {lockRemaining > 0 ? (
             <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
               تم قفل تسجيل الدخول مؤقتاً بسبب محاولات فاشلة كثيرة.
@@ -277,9 +328,13 @@ export function LoginPage() {
             <button
               type="button"
               onClick={() => setSupportOpen((v) => !v)}
-              className="w-full text-[11px] text-slate-400 hover:text-brand-700 transition-colors"
+              className={`w-full text-center transition-all ${
+                failedAttempts >= 2
+                  ? "text-sm font-bold text-rose-600 bg-rose-50 border border-rose-200 rounded-lg py-2.5 hover:bg-rose-100"
+                  : "text-xs text-slate-500 hover:text-brand-700 underline"
+              }`}
             >
-              استعادة دخول المدير بكود دعم مؤقت
+              نسيت بيانات الدخول؟ استعادة دخول المدير بكود دعم مؤقت
             </button>
           )}
           {supportOpen && (
@@ -301,6 +356,15 @@ export function LoginPage() {
                   </div>
                 </Field>
               ) : null}
+              {settings.ownerPhone ? (
+                <Field label="رقم واتساب المالك (للتحقق والأمان)" required hint="أدخل رقم المالك المسجل في إعدادات النظام للمتابعة">
+                  <Input
+                    value={verifyPhone}
+                    onChange={(e) => setVerifyPhone(e.target.value)}
+                    placeholder="مثال: +201118445625"
+                  />
+                </Field>
+              ) : null}
               <Field label="كود الدعم">
                 <Input
                   value={supportCode}
@@ -314,10 +378,9 @@ export function LoginPage() {
                   onChange={(e) => setSupportUsername(e.target.value)}
                 />
               </Field>
-              <Field label="PIN الجديد">
+              <Field label="كلمة المرور الجديدة">
                 <Input
                   type="password"
-                  inputMode="numeric"
                   value={supportPassword}
                   onChange={(e) => setSupportPassword(e.target.value)}
                 />
@@ -355,6 +418,63 @@ export function LoginPage() {
           </div>
         </footer>
       </div>
+
+      <Dialog
+        open={showFreeNotice}
+        onClose={() => setShowFreeNotice(false)}
+        title="💡 توضيح هام"
+      >
+        <div className="space-y-4 text-sm text-slate-700 leading-relaxed text-right" dir="rtl">
+          <p>
+            يحق لك طلب كود الدعم لاستعادة الحساب <strong>مرة واحدة مجاناً</strong>.
+          </p>
+          <p>
+            المحاولات المجانية تتجدد كل <strong>45 يوماً</strong>، والطلبات الإضافية خلال هذه الفترة تكون مدفوعة.
+          </p>
+          <div className="flex gap-2 justify-end pt-2">
+            <Button variant="outline" onClick={() => setShowFreeNotice(false)}>
+              إلغاء
+            </Button>
+            <Button onClick={proceedWithFreeRequest}>
+              طلب الكود المجاني ومتابعة للواتساب
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+
+      <Dialog
+        open={showPaidNotice}
+        onClose={() => setShowPaidNotice(false)}
+        title="⚠️ تنبيه استنفاد المحاولات"
+      >
+        <div className="space-y-4 text-sm text-slate-700 leading-relaxed text-right" dir="rtl">
+          <p>
+            لقد استنفدت محاولتك المجانية بالفعل (المحاولات المجانية تتجدد كل 45 يوم).
+          </p>
+          <p className="text-amber-700 font-semibold bg-amber-50 border border-amber-200 rounded-lg p-2.5 flex items-center justify-between">
+            <span>⏳ متبقي على التجديد المجاني:</span>
+            <strong>{daysRemaining} يوم</strong>
+          </p>
+          <p className="font-bold text-rose-600">
+            برجاء التواصل مع الدعم على الواتس لطلب الكود وإتمام عملية الدفع.
+          </p>
+          <div className="flex gap-2 justify-end pt-2">
+            <Button variant="outline" onClick={() => setShowPaidNotice(false)}>
+              إلغاء
+            </Button>
+            <Button
+              className="border-emerald-500 text-emerald-700 bg-emerald-50 hover:bg-emerald-100"
+              onClick={() => {
+                setShowPaidNotice(false);
+                openPaidSupportWhatsApp();
+              }}
+            >
+              <MessageCircle className="w-4 h-4 mr-2" />
+              تواصل للدفع واستلام الكود
+            </Button>
+          </div>
+        </div>
+      </Dialog>
     </div>
   );
 }

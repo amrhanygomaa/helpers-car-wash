@@ -59,12 +59,12 @@ export function Dialog({
       <div
         role="dialog"
         className={cn(
-          "relative w-full bg-white rounded-2xl shadow-xl border border-slate-200 animate-fadeIn flex flex-col max-h-[90vh]",
+          "relative w-full bg-slate-50 rounded-2xl shadow-xl border border-slate-200 animate-fadeIn flex flex-col max-h-[90vh]",
           widthClass
         )}
       >
         {title || subtitle ? (
-          <div className="flex items-start justify-between gap-4 p-4 border-b border-slate-100">
+          <div className="flex items-start justify-between gap-4 p-4 border-b border-slate-200/85">
             <div className="min-w-0 flex-1">
               {title ? (
                 <div className="font-semibold text-slate-900">{title}</div>
@@ -80,7 +80,7 @@ export function Dialog({
         ) : null}
         <div className="p-4 overflow-y-auto">{children}</div>
         {footer ? (
-          <div className="p-4 border-t border-slate-100 flex items-center justify-end gap-2">
+          <div className="p-4 border-t border-slate-200/85 flex items-center justify-end gap-2">
             {footer}
           </div>
         ) : null}

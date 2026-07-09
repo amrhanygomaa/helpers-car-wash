@@ -69,7 +69,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
   }, [settings.idleLockMinutes, isLocked, lockSession]);
 
   return (
-    <div className="h-screen overflow-hidden flex bg-slate-50" dir="rtl">
+    <div className="h-screen overflow-hidden flex bg-slate-100" dir="rtl">
       {isLocked && <LockScreen />}
       <div className="no-print">
         <Sidebar collapsed={sidebarCollapsed} />

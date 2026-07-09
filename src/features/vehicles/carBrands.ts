@@ -61,6 +61,30 @@ export const CAR_BRANDS: CarBrand[] = [
   { ar: "هافال", en: "Haval", logo: "haval" },
   { ar: "هوندا", en: "Honda", logo: "honda" },
   { ar: "هيونداي", en: "Hyundai", logo: "hyundai" },
+  // Additional brands seen on Egyptian roads.
+  { ar: "أبارث", en: "Abarth", logo: "abarth" },
+  { ar: "أستون مارتن", en: "Aston Martin", logo: "aston-martin" },
+  { ar: "أكورا", en: "Acura", logo: "acura" },
+  { ar: "إيفيكو", en: "Iveco", logo: "iveco" },
+  { ar: "بريليانس", en: "Brilliance", logo: "brilliance" },
+  { ar: "بنتلي", en: "Bentley", logo: "bentley" },
+  { ar: "تسلا", en: "Tesla", logo: "tesla" },
+  { ar: "جينيسيس", en: "Genesis", logo: "genesis" },
+  { ar: "دايو", en: "Daewoo", logo: "daewoo" },
+  { ar: "رولز رويس", en: "Rolls-Royce", logo: "rolls-royce" },
+  { ar: "زوتيه", en: "Zotye", logo: "zotye" },
+  { ar: "سكانيا", en: "Scania", logo: "scania" },
+  { ar: "سمارت", en: "Smart", logo: "smart" },
+  { ar: "فاو", en: "FAW", logo: "faw" },
+  { ar: "فوتون", en: "Foton", logo: "foton" },
+  { ar: "فيراري", en: "Ferrari", logo: "ferrari" },
+  { ar: "كرايسلر", en: "Chrysler", logo: "chrysler" },
+  { ar: "لامبورجيني", en: "Lamborghini", logo: "lamborghini" },
+  { ar: "لينك اند كو", en: "Lynk & Co", logo: "lynk-and-co" },
+  { ar: "لينكون", en: "Lincoln", logo: "lincoln" },
+  { ar: "مان", en: "MAN", logo: "man" },
+  { ar: "مازيراتي", en: "Maserati", logo: "maserati" },
+  { ar: "هينو", en: "Hino", logo: "hino" },
 ].sort((a, b) => a.ar.localeCompare(b.ar, "ar"));
 
 /**
@@ -78,6 +102,17 @@ export const BRAND_LOGOS: Record<string, string> = Object.fromEntries(
   ])
 );
 
+/**
+ * Resolves a brand's `logo` field to a renderable image URL.
+ * Bundled brands store a slug (looked up in {@link BRAND_LOGOS}); brands added
+ * from Settings store the uploaded image directly as a data: URL.
+ */
+export function resolveBrandLogoUrl(logo?: string): string | undefined {
+  if (!logo) return undefined;
+  if (logo.startsWith("data:") || logo.startsWith("http")) return logo;
+  return BRAND_LOGOS[logo];
+}
+
 /** Normalize Arabic/English text for loose matching (أ/إ/آ → ا, ى → ي, ة → ه). */
 export function normalizeBrandQuery(s: string): string {
   return s
@@ -89,10 +124,10 @@ export function normalizeBrandQuery(s: string): string {
     .trim();
 }
 
-export function filterBrands(query: string): CarBrand[] {
+export function filterBrands(query: string, brands: CarBrand[] = CAR_BRANDS): CarBrand[] {
   const q = normalizeBrandQuery(query);
-  if (!q) return CAR_BRANDS;
-  return CAR_BRANDS.filter(
+  if (!q) return brands;
+  return brands.filter(
     (b) => normalizeBrandQuery(b.ar).includes(q) || b.en.toLowerCase().includes(q)
   );
 }

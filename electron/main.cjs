@@ -1144,19 +1144,7 @@ function buildInvoicePrintHtml(route) {
   const partyName = isSales ? invoice.customerName : invoice.supplierName;
   const amountPaid = isSales ? invoice.amountReceived : invoice.amountPaid;
 
-  // Customer's overall outstanding balance across ALL their sales invoices.
-  // Mirrors customerBalance() in the renderer: Σ(remaining − overpayment).
-  // Positive → customer owes us (مدين); negative → customer has credit (دائن).
-  let customerBalanceTotal = null;
-  if (isSales && invoice.customerId) {
-    const allSales = readJsonKey(`${STORE_PREFIX}salesInvoices`, []);
-    if (Array.isArray(allSales)) {
-      const raw = allSales
-        .filter((s) => s.customerId === invoice.customerId && !s.cancelled)
-        .reduce((a, s) => a + (Number(s.remaining) || 0) - (Number(s.overpayment) || 0), 0);
-      customerBalanceTotal = Math.round(raw * 100) / 100;
-    }
-  }
+
 
   const returnsKey = isSales ? `${STORE_PREFIX}salesReturns` : `${STORE_PREFIX}purchaseReturns`;
   const allReturns = readJsonKey(returnsKey, []);
@@ -1498,32 +1486,6 @@ function buildInvoicePrintHtml(route) {
     </div>
     ` : ""}
 
-    ${paymentLog.length > 0 ? `
-    <div class="paylog-section">
-      <div class="paylog-title">سجل سداد الدفعات</div>
-      <table class="paylog-table">
-        <thead>
-          <tr>
-            <th class="center" style="width:36px">#</th>
-            <th class="center" style="width:100px">التاريخ</th>
-            <th class="center" style="width:110px">وسيلة الدفع</th>
-            <th class="center" style="width:130px">المبلغ المسدد</th>
-            <th>ملاحظات</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${paymentLog.map((e, i) => `
-          <tr style="background:${i % 2 === 1 ? "#f0f7ff" : "#ffffff"}">
-            <td class="center">${i + 1}</td>
-            <td class="center">${formatDate(e.date)}</td>
-            <td class="center">${escapeHtml(paymentMethodLabels[e.paymentMethod] || e.paymentMethod)}</td>
-            <td class="center mono paid-highlight">${escapeHtml(formatCurrency(e.amount, settings.currency))}</td>
-            <td class="muted">${e.notes ? escapeHtml(e.notes) : "—"}</td>
-          </tr>`).join("")}
-        </tbody>
-      </table>
-    </div>
-    ` : ""}
 
     <div class="totals">
       <div class="totals-box">
@@ -1542,24 +1504,6 @@ function buildInvoicePrintHtml(route) {
       </div>
     </div>
 
-    ${isSales && customerBalanceTotal !== null && partyName ? `
-    <div class="customer-balance ${customerBalanceTotal < 0 ? "credit" : customerBalanceTotal > 0 ? "debit" : "settled"}">
-      <span>${
-        customerBalanceTotal < 0
-          ? `رصيد دائن للعميل (${escapeHtml(partyName)})`
-          : customerBalanceTotal > 0
-            ? `رصيد مدين على العميل (${escapeHtml(partyName)})`
-            : `رصيد العميل (${escapeHtml(partyName)})`
-      }</span>
-      <span class="mono">${
-        customerBalanceTotal < 0
-          ? `+ ${escapeHtml(formatCurrency(-customerBalanceTotal, settings.currency))}`
-          : customerBalanceTotal > 0
-            ? `- ${escapeHtml(formatCurrency(customerBalanceTotal, settings.currency))}`
-            : "الحساب مسوّى ✓"
-      }</span>
-    </div>
-    ` : ""}
 
     ${invoice.notes ? `<div class="notes"><strong>ملاحظات: </strong>${escapeHtml(invoice.notes)}</div>` : ""}
     <div class="footer">${escapeHtml(settings.invoiceFooter || "")}</div>

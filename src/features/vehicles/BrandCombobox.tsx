@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Car, ChevronDown } from "lucide-react";
 import { cn } from "../../lib/utils";
-import { BRAND_LOGOS, filterBrands } from "./carBrands";
+import { CAR_BRANDS, filterBrands, resolveBrandLogoUrl, type CarBrand } from "./carBrands";
+import { hasDb } from "../../db/client";
+import { listAllCarBrands } from "./brand-queries";
 
 /**
  * Searchable car-brand picker. Type the first letters in Arabic OR English
@@ -28,6 +30,7 @@ export function BrandCombobox({
   const [text, setText] = useState(value ?? defaultValue ?? "");
   const [open, setOpen] = useState(false);
   const [highlight, setHighlight] = useState(0);
+  const [customBrands, setCustomBrands] = useState<CarBrand[]>([]);
   const rootRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
 
@@ -36,7 +39,18 @@ export function BrandCombobox({
     if (value !== undefined) setText(value);
   }, [value]);
 
-  const options = filterBrands(text);
+  // Brands added from Settings merge in alongside the bundled static list.
+  useEffect(() => {
+    if (!hasDb()) return;
+    listAllCarBrands()
+      .then((rows) =>
+        setCustomBrands(rows.map((r) => ({ ar: r.nameAr, en: r.nameEn, logo: r.logoImage ?? undefined })))
+      )
+      .catch(() => {});
+  }, []);
+
+  const allBrands = useMemo(() => [...CAR_BRANDS, ...customBrands], [customBrands]);
+  const options = filterBrands(text, allBrands);
 
   function commit(brand: string) {
     setText(brand);
@@ -117,9 +131,9 @@ export function BrandCombobox({
           className="absolute z-30 mt-1 w-full max-h-64 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg py-1"
         >
           {options.map((b, i) => {
-            const logoUrl = b.logo ? BRAND_LOGOS[b.logo] : undefined;
+            const logoUrl = resolveBrandLogoUrl(b.logo);
             return (
-              <li key={b.en}>
+              <li key={`${b.en}-${i}`}>
                 <button
                   type="button"
                   onMouseDown={(e) => e.preventDefault()}

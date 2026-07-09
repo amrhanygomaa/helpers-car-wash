@@ -2,6 +2,14 @@ import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 
 const EGYPT_PLATE_NUMBER_REGEX = /^[ء-ي](?: [ء-ي]){1,2} [0-9]{3,4}$/;
+const EGYPT_PHONE_NUMBER_REGEX = /^01[0-9]{9}$/;
+
+/** Egyptian mobile numbers: exactly 11 digits, starting with "01". */
+export function isValidEgyptPhoneNumber(value: string): boolean {
+  return EGYPT_PHONE_NUMBER_REGEX.test(value.trim());
+}
+
+export const PHONE_VALIDATION_ERROR = "يجب أن يتكون رقم الهاتف من 11 رقماً ويبدأ بـ 01";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));

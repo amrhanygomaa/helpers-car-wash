@@ -5,6 +5,7 @@ import { Field, Input } from "../../components/ui/Input";
 import type { Customer } from "../../types";
 import { useCatalog } from "../../store/CatalogContext";
 import { useToast } from "../../components/ui/Toast";
+import { isValidEgyptPhoneNumber, PHONE_VALIDATION_ERROR } from "../../lib/utils";
 
 type FormState = Pick<Customer, "code" | "name" | "phone" | "address" | "notes">;
 
@@ -46,8 +47,8 @@ export function CustomerFormDialog({
   }, [open, nextCustomerCode, initialName]);
 
   function submit() {
-    if (form.phone && form.phone.trim().replace(/\D/g, "").length !== 11) {
-      toast.error("رقم الهاتف غير صحيح", "يجب أن يكون رقم الهاتف مكوناً من 11 رقماً بالضبط");
+    if (form.phone && !isValidEgyptPhoneNumber(form.phone)) {
+      toast.error("رقم الهاتف غير صحيح", PHONE_VALIDATION_ERROR);
       return;
     }
     const created = addCustomer({ ...form, name: form.name.trim() || "عميل بدون اسم" });

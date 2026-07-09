@@ -60,7 +60,7 @@ export function WorkerDetailPage() {
   const [txnType, setTxnType] = useState<"advance" | "deduction" | "bonus">("advance");
   const [txnAmount, setTxnAmount] = useState("");
   const [txnReason, setTxnReason] = useState("");
-  const [txnDate, setTxnDate] = useState(todayISO());
+  const [txnDate] = useState(todayISO());
   const [txnSaving, setTxnSaving] = useState(false);
 
   // Load worker data
@@ -228,10 +228,6 @@ export function WorkerDetailPage() {
       toast.error("المبلغ يجب أن يكون رقم أكبر من الصفر");
       return;
     }
-    if (!txnReason.trim()) {
-      toast.error("يرجى إدخال بيان المعاملة");
-      return;
-    }
 
     setTxnSaving(true);
     try {
@@ -240,19 +236,16 @@ export function WorkerDetailPage() {
       let finalReason = txnReason.trim();
 
       if (txnType === "deduction") {
-        if (!finalReason.startsWith("خصم:")) {
-          finalReason = `خصم: ${finalReason}`;
-        }
+        const desc = finalReason || "خصم إداري";
+        finalReason = desc.startsWith("خصم:") ? desc : `خصم: ${desc}`;
       } else if (txnType === "bonus") {
-        if (!finalReason.startsWith("بونص:")) {
-          finalReason = `بونص: ${finalReason}`;
-        }
+        const desc = finalReason || "مكافأة تشجيعية";
+        finalReason = desc.startsWith("بونص:") ? desc : `بونص: ${desc}`;
         // Bonuses are stored as negative values to increase netDue
         amountPiastres = -amountPiastres;
       } else {
-        if (!finalReason.startsWith("سحب:")) {
-          finalReason = `سحب: ${finalReason}`;
-        }
+        const desc = finalReason || "سحب نقدي";
+        finalReason = desc.startsWith("سحب:") ? desc : `سحب: ${desc}`;
       }
 
       await recordWorkerFinancialAdjustment({
@@ -584,8 +577,8 @@ export function WorkerDetailPage() {
                 <option value="bonus">مكافأة / بونص تشجيعي</option>
               </Select>
             </Field>
-            <Field label="التاريخ" required>
-              <Input type="date" value={txnDate} onChange={(e) => setTxnDate(e.target.value)} />
+            <Field label="التاريخ">
+              <Input type="date" value={txnDate} disabled />
             </Field>
           </div>
 
@@ -600,9 +593,9 @@ export function WorkerDetailPage() {
                 onChange={(e) => setTxnAmount(e.target.value)}
               />
             </Field>
-            <Field label="البيان / تفاصيل السبب" required>
+            <Field label="البيان / تفاصيل السبب">
               <Input
-                placeholder="السبب بالتفصيل..."
+                placeholder="السبب بالتفصيل (اختياري)..."
                 value={txnReason}
                 onChange={(e) => setTxnReason(e.target.value)}
               />

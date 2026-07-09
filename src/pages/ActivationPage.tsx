@@ -40,7 +40,7 @@ export function ActivationPage() {
 
   if (!licenseStatus) {
     return (
-      <div className="min-h-screen grid place-items-center bg-slate-50" dir="rtl">
+      <div className="min-h-screen grid place-items-center bg-slate-100" dir="rtl">
         <div className="text-sm text-slate-500">جاري فحص حالة الترخيص...</div>
       </div>
     );
@@ -53,7 +53,7 @@ export function ActivationPage() {
   )}`;
 
   return (
-    <div className="min-h-screen grid md:grid-cols-2 bg-slate-50" dir="rtl">
+    <div className="min-h-screen grid md:grid-cols-2 bg-slate-100" dir="rtl">
       <div className="hidden md:flex relative bg-gradient-to-br from-brand-700 to-brand-900 text-white p-10 flex-col justify-between">
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 rounded-xl overflow-hidden">

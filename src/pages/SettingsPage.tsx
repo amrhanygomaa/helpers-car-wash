@@ -1,14 +1,25 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { PageHeader } from "../components/layout/AppLayout";
 import { Card, CardBody, CardHeader } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Field, Input, Select, Textarea } from "../components/ui/Input";
 import { Dialog } from "../components/ui/Dialog";
+import { Table, TBody, TD, TH, THead, TR } from "../components/ui/Table";
+import { EmptyState } from "../components/ui/EmptyState";
 import { useApp } from "../store/AppContext";
 import { useToast } from "../components/ui/Toast";
 import { lsGet } from "../lib/storage";
-import { FEATURES, defaultFeatureState, isAllowedByLicense, type FeatureKey } from "../lib/features";
-import { Save, Printer, Download, Upload, Database, FileSpreadsheet, ShieldCheck, Clock, Image as ImageIcon, Trash2, FolderOpen, Boxes, Lock, Copy, KeyRound, MessageCircle } from "lucide-react";
+import { uid } from "../lib/utils";
+import { hasDb } from "../db/client";
+import {
+  listAllCarBrands,
+  createCarBrand,
+  updateCarBrand,
+  deleteCarBrand,
+  type CarBrandRow,
+} from "../features/vehicles/brand-queries";
+import { FEATURE_MAP, defaultFeatureState, isAllowedByLicense, type FeatureKey } from "../lib/features";
+import { Save, Printer, Download, Upload, Database, FileSpreadsheet, ShieldCheck, Clock, Image as ImageIcon, Trash2, FolderOpen, Boxes, Lock, Copy, KeyRound, MessageCircle, Car, Plus, Pencil } from "lucide-react";
 
 const SUPPORT_WHATSAPP = "201118445625";
 
@@ -25,7 +36,20 @@ const TOP_GEAR_HIDDEN_FEATURES = new Set<FeatureKey>([
   "stocktakes",
   "alerts",
   "dues",
+  "vehicles",
 ]);
+
+// Display order for the Top Gear feature toggles — follows the actual daily
+// workflow (queue → invoice → services → customers → cash → reports) instead
+// of the generic FEATURES array order.
+const TOP_GEAR_FEATURE_ORDER: FeatureKey[] = [
+  "carwashQueue",
+  "salesInvoices",
+  "washServices",
+  "customers",
+  "cashbox",
+  "reports",
+];
 
 function subscriptionDurationLabel(type: string, months: number): string {
   if (type === "lifetime") return "مدى الحياة";
@@ -54,7 +78,86 @@ export function SettingsPage() {
   const [newSerial, setNewSerial] = useState("");
   const [applyingSerial, setApplyingSerial] = useState(false);
 
+  const [carBrands, setCarBrands] = useState<CarBrandRow[]>([]);
+  const [brandFormOpen, setBrandFormOpen] = useState(false);
+  const [editingBrand, setEditingBrand] = useState<CarBrandRow | null>(null);
+  const [brandNameAr, setBrandNameAr] = useState("");
+  const [brandNameEn, setBrandNameEn] = useState("");
+  const [brandLogo, setBrandLogo] = useState("");
+
   useEffect(() => setForm(settings), [settings]);
+
+  const loadCarBrands = useCallback(async () => {
+    if (!hasDb()) return;
+    try {
+      setCarBrands(await listAllCarBrands());
+    } catch {
+      /* ignore — brand list is a non-critical enhancement */
+    }
+  }, []);
+
+  useEffect(() => { loadCarBrands(); }, [loadCarBrands]);
+
+  function openNewBrandDialog() {
+    setEditingBrand(null);
+    setBrandNameAr("");
+    setBrandNameEn("");
+    setBrandLogo("");
+    setBrandFormOpen(true);
+  }
+
+  function openEditBrandDialog(row: CarBrandRow) {
+    setEditingBrand(row);
+    setBrandNameAr(row.nameAr);
+    setBrandNameEn(row.nameEn);
+    setBrandLogo(row.logoImage ?? "");
+    setBrandFormOpen(true);
+  }
+
+  async function saveBrand() {
+    const nameAr = brandNameAr.trim();
+    if (!nameAr) {
+      toast.error("اكتب اسم الماركة بالعربي أولاً");
+      return;
+    }
+    if (!hasDb()) { toast.error("قاعدة البيانات غير متاحة"); return; }
+    try {
+      if (editingBrand) {
+        await updateCarBrand(editingBrand.id, {
+          nameAr,
+          nameEn: brandNameEn.trim() || nameAr,
+          logoImage: brandLogo || null,
+        });
+        toast.success("تم تحديث الماركة");
+      } else {
+        await createCarBrand({
+          id: uid("brand"),
+          nameAr,
+          nameEn: brandNameEn.trim() || nameAr,
+          logoImage: brandLogo || null,
+          createdAt: new Date().toISOString(),
+        });
+        toast.success("تمت إضافة الماركة");
+      }
+      setBrandFormOpen(false);
+      setEditingBrand(null);
+      loadCarBrands();
+    } catch {
+      toast.error("حدث خطأ أثناء الحفظ");
+    }
+  }
+
+  async function removeBrand(row: CarBrandRow) {
+    if (!hasDb()) return;
+    if (!window.confirm(`حذف ماركة "${row.nameAr}"؟`)) return;
+    try {
+      await deleteCarBrand(row.id);
+      toast.success("تم حذف الماركة");
+      loadCarBrands();
+    } catch {
+      toast.error("حدث خطأ أثناء الحذف");
+    }
+  }
 
   async function copyMachineCode() {
     const code = licenseStatus?.machineCode;
@@ -218,7 +321,7 @@ export function SettingsPage() {
         }
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 items-start lg:grid-cols-2 gap-4">
         <Card>
           <CardHeader title="بيانات الشركة" subtitle="تظهر في الفواتير وأعلى التطبيق" />
           <CardBody className="space-y-3">
@@ -308,25 +411,27 @@ export function SettingsPage() {
                 onChange={(e) => setForm({ ...form, invoiceFooter: e.target.value })}
               />
             </Field>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Field label="اسم المالك الكامل" required hint="يستخدم للتحقق عند طلب كود الدعم الفني">
+                <Input
+                  value={form.ownerName || ""}
+                  onChange={(e) => setForm({ ...form, ownerName: e.target.value })}
+                />
+              </Field>
+              <Field label="رقم واتساب المالك" required hint="يستخدم للتأكد من هوية مرسل طلب كود الدعم">
+                <Input
+                  value={form.ownerPhone || ""}
+                  onChange={(e) => setForm({ ...form, ownerPhone: e.target.value })}
+                />
+              </Field>
+            </div>
           </CardBody>
         </Card>
 
         <Card>
-          <CardHeader title="الإعدادات العامة" subtitle="العملة والتنبيهات" />
+          <CardHeader title="الإعدادات العامة" subtitle="التسعير والتنبيهات" />
           <CardBody className="space-y-3">
-            <Field label="العملة">
-              <Select
-                value={form.currency}
-                onChange={(e) => setForm({ ...form, currency: e.target.value })}
-              >
-                <option value="EGP">جنيه مصري (EGP)</option>
-                <option value="ج.م">جنيه مصري (ج.م)</option>
-                <option value="ر.س">ريال سعودي (ر.س)</option>
-                <option value="د.إ">درهم إماراتي (د.إ)</option>
-                <option value="د.ك">دينار كويتي (د.ك)</option>
-                <option value="$">دولار أمريكي ($)</option>
-              </Select>
-            </Field>
             <Field label="طريقة تسعير الخدمات" hint="الوضع الافتراضي عند إضافة خدمة للفاتورة">
               <Select
                 value={form.pricingMode ?? "variable"}
@@ -364,39 +469,6 @@ export function SettingsPage() {
                 }
               />
             </Field>
-            <Field
-              label="مدة تنبيه تأخر السداد"
-              hint="المدة التي تُعتبر بعدها فاتورة العميل الآجلة متأخرة"
-            >
-              <Select
-                value={String(form.paymentTermDays ?? 7)}
-                onChange={(e) => setForm({ ...form, paymentTermDays: Number(e.target.value) })}
-              >
-                <option value="7">أسبوع (7 أيام)</option>
-                <option value="14">أسبوعين (14 يوم)</option>
-                <option value="30">شهر (30 يوم)</option>
-                <option value="60">شهرين (60 يوم)</option>
-                <option value="90">ثلاثة أشهر (90 يوم)</option>
-              </Select>
-            </Field>
-            <Field label="المنطقة الزمنية">
-              <Select
-                value={form.timezone ?? "Africa/Cairo"}
-                onChange={(e) => setForm({ ...form, timezone: e.target.value })}
-              >
-                <option value="Africa/Cairo">القاهرة — Africa/Cairo</option>
-              </Select>
-            </Field>
-            <Field label="واجهة عربية">
-              <label className="flex items-center gap-2 h-9 text-sm">
-                <input
-                  type="checkbox"
-                  checked={form.arabicLabels}
-                  onChange={(e) => setForm({ ...form, arabicLabels: e.target.checked })}
-                />
-                عرض أسماء الشركة والقوائم بالعربية
-              </label>
-            </Field>
             <Field label="قفل الجلسة بعد عدم النشاط" hint="عدد الدقائق قبل قفل الشاشة تلقائياً — 0 لتعطيل الميزة">
               <Select
                 value={String(form.idleLockMinutes ?? 0)}
@@ -413,243 +485,6 @@ export function SettingsPage() {
           </CardBody>
         </Card>
 
-        <Card className="lg:col-span-2">
-          <CardHeader
-            title={
-              <div className="flex items-center gap-2">
-                <Boxes className="w-4 h-4 text-brand-600" />
-                <span>المميزات والوحدات</span>
-              </div>
-            }
-            subtitle="تحكّم في الوحدات الظاهرة للعميل — الوحدات المقفولة في الباقة لا يمكن تفعيلها"
-          />
-          <CardBody>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-              {FEATURES.filter((f) => !TOP_GEAR_HIDDEN_FEATURES.has(f.key)).map((f) => {
-                const allowed = isAllowedByLicense(f.key, license);
-                const checked = allowed && featureChecked(f.key);
-                return (
-                  <label
-                    key={f.key}
-                    className={`flex items-start gap-3 rounded-lg border p-3 transition-colors ${
-                      allowed
-                        ? "border-slate-200 hover:bg-slate-50 cursor-pointer"
-                        : "border-slate-100 bg-slate-50/60 cursor-not-allowed"
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      className="mt-0.5"
-                      checked={checked}
-                      disabled={!allowed}
-                      onChange={(e) => toggleFeature(f.key, e.target.checked)}
-                    />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5 text-sm font-semibold text-slate-800">
-                        {f.label}
-                        {!allowed && (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-100 rounded px-1.5 py-0.5">
-                            <Lock className="w-3 h-3" /> غير متاح في الباقة
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-xs text-slate-500 mt-0.5">{f.description}</div>
-                    </div>
-                  </label>
-                );
-              })}
-            </div>
-            <div className="mt-3 text-xs text-slate-500">
-              إخفاء وحدة هنا يزيلها من القائمة الجانبية ويمنع الوصول إليها. الباقة المرتبطة بالسيريال
-              تحدّد الوحدات المتاحة أصلاً، ولا يمكن تجاوزها من هنا.
-            </div>
-          </CardBody>
-        </Card>
-
-        <Card className="lg:col-span-2">
-          <CardHeader title="برنامج الولاء" subtitle="نقاط يكسبها العميل عند كل غسلة ويستبدلها كخصم" />
-          <CardBody className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <Field label="تفعيل برنامج الولاء">
-              <label className="flex items-center gap-2 h-9 text-sm">
-                <input
-                  type="checkbox"
-                  checked={Boolean(form.loyaltyEnabled)}
-                  onChange={(e) => setForm({ ...form, loyaltyEnabled: e.target.checked })}
-                />
-                العملاء يكسبون نقاط ولاء
-              </label>
-            </Field>
-            <Field label="جنيه لكل نقطة (الكسب)" hint="مثال: 10 = نقطة لكل 10 جنيه">
-              <Input
-                type="number"
-                min={1}
-                value={form.loyaltyEgpPerPoint ?? 10}
-                disabled={!form.loyaltyEnabled}
-                onChange={(e) => setForm({ ...form, loyaltyEgpPerPoint: Number(e.target.value) })}
-              />
-            </Field>
-            <Field label="قيمة النقطة (الاستبدال)" hint="قيمة النقطة الواحدة بالجنيه عند الخصم">
-              <Input
-                type="number"
-                min={0}
-                step="0.01"
-                value={form.loyaltyPointValue ?? 1}
-                disabled={!form.loyaltyEnabled}
-                onChange={(e) => setForm({ ...form, loyaltyPointValue: Number(e.target.value) })}
-              />
-            </Field>
-          </CardBody>
-        </Card>
-
-        <Card className="lg:col-span-2">
-          <CardHeader title="إعدادات الطباعة" subtitle="تنسيق الفاتورة المطبوعة" />
-          <CardBody className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <Field label="اسم الطابعة">
-              <Input
-                value={form.printerName ?? ""}
-                onChange={(e) => setForm({ ...form, printerName: e.target.value })}
-                placeholder="اتركه فارغاً للطابعة الافتراضية"
-              />
-            </Field>
-            <Field label="عرض الإيصال (مم)">
-              <Input
-                type="number"
-                min={58}
-                max={110}
-                value={form.receiptWidthMm ?? 80}
-                onChange={(e) => setForm({ ...form, receiptWidthMm: Number(e.target.value) })}
-              />
-            </Field>
-            <Field label="مقاس الورق">
-              <Select
-                value={form.printPaperSize}
-                onChange={(e) =>
-                  setForm({ ...form, printPaperSize: e.target.value as "A4" | "A5" })
-                }
-              >
-                <option value="A4">A4</option>
-                <option value="A5">A5</option>
-              </Select>
-            </Field>
-            <div className="flex items-center gap-3 bg-slate-50 border border-slate-100 rounded-lg p-3 md:col-span-2">
-              <Printer className="w-5 h-5 text-slate-600" />
-              <div className="text-sm text-slate-700">
-                يتم إرسال الفاتورة للطباعة من داخل التطبيق مباشرة عند الضغط على زر "طباعة".
-              </div>
-            </div>
-            <Field label="اختبار الطابعة">
-              <Button type="button" variant="outline" onClick={testReceiptPrinter} className="w-full justify-center">
-                <Printer className="w-4 h-4" /> اختبار إيصال 80mm
-              </Button>
-            </Field>
-            <Field label="مجلد حفظ الفواتير (PDF)" className="md:col-span-3">
-              <div className="flex gap-2">
-                <Input
-                  value={form.invoicesSavePath}
-                  readOnly
-                  placeholder="اختر مجلداً..."
-                  className="bg-slate-50"
-                />
-                <Button
-                  variant="outline"
-                  onClick={async () => {
-                    if (window.desktopAPI?.setup?.selectDirectory) {
-                      const path = await window.desktopAPI.setup.selectDirectory();
-                      if (path) setForm({ ...form, invoicesSavePath: path });
-                    }
-                  }}
-                >
-                  <FolderOpen className="w-4 h-4" />
-                </Button>
-              </div>
-            </Field>
-          </CardBody>
-        </Card>
-
-        <Card className="lg:col-span-2">
-          <CardHeader title="إعدادات النسخ الاحتياطي التلقائي" subtitle="جدولة حفظ البيانات تلقائياً" />
-          <CardBody className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Field label="تفعيل النسخ التلقائي">
-              <label className="flex items-center gap-2 h-9 text-sm">
-                <input
-                  type="checkbox"
-                  checked={form.autoBackupEnabled}
-                  onChange={(e) => setForm({ ...form, autoBackupEnabled: e.target.checked })}
-                />
-                نعم، قم بالحفظ تلقائياً
-              </label>
-            </Field>
-            <Field label="تكرار النسخ">
-              <Select
-                value={form.autoBackupFrequency}
-                disabled={!form.autoBackupEnabled}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    autoBackupFrequency: e.target.value as typeof form.autoBackupFrequency,
-                  })
-                }
-              >
-                <option value="daily">يومي</option>
-                <option value="weekly">أسبوعي</option>
-                <option value="monthly">شهري</option>
-              </Select>
-            </Field>
-            <Field label="نسخة احتياطية عند إغلاق البرنامج" hint="يحفظ نسخة كاملة تلقائياً في المجلد المحدد قبل إغلاق التطبيق">
-              <label className="flex items-center gap-2 h-9 text-sm">
-                <input
-                  type="checkbox"
-                  checked={form.backupOnClose ?? true}
-                  onChange={(e) => setForm({ ...form, backupOnClose: e.target.checked })}
-                />
-                نعم، احفظ نسخة عند الإغلاق
-              </label>
-            </Field>
-            <div className="bg-blue-50 border border-blue-100 rounded-lg p-3">
-              <div className="text-xs text-blue-700 font-bold mb-1">آخر نسخة احتياطية:</div>
-              <div className="text-sm text-blue-900 font-mono">
-                {settings.lastBackupDate ? new Date(settings.lastBackupDate).toLocaleString("ar-EG") : "لم يتم الحفظ بعد"}
-              </div>
-            </div>
-            <Field label="مجلد النسخ الاحتياطي (محلي / خارجي / شبكة)" className="md:col-span-2">
-              <div className="flex gap-2">
-                <Input
-                  value={form.backupPath}
-                  readOnly
-                  placeholder="اختر مجلداً..."
-                  className="bg-slate-50 font-mono text-xs"
-                />
-                <Button
-                  variant="outline"
-                  onClick={async () => {
-                    if (window.desktopAPI?.backup?.selectDirectory) {
-                      const path = await window.desktopAPI.backup.selectDirectory();
-                      if (path) setForm({ ...form, backupPath: path });
-                    } else {
-                      toast.error("متاح في تطبيق سطح المكتب فقط");
-                    }
-                  }}
-                >
-                  <FolderOpen className="w-4 h-4" />
-                </Button>
-              </div>
-            </Field>
-            <Field label="نسخ احتياطي فوري">
-              <Button
-                variant="outline"
-                onClick={backupNow}
-                disabled={!form.backupPath?.trim()}
-                className="w-full justify-center"
-              >
-                <Database className="w-4 h-4" /> نسخ احتياطي الآن
-              </Button>
-            </Field>
-            <div className="md:col-span-3 text-xs text-slate-500">
-              يتم حفظ نسخة كاملة من البيانات (بصيغة JSON) في المجلد المحدد. يمكن استعادتها لاحقاً عبر "استيراد نسخة احتياطية".
-              عند التفعيل، تُحفظ نسخة تلقائياً عند فتح البرنامج حسب التكرار المختار.
-            </div>
-          </CardBody>
-        </Card>
         <Card className="lg:col-span-2 border-brand-100 bg-brand-50/10 relative group">
           <CardHeader title="بيانات الاشتراك والضمان" subtitle="تفاصيل الترخيص والدعم الفني الفعلي للنسخة" />
           <CardBody className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -836,7 +671,214 @@ export function SettingsPage() {
           </div>
         </Dialog>
 
-        <Card className="lg:col-span-1">
+        <Card className="lg:col-span-2">
+          <CardHeader
+            title={
+              <div className="flex items-center gap-2">
+                <Boxes className="w-4 h-4 text-brand-600" />
+                <span>المميزات والوحدات</span>
+              </div>
+            }
+            subtitle="تحكّم في الوحدات الظاهرة للعميل — الوحدات المقفولة في الباقة لا يمكن تفعيلها"
+          />
+          <CardBody>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              {TOP_GEAR_FEATURE_ORDER.map((key) => FEATURE_MAP[key])
+                .filter((f) => !TOP_GEAR_HIDDEN_FEATURES.has(f.key))
+                .map((f) => {
+                const allowed = isAllowedByLicense(f.key, license);
+                const checked = allowed && featureChecked(f.key);
+                return (
+                  <label
+                    key={f.key}
+                    className={`flex items-start gap-3 rounded-lg border p-3 transition-colors ${
+                      allowed
+                        ? "border-slate-200 hover:bg-slate-50 cursor-pointer"
+                        : "border-slate-100 bg-slate-50/60 cursor-not-allowed"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      className="mt-0.5"
+                      checked={checked}
+                      disabled={!allowed}
+                      onChange={(e) => toggleFeature(f.key, e.target.checked)}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 text-sm font-semibold text-slate-800">
+                        {f.label}
+                        {!allowed && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-100 rounded px-1.5 py-0.5">
+                            <Lock className="w-3 h-3" /> غير متاح في الباقة
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs text-slate-500 mt-0.5">{f.description}</div>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+            <div className="mt-3 text-xs text-slate-500">
+              إخفاء وحدة هنا يزيلها من القائمة الجانبية ويمنع الوصول إليها. الباقة المرتبطة بالسيريال
+              تحدّد الوحدات المتاحة أصلاً، ولا يمكن تجاوزها من هنا.
+            </div>
+          </CardBody>
+        </Card>
+
+        <Card className="lg:col-span-2">
+          <CardHeader title="إعدادات الطباعة" subtitle="تنسيق الفاتورة المطبوعة" />
+          <CardBody className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <Field label="اسم الطابعة">
+              <Input
+                value={form.printerName ?? ""}
+                onChange={(e) => setForm({ ...form, printerName: e.target.value })}
+                placeholder="اتركه فارغاً للطابعة الافتراضية"
+              />
+            </Field>
+            <Field label="عرض الإيصال (مم)">
+              <Input
+                type="number"
+                min={58}
+                max={110}
+                value={form.receiptWidthMm ?? 80}
+                onChange={(e) => setForm({ ...form, receiptWidthMm: Number(e.target.value) })}
+              />
+            </Field>
+            <Field label="مقاس الورق">
+              <Select
+                value={form.printPaperSize}
+                onChange={(e) =>
+                  setForm({ ...form, printPaperSize: e.target.value as "A4" | "A5" })
+                }
+              >
+                <option value="A4">A4</option>
+                <option value="A5">A5</option>
+              </Select>
+            </Field>
+            <div className="flex items-center gap-3 bg-slate-50 border border-slate-100 rounded-lg p-3 md:col-span-2">
+              <Printer className="w-5 h-5 text-slate-600" />
+              <div className="text-sm text-slate-700">
+                يتم إرسال الفاتورة للطباعة من داخل التطبيق مباشرة عند الضغط على زر "طباعة".
+              </div>
+            </div>
+            <Field label="اختبار الطابعة">
+              <Button type="button" variant="outline" onClick={testReceiptPrinter} className="w-full justify-center">
+                <Printer className="w-4 h-4" /> اختبار إيصال 80mm
+              </Button>
+            </Field>
+            <Field label="مجلد حفظ الفواتير (PDF)" className="md:col-span-3">
+              <div className="flex gap-2">
+                <Input
+                  value={form.invoicesSavePath}
+                  readOnly
+                  placeholder="اختر مجلداً..."
+                  className="bg-slate-50"
+                />
+                <Button
+                  variant="outline"
+                  onClick={async () => {
+                    if (window.desktopAPI?.setup?.selectDirectory) {
+                      const path = await window.desktopAPI.setup.selectDirectory();
+                      if (path) setForm({ ...form, invoicesSavePath: path });
+                    }
+                  }}
+                >
+                  <FolderOpen className="w-4 h-4" />
+                </Button>
+              </div>
+            </Field>
+          </CardBody>
+        </Card>
+
+        <Card className="lg:col-span-2">
+          <CardHeader title="إعدادات النسخ الاحتياطي التلقائي" subtitle="جدولة حفظ البيانات تلقائياً" />
+          <CardBody className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Field label="تفعيل النسخ التلقائي">
+              <label className="flex items-center gap-2 h-9 text-sm">
+                <input
+                  type="checkbox"
+                  checked={form.autoBackupEnabled}
+                  onChange={(e) => setForm({ ...form, autoBackupEnabled: e.target.checked })}
+                />
+                نعم، قم بالحفظ تلقائياً
+              </label>
+            </Field>
+            <Field label="تكرار النسخ">
+              <Select
+                value={form.autoBackupFrequency}
+                disabled={!form.autoBackupEnabled}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    autoBackupFrequency: e.target.value as typeof form.autoBackupFrequency,
+                  })
+                }
+              >
+                <option value="daily">يومي</option>
+                <option value="weekly">أسبوعي</option>
+                <option value="monthly">شهري</option>
+              </Select>
+            </Field>
+            <Field label="نسخة احتياطية عند إغلاق البرنامج" hint="يحفظ نسخة كاملة تلقائياً في المجلد المحدد قبل إغلاق التطبيق">
+              <label className="flex items-center gap-2 h-9 text-sm">
+                <input
+                  type="checkbox"
+                  checked={form.backupOnClose ?? true}
+                  onChange={(e) => setForm({ ...form, backupOnClose: e.target.checked })}
+                />
+                نعم، احفظ نسخة عند الإغلاق
+              </label>
+            </Field>
+            <div className="bg-blue-50 border border-blue-100 rounded-lg p-3">
+              <div className="text-xs text-blue-700 font-bold mb-1">آخر نسخة احتياطية:</div>
+              <div className="text-sm text-blue-900 font-mono">
+                {settings.lastBackupDate ? new Date(settings.lastBackupDate).toLocaleString("ar-EG") : "لم يتم الحفظ بعد"}
+              </div>
+            </div>
+            <Field label="مجلد النسخ الاحتياطي (محلي / خارجي / شبكة)" className="md:col-span-2">
+              <div className="flex gap-2">
+                <Input
+                  value={form.backupPath}
+                  readOnly
+                  placeholder="اختر مجلداً..."
+                  className="bg-slate-50 font-mono text-xs"
+                />
+                <Button
+                  variant="outline"
+                  onClick={async () => {
+                    if (window.desktopAPI?.backup?.selectDirectory) {
+                      const path = await window.desktopAPI.backup.selectDirectory();
+                      if (path) setForm({ ...form, backupPath: path });
+                    } else {
+                      toast.error("متاح في تطبيق سطح المكتب فقط");
+                    }
+                  }}
+                >
+                  <FolderOpen className="w-4 h-4" />
+                </Button>
+              </div>
+            </Field>
+            <Field label="نسخ احتياطي فوري">
+              <Button
+                variant="outline"
+                onClick={backupNow}
+                disabled={!form.backupPath?.trim()}
+                className="w-full justify-center"
+              >
+                <Database className="w-4 h-4" /> نسخ احتياطي الآن
+              </Button>
+            </Field>
+            <div className="md:col-span-3 text-xs text-slate-500">
+              يتم حفظ نسخة كاملة من البيانات (بصيغة JSON) في المجلد المحدد. يمكن استعادتها لاحقاً عبر "استيراد نسخة احتياطية".
+              عند التفعيل، تُحفظ نسخة تلقائياً عند فتح البرنامج حسب التكرار المختار.
+            </div>
+          </CardBody>
+        </Card>
+
+
+        <div className="grid grid-cols-1 items-start gap-4 lg:col-span-2 lg:grid-cols-2">
+        <Card>
           <CardHeader title="النسخة الاحتياطية" subtitle="حفظ واستعادة كل بيانات النظام" />
           <CardBody className="space-y-4">
             <div className="flex flex-col gap-2">
@@ -895,7 +937,8 @@ export function SettingsPage() {
           </CardBody>
         </Card>
 
-        <Card className="lg:col-span-1">
+        <div className="space-y-4">
+        <Card>
           <CardHeader title="تصدير بيانات المغسلة (Excel)" subtitle="تصدير بيانات العملاء وفواتير الغسيل" />
           <CardBody className="grid grid-cols-2 gap-2">
             <Button onClick={() => exportToExcel("customers")} variant="outline" size="sm" className="justify-start">
@@ -906,7 +949,139 @@ export function SettingsPage() {
             </Button>
           </CardBody>
         </Card>
+
+        <Card>
+          <CardHeader
+            title="ماركات السيارات"
+            subtitle="أضف ماركات مش موجودة في القائمة الجاهزة"
+            actions={
+              <Button size="sm" onClick={openNewBrandDialog}>
+                <Plus className="w-4 h-4" /> ماركة جديدة
+              </Button>
+            }
+          />
+          <CardBody className="p-0">
+            {carBrands.length === 0 ? (
+              <EmptyState
+                icon={<Car className="w-8 h-8" />}
+                title="لسه مفيش ماركات مضافة"
+                description="أي ماركة مش في القائمة الجاهزة، ضيفها هنا مع شعارها."
+                action={<Button onClick={openNewBrandDialog}><Plus className="w-4 h-4" /> ماركة جديدة</Button>}
+              />
+            ) : (
+              <Table>
+                <THead>
+                  <TR>
+                    <TH className="w-14"></TH>
+                    <TH>الماركة</TH>
+                    <TH className="w-20"></TH>
+                  </TR>
+                </THead>
+                <TBody>
+                  {carBrands.map((row) => (
+                    <TR key={row.id}>
+                      <TD>
+                        <div className="w-9 h-9 rounded-lg border border-slate-200 grid place-items-center overflow-hidden bg-slate-50">
+                          {row.logoImage ? (
+                            <img src={row.logoImage} alt={row.nameEn} className="max-w-full max-h-full object-contain" />
+                          ) : (
+                            <Car className="w-4 h-4 text-slate-400" />
+                          )}
+                        </div>
+                      </TD>
+                      <TD>
+                        <div className="font-medium text-slate-900">{row.nameAr}</div>
+                        {row.nameEn && row.nameEn !== row.nameAr ? (
+                          <div className="text-xs text-slate-400" dir="ltr">{row.nameEn}</div>
+                        ) : null}
+                      </TD>
+                      <TD>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => openEditBrandDialog(row)}
+                            className="p-1.5 text-slate-400 hover:text-blue-600 transition-colors"
+                            title="تعديل"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeBrand(row)}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 transition-colors"
+                            title="حذف"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </TD>
+                    </TR>
+                  ))}
+                </TBody>
+              </Table>
+            )}
+          </CardBody>
+        </Card>
+        </div>
+        </div>
       </div>
+
+      <Dialog
+        open={brandFormOpen}
+        onClose={() => setBrandFormOpen(false)}
+        title={editingBrand ? "تعديل ماركة" : "ماركة جديدة"}
+      >
+        <div className="space-y-4">
+          <div className="flex items-center gap-4">
+            <div className="w-16 h-16 rounded-xl border border-slate-200 grid place-items-center overflow-hidden bg-slate-50 shrink-0">
+              {brandLogo ? (
+                <img src={brandLogo} alt="" className="max-w-full max-h-full object-contain" />
+              ) : (
+                <Car className="w-6 h-6 text-slate-300" />
+              )}
+            </div>
+            <div className="flex-1 space-y-1">
+              <div className="relative inline-block">
+                <input
+                  type="file"
+                  accept="image/*"
+                  aria-label="اختر شعار الماركة"
+                  className="absolute inset-0 opacity-0 cursor-pointer"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onloadend = () => setBrandLogo(reader.result as string);
+                    reader.readAsDataURL(file);
+                  }}
+                />
+                <Button type="button" variant="outline" size="sm">
+                  <ImageIcon className="w-4 h-4" /> رفع شعار
+                </Button>
+              </div>
+              {brandLogo && (
+                <button
+                  type="button"
+                  onClick={() => setBrandLogo("")}
+                  className="block text-xs text-rose-600 hover:underline"
+                >
+                  إزالة الشعار
+                </button>
+              )}
+            </div>
+          </div>
+          <Field label="اسم الماركة بالعربي" required>
+            <Input value={brandNameAr} onChange={(e) => setBrandNameAr(e.target.value)} placeholder="مثال: سيريس" />
+          </Field>
+          <Field label="اسم الماركة بالإنجليزي" hint="لو سبته فاضي، هيتسجل نفس الاسم العربي">
+            <Input value={brandNameEn} onChange={(e) => setBrandNameEn(e.target.value)} placeholder="Example: Seres" dir="ltr" />
+          </Field>
+          <div className="flex gap-2 justify-end pt-2">
+            <Button variant="outline" onClick={() => setBrandFormOpen(false)}>إلغاء</Button>
+            <Button onClick={saveBrand} disabled={!brandNameAr.trim()}>حفظ</Button>
+          </div>
+        </div>
+      </Dialog>
     </>
   );
 }

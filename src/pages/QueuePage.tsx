@@ -1,5 +1,5 @@
-import { useMemo, useState, type DragEvent, type ReactNode } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useState, type DragEvent, type ReactNode } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   ArrowDown,
   ArrowUp,
@@ -29,7 +29,7 @@ import { useCatalog } from "../store/CatalogContext";
 import { useAuth } from "../store/AuthContext";
 import { formatDateTime, formatDate } from "../lib/format";
 import { hasPermission } from "../lib/permissions";
-import { cn, todayISO, localISODate, vehicleLabel } from "../lib/utils";
+import { cn, todayISO, localISODate, vehicleLabel, isValidEgyptPhoneNumber, PHONE_VALIDATION_ERROR } from "../lib/utils";
 import { printIntakeTicket } from "../lib/print";
 import { CustomerFormDialog } from "../features/customers/CustomerFormDialog";
 import { CustomerCombobox } from "../features/customers/CustomerCombobox";
@@ -111,6 +111,7 @@ function isPickupLate(ticket: QueueTicket): boolean {
 
 export function QueuePage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const {
     queueTickets,
     addQueueTickets,
@@ -225,6 +226,16 @@ export function QueuePage() {
     setOpen(true);
   }
 
+  useEffect(() => {
+    if (!canAdd) return;
+    if (searchParams.get("new") !== "1") return;
+    openIntakeDialog();
+    const next = new URLSearchParams(searchParams);
+    next.delete("new");
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
   function onPickCustomer(id: string) {
     setCustomerId(id);
     const customer = customers.find((item) => item.id === id && !item.archived);
@@ -238,16 +249,24 @@ export function QueuePage() {
     }
   }
 
-  /** "تسجيل كزائر" — skips the add-customer dialog for a fast one-off intake. */
-  function quickRegisterGuest(name: string) {
-    const trimmed = name.trim();
-    if (!trimmed) {
-      toast.error("اكتب اسم الزائر أولاً");
+  /** "تسجيل كزائر" — skips the add-customer dialog and switches straight to Guest Mode. */
+  function quickRegisterGuest(query: string) {
+    const trimmed = query.trim();
+    const isPhoneLike = /^[0-9]+$/.test(trimmed);
+    if (isPhoneLike && !isValidEgyptPhoneNumber(trimmed)) {
+      toast.error("رقم الهاتف غير صحيح", PHONE_VALIDATION_ERROR);
       return;
     }
-    const created = addCustomer({ name: trimmed, phone: "" });
-    toast.success("تم تسجيل الزائر", created.name);
-    onPickCustomer(created.id);
+    setIsGuest(true);
+    setCustomerId("");
+    setCustomerName("ضيف");
+    setCustomerPhone(isPhoneLike ? trimmed : "");
+    setGuestBrand("");
+    setGuestModel("");
+    setGuestPlate("");
+    setGuestColor("");
+    setSelectedVehicleIds(["guest-slot"]);
+    toast.success("تم تفعيل وضع الضيف");
   }
 
   function openAddCustomerDialog(query: string) {
@@ -668,16 +687,66 @@ export function QueuePage() {
         open={open}
         onClose={() => setOpen(false)}
         title={
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between font-normal">
             <div>
-              <div>استقبال سيارة جديدة</div>
+              <div className="font-semibold text-slate-900">استقبال سيارة جديدة</div>
               <div className="mt-0.5 text-xs font-normal text-slate-500">
                 بيانات العميل والسيارة والخدمات المطلوبة وتذكرة الاستلام
               </div>
             </div>
-            <div className="w-full sm:w-72">
-              <div className="mb-1 text-xs font-medium text-slate-600">وقت الوصول</div>
-              <Input type="datetime-local" value={arrival} readOnly className="bg-slate-50 text-slate-600" />
+            <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+              <div className="w-full sm:w-52">
+                <div className="mb-1 text-xs font-medium text-slate-600">وقت الوصول</div>
+                <Input type="datetime-local" value={arrival} readOnly className="bg-slate-50 text-slate-600 h-9" />
+              </div>
+              <div className="w-full sm:w-60">
+                <div className="mb-1 text-xs font-medium text-slate-600">موعد الاستلام المطلوب</div>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setPickupDropdownOpen((isOpen) => !isOpen)}
+                    className={cn(
+                      "flex h-9 w-full items-center justify-between rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700",
+                      "focus-ring"
+                    )}
+                  >
+                    <span className={selectedPickupHourLabel ? "text-slate-900" : "text-slate-500"}>
+                      {selectedPickupHourLabel ?? "اختياري - اختر الساعة"}
+                    </span>
+                    <ChevronDown className={cn("h-4 w-4 text-slate-500 transition", pickupDropdownOpen && "rotate-180")} />
+                  </button>
+                  {pickupDropdownOpen ? (
+                    <div className="absolute right-0 z-30 mt-2 w-72 rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
+                      <div className="grid max-h-56 grid-cols-4 gap-2 overflow-y-auto">
+                        {pickupHourOptions.map((option) => {
+                          const selected = requestedPickupAt === option.value;
+                          return (
+                            <button
+                              key={option.value}
+                              type="button"
+                              disabled={option.disabled}
+                              onClick={() => {
+                                setRequestedPickupAt(option.value);
+                                setPickupDropdownOpen(false);
+                              }}
+                              className={cn(
+                                "flex h-8 items-center justify-center rounded-lg border text-xs font-semibold transition",
+                                selected
+                                  ? "border-brand-600 bg-brand-600 text-white shadow-sm font-normal"
+                                  : option.disabled
+                                    ? "border-slate-100 bg-slate-50 text-slate-400 cursor-not-allowed font-normal"
+                                    : "border-slate-200 bg-white hover:border-brand-300 hover:bg-brand-50 text-slate-600 font-normal"
+                              )}
+                            >
+                              {option.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
             </div>
           </div>
         }
@@ -690,7 +759,7 @@ export function QueuePage() {
         }
       >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="md:col-span-2 rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-4">
+          <div className="md:col-span-2 rounded-xl border border-slate-200 bg-white p-4 space-y-4 shadow-sm">
             <div className="flex flex-col sm:flex-row sm:items-end gap-3">
               <Field label="العميل المسجّل" className="flex-1">
                 <CustomerCombobox
@@ -723,7 +792,7 @@ export function QueuePage() {
                   } else {
                     setIsGuest(true);
                     setCustomerId("");
-                    setCustomerName("");
+                    setCustomerName("ضيف");
                     setCustomerPhone("");
                     setGuestBrand("");
                     setGuestModel("");
@@ -736,25 +805,16 @@ export function QueuePage() {
                 {isGuest ? "إلغاء وضع الضيف" : "دخول كضيف"}
               </Button>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Field label="اسم العميل">
-                <Input
-                  value={customerName}
-                  readOnly={Boolean(selectedCustomer)}
-                  onChange={(e) => setCustomerName(e.target.value)}
-                  className={cn(selectedCustomer ? "bg-slate-50 text-slate-600" : "bg-white")}
-                />
-              </Field>
-              <Field label="رقم الهاتف">
-                <Input
-                  value={customerPhone}
-                  readOnly={Boolean(selectedCustomer)}
-                  inputMode="tel"
-                  onChange={(e) => setCustomerPhone(e.target.value)}
-                  className={cn(selectedCustomer ? "bg-slate-50 text-slate-600" : "bg-white")}
-                />
-              </Field>
-            </div>
+            {selectedCustomer ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Field label="اسم العميل">
+                  <Input value={customerName} readOnly className="bg-slate-50 text-slate-600" />
+                </Field>
+                <Field label="رقم الهاتف">
+                  <Input value={customerPhone} readOnly inputMode="tel" className="bg-slate-50 text-slate-600" />
+                </Field>
+              </div>
+            ) : null}
           </div>
 
           <div className="md:col-span-2 space-y-3">
@@ -886,53 +946,6 @@ export function QueuePage() {
               })
             )}
           </div>
-          <Field label="موعد الاستلام المطلوب" hint="اختر ساعة بعد وقت الوصول">
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setPickupDropdownOpen((isOpen) => !isOpen)}
-                className={cn(
-                  "flex h-9 w-full items-center justify-between rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700",
-                  "focus-ring"
-                )}
-              >
-                <span className={selectedPickupHourLabel ? "text-slate-900" : "text-slate-500"}>
-                  {selectedPickupHourLabel ?? "اختياري - اختر الساعة"}
-                </span>
-                <ChevronDown className={cn("h-4 w-4 text-slate-500 transition", pickupDropdownOpen && "rotate-180")} />
-              </button>
-              {pickupDropdownOpen ? (
-                <div className="absolute z-30 mt-2 w-full rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
-                  <div className="grid max-h-56 grid-cols-4 gap-2 overflow-y-auto sm:grid-cols-6">
-                    {pickupHourOptions.map((option) => {
-                      const selected = requestedPickupAt === option.value;
-                      return (
-                        <button
-                          key={option.value}
-                          type="button"
-                          disabled={option.disabled}
-                          onClick={() => {
-                            setRequestedPickupAt(option.value);
-                            setPickupDropdownOpen(false);
-                          }}
-                          className={cn(
-                            "rounded-md border px-2 py-1.5 text-xs font-semibold transition",
-                            selected
-                              ? "border-brand-600 bg-brand-600 text-white shadow-sm"
-                              : "border-slate-200 bg-white text-slate-700 hover:border-brand-300 hover:bg-brand-50",
-                            option.disabled &&
-                              "cursor-not-allowed border-slate-100 bg-slate-100 text-slate-300 hover:border-slate-100 hover:bg-slate-100"
-                          )}
-                        >
-                          {option.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          </Field>
           <Field label="الخدمات" className="md:col-span-2">
             {activeServices.length === 0 ? (
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
@@ -1128,122 +1141,182 @@ function TicketCard({
   const pickupLate = isPickupLate(t);
   const keyIsReceived = Boolean(t.keyReceived || t.keyReceivedAt);
 
+  const primaryAction =
+    canEdit && onStartWash ? (
+      <Button size="md" className="flex-1" onClick={onStartWash}>
+        <Play className="h-4 w-4" /> ابدأ الغسيل
+      </Button>
+    ) : canEdit && onComplete ? (
+      <Button size="md" variant="success" className="flex-1" onClick={onComplete}>
+        <Check className="h-4 w-4" /> جاهز للتسليم
+      </Button>
+    ) : onOpenInvoice ? (
+      <Button size="md" variant="outline" className="flex-1" onClick={onOpenInvoice}>
+        <Receipt className="h-4 w-4" /> فتح الفاتورة
+      </Button>
+    ) : canInvoice && onInvoice ? (
+      <Button size="md" variant="outline" className="flex-1" onClick={onInvoice}>
+        <Receipt className="h-4 w-4" /> إنشاء الفاتورة
+      </Button>
+    ) : null;
+
+  // فاتورة يبقى إجراء ثانوي لو فيه إجراء أساسي أهم منه في نفس الكارت.
+  const secondaryInvoice =
+    primaryAction && canInvoice && onInvoice && !onOpenInvoice && (onStartWash || onComplete) ? (
+      <Button size="sm" variant="outline" onClick={onInvoice} title="إنشاء فاتورة">
+        <Receipt className="h-3.5 w-3.5" /> فاتورة
+      </Button>
+    ) : null;
+
+  const hasReorder = canEdit && (onMoveUp || onMoveDown);
+  const hasUtility = Boolean(secondaryInvoice || onPrint || (canEdit && onRequeue && t.status !== "delivered") || (canCancel && onCancel));
+
   return (
     <article
       draggable={draggable}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       className={cn(
-        "queue-ticket-card rounded-lg border border-slate-200 bg-white p-3 space-y-2 shadow-sm",
+        "queue-ticket-card rounded-xl border border-slate-200 bg-white p-3.5 space-y-3 shadow-sm",
         draggable ? "cursor-grab active:cursor-grabbing" : "",
         isDragging ? "is-dragging" : ""
       )}
     >
+      {/* ── Header: number + customer + status ── */}
       <div className="flex items-start justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="flex min-w-0 items-center gap-2.5">
           {draggable ? (
-            <span className="grid h-8 w-4 shrink-0 place-items-center text-slate-300" aria-hidden="true">
+            <span className="grid h-9 w-4 shrink-0 place-items-center text-slate-300" aria-hidden="true">
               <GripVertical className="h-4 w-4" />
             </span>
           ) : null}
-          <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-brand-50 text-sm font-bold text-brand-700">
+          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-lg font-bold text-brand-700">
             {t.number}
           </span>
           <div className="min-w-0">
-            <div className="truncate font-medium text-slate-900">{t.customerName}</div>
-            <div className="text-[11px] text-slate-400">سيارات قبله: {carsAhead}</div>
+            <div className="truncate text-[15px] font-semibold text-slate-900">{t.customerName}</div>
+            {carsAhead > 0 ? (
+              <div className="text-[11px] text-slate-400">سيارات قبله: {carsAhead}</div>
+            ) : null}
           </div>
         </div>
-        <div className="flex flex-col items-end gap-1">
+        <div className="flex shrink-0 flex-col items-end gap-1">
           <Badge tone={STATUS_TONE[t.status]}>{STATUS_LABEL[t.status]}</Badge>
           {t.missedTurn ? <Badge tone="orange">معاد ترتيبه</Badge> : null}
         </div>
       </div>
 
-      <div className="text-xs text-slate-500 space-y-1">
+      {/* ── Vehicle + timing + services ── */}
+      <div className="space-y-1.5 text-xs text-slate-500">
         {t.vehicleLabel || t.vehicleBrand ? (
-          <div className="flex items-center gap-1">
-            <Car className="h-3.5 w-3.5 shrink-0" />
+          <div className="flex items-center gap-1.5 text-[13px] font-medium text-slate-700">
+            <Car className="h-4 w-4 shrink-0 text-slate-400" />
             <span className="min-w-0 truncate">{t.vehicleLabel ?? t.vehicleBrand}</span>
+            {t.phone ? <span className="shrink-0 text-slate-400" dir="ltr">· {t.phone}</span> : null}
           </div>
+        ) : t.phone ? (
+          <div dir="ltr" className="text-start">{t.phone}</div>
         ) : null}
-        {t.phone ? <div>{t.phone}</div> : null}
-        <div className="flex items-center gap-1">
-          <Clock className="h-3.5 w-3.5 shrink-0" />
-          <span>الوصول: {formatDateTime(t.arrivalTime)}</span>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span className="flex items-center gap-1">
+            <Clock className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+            الوصول: {formatDateTime(t.arrivalTime)}
+          </span>
+          {t.requestedPickupAt ? (
+            <span className={cn("font-medium", pickupLate ? "text-amber-700" : "text-slate-600")}>
+              الاستلام: {formatDateTime(t.requestedPickupAt)}
+            </span>
+          ) : null}
         </div>
-        {t.requestedPickupAt ? (
-          <div className={pickupLate ? "text-amber-700" : undefined}>
-            الاستلام المطلوب: {formatDateTime(t.requestedPickupAt)}
+        {services.length ? (
+          <div className="rounded-md bg-slate-50 px-2 py-1 text-[12px] text-slate-600">
+            {services.join("، ")}
           </div>
         ) : null}
-        {services.length ? <div className="text-slate-600">الخدمات: {services.join("، ")}</div> : null}
-        {t.note ? <div className="text-amber-700">{t.note}</div> : null}
+        {t.note ? <div className="text-amber-700">📝 {t.note}</div> : null}
         {t.damageAreas && t.damageAreas.length ? (
           <div className="text-rose-600">⚠ أضرار مسبقة: {t.damageAreas.join("، ")}</div>
         ) : null}
       </div>
 
-      <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
-        {keyIsReceived ? (
-          <Badge tone="green">
-            <KeyRound className="h-3 w-3" /> استُلم: {t.keyReceivedByName ?? "—"} · {formatDate(t.keyReceivedAt ?? t.arrivalTime)}
-          </Badge>
-        ) : canEdit && onReceiveKey ? (
-          <Button size="sm" variant="outline" onClick={onReceiveKey}>
-            <KeyRound className="h-3.5 w-3.5" /> استلام المفتاح
-          </Button>
-        ) : null}
-        {t.keyDeliveredAt ? (
-          <Badge tone="blue">
-            <KeyRound className="h-3 w-3" /> سُلّم: {t.keyDeliveredByName ?? "—"} · {formatDate(t.keyDeliveredAt)}
-          </Badge>
-        ) : keyIsReceived && canEdit && onDeliverKey && t.status === "done" ? (
-          <Button size="sm" variant="outline" onClick={onDeliverKey}>
-            <KeyRound className="h-3.5 w-3.5" /> تسليم المفتاح
-          </Button>
-        ) : null}
-      </div>
+      {/* ── Key status ── */}
+      {keyIsReceived || (canEdit && onReceiveKey) || t.keyDeliveredAt || (keyIsReceived && canEdit && onDeliverKey && t.status === "done") ? (
+        <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+          {keyIsReceived ? (
+            <Badge tone="green">
+              <KeyRound className="h-3 w-3" /> استُلم: {t.keyReceivedByName ?? "—"} · {formatDate(t.keyReceivedAt ?? t.arrivalTime)}
+            </Badge>
+          ) : canEdit && onReceiveKey ? (
+            <Button size="sm" variant="outline" onClick={onReceiveKey}>
+              <KeyRound className="h-3.5 w-3.5" /> استلام المفتاح
+            </Button>
+          ) : null}
+          {t.keyDeliveredAt ? (
+            <Badge tone="blue">
+              <KeyRound className="h-3 w-3" /> سُلّم: {t.keyDeliveredByName ?? "—"} · {formatDate(t.keyDeliveredAt)}
+            </Badge>
+          ) : keyIsReceived && canEdit && onDeliverKey && t.status === "done" ? (
+            <Button size="sm" variant="outline" onClick={onDeliverKey}>
+              <KeyRound className="h-3.5 w-3.5" /> تسليم المفتاح
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
 
-      <div className="flex flex-wrap items-center gap-1.5 border-t border-slate-100 pt-2">
-        {canEdit && onMoveUp ? (
-          <Button size="icon" variant="outline" onClick={onMoveUp} disabled={!canMoveUp} title="تحريك لأعلى">
-            <ArrowUp className="h-3.5 w-3.5" />
-          </Button>
-        ) : null}
-        {canEdit && onMoveDown ? (
-          <Button size="icon" variant="outline" onClick={onMoveDown} disabled={!canMoveDown} title="تحريك لأسفل">
-            <ArrowDown className="h-3.5 w-3.5" />
-          </Button>
-        ) : null}
-        {canEdit && onStartWash ? (
-          <Button size="sm" onClick={onStartWash}><Play className="h-3.5 w-3.5" /> ابدأ</Button>
-        ) : null}
-        {canEdit && onComplete ? (
-          <Button size="sm" variant="success" onClick={onComplete}><Check className="h-3.5 w-3.5" /> جاهز</Button>
-        ) : null}
-        {canInvoice && onInvoice ? (
-          <Button size="sm" variant="outline" onClick={onInvoice}><Receipt className="h-3.5 w-3.5" /> فاتورة</Button>
-        ) : null}
-        {onOpenInvoice ? (
-          <Button size="sm" variant="outline" onClick={onOpenInvoice}><Receipt className="h-3.5 w-3.5" /> فتح</Button>
-        ) : null}
-        {onPrint ? (
-          <Button size="icon" variant="ghost" onClick={onPrint} title="طباعة تذكرة الاستقبال">
-            <Printer className="h-3.5 w-3.5" />
-          </Button>
-        ) : null}
-        {canEdit && onRequeue && t.status !== "delivered" ? (
-          <Button size="icon" variant="ghost" onClick={onRequeue} title="إرجاع لآخر الطابور">
-            <RotateCcw className="h-3.5 w-3.5" />
-          </Button>
-        ) : null}
-        {canCancel && onCancel ? (
-          <Button size="icon" variant="ghost" onClick={onCancel} title="إلغاء">
-            <X className="h-3.5 w-3.5 text-rose-500" />
-          </Button>
-        ) : null}
-      </div>
+      {/* ── Actions: prominent primary + muted utility strip ── */}
+      {primaryAction || hasReorder || hasUtility ? (
+        <div className="space-y-2 border-t border-slate-100 pt-3">
+          {primaryAction ? (
+            <div className="flex items-center gap-2">
+              {hasReorder ? (
+                <div className="flex shrink-0 flex-col gap-1">
+                  <button
+                    type="button"
+                    onClick={onMoveUp}
+                    disabled={!canMoveUp}
+                    title="تحريك لأعلى"
+                    className="grid h-5 w-8 place-items-center rounded border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-30"
+                  >
+                    <ArrowUp className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onMoveDown}
+                    disabled={!canMoveDown}
+                    title="تحريك لأسفل"
+                    className="grid h-5 w-8 place-items-center rounded border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-30"
+                  >
+                    <ArrowDown className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ) : null}
+              {primaryAction}
+            </div>
+          ) : null}
+
+          {hasUtility ? (
+            <div className="flex flex-wrap items-center gap-1">
+              {secondaryInvoice}
+              {onPrint ? (
+                <Button size="icon" variant="ghost" onClick={onPrint} title="طباعة تذكرة الاستقبال">
+                  <Printer className="h-4 w-4" />
+                </Button>
+              ) : null}
+              {canEdit && onRequeue && t.status !== "delivered" ? (
+                <Button size="icon" variant="ghost" onClick={onRequeue} title="إرجاع لآخر الطابور">
+                  <RotateCcw className="h-4 w-4" />
+                </Button>
+              ) : null}
+              <span className="flex-1" />
+              {canCancel && onCancel ? (
+                <Button size="icon" variant="ghost" onClick={onCancel} title="إلغاء">
+                  <X className="h-4 w-4 text-rose-500" />
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </article>
   );
 }

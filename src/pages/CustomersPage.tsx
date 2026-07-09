@@ -29,6 +29,7 @@ import { formatDate } from "../lib/format";
 import type { Customer, SalesInvoice, Vehicle } from "../types";
 import { Link, useNavigate } from "react-router-dom";
 import { hasPermission } from "../lib/permissions";
+import { isValidEgyptPhoneNumber, PHONE_VALIDATION_ERROR } from "../lib/utils";
 
 export function CustomersPage() {
   const { customers, addCustomer, updateCustomer, deleteCustomer, archiveCustomer, nextCustomerCode } = useCatalog();
@@ -143,8 +144,8 @@ export function CustomersPage() {
     setOpen(true);
   }
   function submit() {
-    if (form.phone && form.phone.trim().replace(/\D/g, "").length !== 11) {
-      toast.error("رقم الهاتف غير صحيح", "يجب أن يكون رقم الهاتف مكوناً من 11 رقماً بالضبط");
+    if (form.phone && !isValidEgyptPhoneNumber(form.phone)) {
+      toast.error("رقم الهاتف غير صحيح", PHONE_VALIDATION_ERROR);
       return;
     }
     const payload = { ...form, name: form.name.trim() || "عميل بدون اسم" };

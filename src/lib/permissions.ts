@@ -25,8 +25,8 @@ export const PERMISSION_KEYS: { key: PermissionKey; label: string }[] = [
   { key: "pricing.override", label: "تعديل الأسعار" },
   { key: "products.view", label: "عرض إضافات الغسيل" },
   { key: "products.manage", label: "إدارة إضافات الغسيل" },
-  { key: "materials.view", label: "عرض خامات الغسيل" },
-  { key: "materials.manage", label: "إدارة خامات الغسيل" },
+  { key: "materials.view", label: "عرض خامات المغسلة" },
+  { key: "materials.manage", label: "إدارة خامات المغسلة" },
   { key: "treasury.manage", label: "إدارة الخزينة" },
   { key: "payroll.manage", label: "إدارة الرواتب" },
   { key: "reports.view", label: "عرض التقارير" },
@@ -73,7 +73,7 @@ export const PERMISSION_GROUPS: {
   },
   {
     key: "inventory",
-    label: "خامات الغسيل",
+    label: "خامات المغسلة",
     description: "رصيد الخامات والاستهلاك اليومي",
     actions: [
       { key: "view", label: "عرض" },
@@ -94,8 +94,8 @@ export const PERMISSION_GROUPS: {
   },
   {
     key: "salesInvoices",
-    label: "فواتير الغسيل",
-    description: "فواتير الغسيل والتحصيل والإلغاء",
+    label: "الفواتير",
+    description: "الفواتير والتحصيل والإلغاء",
     actions: [
       { key: "view", label: "عرض" },
       { key: "add", label: "إضافة" },

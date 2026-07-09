@@ -273,7 +273,7 @@ export function CustomerDetailPage() {
                         {inv.cancelled ? (
                           <Badge tone="slate">ملغاة</Badge>
                         ) : (
-                          <Badge tone="green">مسددة</Badge>
+                          <Badge tone="green">مكتملة</Badge>
                         )}
                       </TD>
                       <TD className="text-end">

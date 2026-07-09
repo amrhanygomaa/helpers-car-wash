@@ -217,35 +217,6 @@ export function InvoicePrintLayout(props: Props) {
             </div>
           )}
 
-          {/* ── PAYMENT LOG ── */}
-          {props.paymentLog && props.paymentLog.length > 0 && (
-            <div className="ipl-payment-log">
-              <div className="ipl-payment-log-title">سجل سداد الدفعات</div>
-              <table className="ipl-table ipl-table--small">
-                <thead>
-                  <tr>
-                    <Th center colClass="ipl-col-seq">#</Th>
-                    <Th center colClass="ipl-col-date">التاريخ</Th>
-                    <Th center colClass="ipl-col-method">وسيلة الدفع</Th>
-                    <Th center colClass="ipl-col-amount">المبلغ المسدد</Th>
-                    <Th>ملاحظات</Th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {props.paymentLog.map((entry, idx) => (
-                    <tr key={entry.id} className={idx % 2 === 1 ? "ipl-row-odd-payment" : "ipl-row-even"}>
-                      <Td center muted>{idx + 1}</Td>
-                      <Td center>{formatDate(entry.date)}</Td>
-                      <Td center>{PAYMENT_METHOD_LABELS[entry.paymentMethod] ?? entry.paymentMethod}</Td>
-                      <Td center mono bold accent>{formatCurrency(entry.amount, settings.currency)}</Td>
-                      <Td muted>{entry.notes ?? "—"}</Td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-
           {/* ── TOTALS + SIGNATURES ── */}
           <div className="ipl-bottom-row">
 
@@ -310,38 +281,6 @@ export function InvoicePrintLayout(props: Props) {
               />
             </div>
           </div>
-
-          {/* Customer balance + overpayment — OUTSIDE overflow:hidden so they are never clipped */}
-          {isSales && props.customerName && props.customerBalance !== undefined && (
-            <div className={`ipl-balance ${
-              props.customerBalance < 0 ? "ipl-balance--credit"
-              : props.customerBalance > 0 ? "ipl-balance--debit"
-              : "ipl-balance--settled"
-            }`}>
-              <span className={`ipl-balance-label ${
-                props.customerBalance < 0 ? "ipl-balance-label--credit"
-                : props.customerBalance > 0 ? "ipl-balance-label--debit"
-                : ""
-              }`}>
-                {props.customerBalance < 0
-                  ? `رصيد دائن للعميل (${props.customerName})`
-                  : props.customerBalance > 0
-                    ? `رصيد مدين على العميل (${props.customerName})`
-                    : `رصيد العميل (${props.customerName})`}
-              </span>
-              <span className={`ipl-balance-amount ${
-                props.customerBalance < 0 ? "ipl-balance-amount--credit"
-                : props.customerBalance > 0 ? "ipl-balance-amount--debit"
-                : ""
-              }`}>
-                {props.customerBalance < 0
-                  ? `+ ${formatCurrency(-props.customerBalance, settings.currency)}`
-                  : props.customerBalance > 0
-                    ? `- ${formatCurrency(props.customerBalance, settings.currency)}`
-                    : "الحساب مسوّى ✓"}
-              </span>
-            </div>
-          )}
 
           {/* Notes */}
           {props.notes && (

@@ -541,7 +541,7 @@ export function CarwashReportsPage() {
   return (
     <>
       <PageHeader
-        title="تقارير الغسيل"
+        title="تقارير المغسلة"
         description="تقارير يومية وشهرية للغسيل، العمال، الإضافات، الخامات، وصافي الربح."
         actions={
           <>

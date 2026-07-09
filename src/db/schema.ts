@@ -343,6 +343,16 @@ export const materialMovements = sqliteTable("material_movements", {
   createdAt: text("created_at").notNull(),
 });
 
+// ── Car Brands (custom additions to the bundled static list) ──────────────
+
+export const carBrands = sqliteTable("car_brands", {
+  id: text("id").primaryKey(),
+  nameAr: text("name_ar").notNull(),
+  nameEn: text("name_en").notNull(),
+  logoImage: text("logo_image"),
+  createdAt: text("created_at").notNull(),
+});
+
 // ── Settings ──────────────────────────────────────────────────────────────
 
 export const settings = sqliteTable("settings", {
@@ -382,6 +392,7 @@ export type Product = InferSelectModel<typeof products>;
 export type ProductMovement = InferSelectModel<typeof productMovements>;
 export type RawMaterial = InferSelectModel<typeof rawMaterials>;
 export type MaterialMovement = InferSelectModel<typeof materialMovements>;
+export type CarBrandRow = InferSelectModel<typeof carBrands>;
 export type Setting = InferSelectModel<typeof settings>;
 export type Branch = InferSelectModel<typeof branches>;
 export type NewBranch = InferInsertModel<typeof branches>;

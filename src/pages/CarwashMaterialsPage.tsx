@@ -368,7 +368,7 @@ export function CarwashMaterialsPage() {
   if (!hasDb()) {
     return (
       <>
-        <PageHeader title="خامات الغسيل" description="إدارة رصيد واستهلاك خامات التشغيل اليومية." />
+        <PageHeader title="خامات المغسلة" description="إدارة رصيد واستهلاك خامات التشغيل اليومية." />
         <EmptyState
           icon={<Beaker className="h-8 w-8" />}
           title="قاعدة البيانات غير متاحة"
@@ -381,7 +381,7 @@ export function CarwashMaterialsPage() {
   return (
     <>
       <PageHeader
-        title="خامات الغسيل"
+        title="خامات المغسلة"
         description="كتالوج الخامات، الرصيد المتاح، والاستهلاك اليومي حسب العامل أو المستخدم."
         actions={
           canManage ? (

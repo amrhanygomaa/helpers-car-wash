@@ -60,6 +60,10 @@ export function CustomerCombobox({
   );
   const showActions = text.trim().length > 0 && !exactMatchExists;
   const actionCount = showActions ? 2 : 0;
+  const trimmedQuery = text.trim();
+  // A purely-numeric query is a phone number, not a name — the add-customer
+  // dialog files it under "phone", so the action label must say so too.
+  const isPhoneLikeQuery = /^[0-9]+$/.test(trimmedQuery);
 
   function pick(customer: Customer) {
     onPick(customer);
@@ -199,7 +203,10 @@ export function CustomerCombobox({
                   highlight === results.length ? "bg-brand-50" : ""
                 )}
               >
-                <Plus className="w-4 h-4" /> إضافة عميل جديد باسم "{text.trim()}"
+                <Plus className="w-4 h-4" />
+                {isPhoneLikeQuery
+                  ? `إضافة عميل جديد برقم "${trimmedQuery}"`
+                  : `إضافة عميل جديد باسم "${trimmedQuery}"`}
               </button>
               <button
                 type="button"
@@ -214,7 +221,7 @@ export function CustomerCombobox({
                   highlight === results.length + 1 ? "bg-amber-50" : ""
                 )}
               >
-                <UserRound className="w-4 h-4" /> تسجيل "{text.trim()}" كزائر سريع (بدون نموذج تسجيل كامل)
+                <UserRound className="w-4 h-4" /> الدخول كضيف سريع (بدون نموذج تسجيل كامل)
               </button>
             </div>
           ) : null}
