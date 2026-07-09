@@ -201,8 +201,15 @@ export function QueuePage() {
   const today = todayISO();
   const waiting = queueTickets.filter((t) => t.status === "waiting");
   const inProgress = queueTickets.filter((t) => t.status === "in_progress");
-  const doneToday = queueTickets.filter((t) => t.status === "done" && ticketBusinessDate(t) === today);
-  const deliveredToday = queueTickets.filter((t) => t.status === "delivered" && ticketBusinessDate(t) === today);
+  const doneToday = queueTickets.filter((t) => t.status === "done");
+  const deliveredToday = queueTickets.filter((t) => {
+    if (t.status !== "delivered") return false;
+    if (t.keyDeliveredAt) {
+      const d = new Date(t.keyDeliveredAt);
+      return !Number.isNaN(d.getTime()) && localISODate(d) === today;
+    }
+    return ticketBusinessDate(t) === today;
+  });
   const cancelledToday = queueTickets.filter((t) => t.status === "cancelled" && ticketBusinessDate(t) === today);
   const draggingTicket = useMemo(
     () => queueTickets.find((ticket) => ticket.id === draggingTicketId),
@@ -596,11 +603,11 @@ export function QueuePage() {
         />
         <QueueColumn
           status="done"
-          title={`${STATUS_LABEL.done} (اليوم)`}
+          title={STATUS_LABEL.done}
           tone="green"
           count={doneToday.length}
           tickets={doneToday}
-          empty="لا توجد سيارات جاهزة اليوم"
+          empty="لا توجد سيارات جاهزة"
           canDrop={canEdit}
           isDragging={Boolean(draggingTicketId)}
           isDropTarget={dragOverStatus === "done"}
