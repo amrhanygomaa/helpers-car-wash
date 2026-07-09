@@ -523,7 +523,7 @@ export function CarwashReportsPage() {
 
   function exportDaily() {
     downloadCsv(`carwash-daily-${from}-${to}.csv`, [
-      ["التاريخ", "السيارات", "الإيراد", "المحصل", "COGS", "مصروفات", "أجور", "صافي الربح", "مشاكل"],
+      ["التاريخ", "السيارات", "الإيراد", "المحصل", "تكلفة الخامات", "مصروفات", "أجور", "صافي الربح", "مشاكل"],
       ...dailyRows.map((row) => [
         row.date,
         String(row.cars),
@@ -583,7 +583,7 @@ export function CarwashReportsPage() {
       <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
         <Stat icon={<Car className="h-5 w-5" />} label="سيارات" value={String(overview.cars)} tone="blue" />
         <Stat icon={<Coins className="h-5 w-5" />} label="إيراد" value={formatPiastres(overview.revenue, currency)} tone="green" />
-        <Stat icon={<Warehouse className="h-5 w-5" />} label="COGS" value={formatPiastres(overview.cogs, currency)} tone="amber" />
+        <Stat icon={<Warehouse className="h-5 w-5" />} label="تكلفة الخامات" value={formatPiastres(overview.cogs, currency)} tone="amber" />
         <Stat icon={<Wallet className="h-5 w-5" />} label="مصروفات + أجور" value={formatPiastres(overview.expenses + overview.payroll, currency)} tone="rose" />
         <Stat
           icon={<BarChart3 className="h-5 w-5" />}
