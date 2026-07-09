@@ -293,10 +293,10 @@ export function CarwashInvoiceNewPage() {
     if (lines.length === 0 && productLines.length === 0) { toast.error(productOnly ? "أضف منتجاً واحداً على الأقل" : "أضف خدمة أو إضافة واحدة على الأقل"); return; }
     if (!productOnly && lines.some((l) => !l.serviceId || l.quantity <= 0)) { toast.error("تحقق من بنود الخدمات"); return; }
     if (productLines.some((l) => !l.productId || l.quantity <= 0)) { toast.error("تحقق من بنود الإضافات"); return; }
-    // Commission services must be attributed to a specific صنايعي so the
-    // treasury and payroll record who received the commission.
-    if (!productOnly && hasCommissionLines && !invoiceWorkerId) {
-      toast.error("اختر الصنايعي", "الفاتورة تحتوي خدمات بعمولة — يجب تحديد الصنايعي لتسجيل العمولة عليه");
+    // الصنايعي is mandatory on every wash-service invoice so every job is
+    // attributed to whoever performed it, commission or not.
+    if (!productOnly && lines.length > 0 && !invoiceWorkerId) {
+      toast.error("اختر الصنايعي", "يجب تحديد الصنايعي الذي قام بالخدمة قبل تأكيد الفاتورة");
       return;
     }
 
