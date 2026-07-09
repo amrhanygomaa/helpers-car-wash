@@ -169,11 +169,13 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
         to={item.to}
         end={item.to === "/" || item.to === "/carwash/reports"}
         title={collapsed ? item.label : undefined}
-        className={({ isActive }) =>
+        className={() =>
           cn(
             "flex items-center h-9 rounded-lg text-sm transition-colors",
             collapsed ? "justify-center px-0 h-10" : indented ? "gap-3 px-3 ms-2" : "gap-3 px-3",
-            manuallyActive || (isActive && !item.to.includes("?"))
+            // itemMatchesPath is query-string aware — NavLink's own isActive is not,
+            // so "/carwash/new" would also light up on "/carwash/new?type=products".
+            manuallyActive
               ? "bg-brand-50 text-brand-700 font-medium"
               : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
           )

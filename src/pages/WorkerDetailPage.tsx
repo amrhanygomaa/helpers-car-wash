@@ -386,7 +386,7 @@ export function WorkerDetailPage() {
             subtitle={`إجمالي السيارات المغسولة هذا الشهر: ${financials.totalCars} سيارة`}
           />
           <CardBody className="p-0">
-            {monthClosures.length === 0 ? (
+            {monthClosures.length === 0 && liveRows.length === 0 ? (
               <div className="p-6">
                 <EmptyState title="لا توجد أيام عمل مسجلة" description="سيظهر النشاط بعد إقفال يومية العمال." />
               </div>
@@ -401,6 +401,19 @@ export function WorkerDetailPage() {
                   </TR>
                 </THead>
                 <TBody>
+                  {liveRows.map((r) => (
+                    <TR key={`live-${r.businessDate}`}>
+                      <TD className="text-xs">
+                        <div className="flex items-center gap-1.5">
+                          {r.businessDate}
+                          <Badge tone="amber">لم تُقفل</Badge>
+                        </div>
+                      </TD>
+                      <TD className="text-end font-semibold text-slate-700">{r.carsCount}</TD>
+                      <TD className="text-end text-emerald-700 font-medium">{formatCurrency(piastresToEgp(r.commissionTotal), settings.currency)}</TD>
+                      <TD className="text-end font-bold">{formatCurrency(piastresToEgp(r.netDue), settings.currency)}</TD>
+                    </TR>
+                  ))}
                   {monthClosures.map((c) => (
                     <TR key={c.id}>
                       <TD className="text-xs">{c.businessDate}</TD>
