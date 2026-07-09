@@ -502,8 +502,6 @@ export function SettingsPage() {
           </CardBody>
         </Card>
 
-        <SyncSettingsCard defaultBranchId={form.currentBranchId || "branch-main"} />
-
         <Card className="lg:col-span-2">
           <CardHeader title="إعدادات الطباعة" subtitle="تنسيق الفاتورة المطبوعة" />
           <CardBody className="grid grid-cols-1 md:grid-cols-3 gap-3">
