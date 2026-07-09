@@ -5,7 +5,7 @@ export type SalesPaymentType = "cash" | "account";
 export type SalesPriceType = "wholesale" | "retail";
 export type LoginResult = {
   ok: boolean;
-  error?: "invalid_credentials" | "rate_limited";
+  error?: "invalid_credentials" | "rate_limited" | "not_available";
   remainSeconds?: number;
   attemptsRemaining?: number;
 };

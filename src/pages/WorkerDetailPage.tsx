@@ -10,7 +10,6 @@ import {
   Sparkles,
   Award,
   AlertCircle,
-  HelpCircle,
 } from "lucide-react";
 import { PageHeader } from "../components/layout/AppLayout";
 import { Card, CardBody, CardHeader } from "../components/ui/Card";
@@ -22,12 +21,12 @@ import { Dialog } from "../components/ui/Dialog";
 import { Field, Input, Select } from "../components/ui/Input";
 import { useToast } from "../components/ui/Toast";
 import { hasDb, db } from "../db/client";
-import { workers, dailyClosures, workerWithdrawals } from "../db/schema";
-import { eq, and } from "drizzle-orm";
+import { workers } from "../db/schema";
+import { eq } from "drizzle-orm";
 import { listWorkerWithdrawalsForWorker, recordWorkerFinancialAdjustment, deleteWorkerWithdrawal } from "../features/treasury/queries";
 import { listDailyClosuresForWorker } from "../features/payroll/queries";
 import { dailyBaseAmount } from "../features/payroll/compute";
-import { formatCurrency, formatDate } from "../lib/format";
+import { formatCurrency } from "../lib/format";
 import { useSettings } from "../store/SettingsContext";
 import { useInvoicing } from "../store/InvoicingContext";
 import { lineWorkers } from "../store/_pure";

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Plus, Minus, Wallet, HandCoins, NotebookPen, Users, UserRoundMinus } from "lucide-react";
+import { Plus, Minus, Wallet, HandCoins, NotebookPen } from "lucide-react";
 import { PageHeader } from "../components/layout/AppLayout";
 import { Card, CardBody, CardHeader } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -8,9 +8,7 @@ import { Input, Field, Select, Textarea } from "../components/ui/Input";
 import { Table, TBody, TD, TH, THead, TR } from "../components/ui/Table";
 import { Dialog } from "../components/ui/Dialog";
 import { EmptyState } from "../components/ui/EmptyState";
-import { useCatalog } from "../store/CatalogContext";
 import { useInvoicing } from "../store/InvoicingContext";
-import { useReporting } from "../store/ReportingContext";
 import { useAuth } from "../store/AuthContext";
 import { useSettings } from "../store/SettingsContext";
 import { useToast } from "../components/ui/Toast";
@@ -20,9 +18,7 @@ import { formatCurrency, formatDate, PAYMENT_METHOD_LABELS } from "../lib/format
 import { hasPermission } from "../lib/permissions";
 
 export function CashboxPage() {
-  const { customers } = useCatalog();
   const { cashEntries, salesInvoices, addCashEntry, currentCashBalance } = useInvoicing();
-  const { customerBalance } = useReporting();
   const { currentUser } = useAuth();
   const { settings, updateSettings } = useSettings();
   const toast = useToast();

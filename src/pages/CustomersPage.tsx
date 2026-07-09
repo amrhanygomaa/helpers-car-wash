@@ -6,12 +6,10 @@ import {
   Plus,
   Receipt,
   Search,
-  ScrollText,
   Archive,
   ArchiveRestore,
   Trash2,
   Users,
-  WalletCards,
 } from "lucide-react";
 import { PageHeader } from "../components/layout/AppLayout";
 import { Card, CardBody, CardHeader } from "../components/ui/Card";
@@ -24,11 +22,10 @@ import { EmptyState } from "../components/ui/EmptyState";
 import { useCatalog } from "../store/CatalogContext";
 import { useCarwash } from "../store/CarwashContext";
 import { useInvoicing } from "../store/InvoicingContext";
-import { useReporting } from "../store/ReportingContext";
 import { useAuth } from "../store/AuthContext";
 import { useSettings } from "../store/SettingsContext";
 import { useToast } from "../components/ui/Toast";
-import { formatCurrency, formatDate } from "../lib/format";
+import { formatDate } from "../lib/format";
 import type { Customer, SalesInvoice, Vehicle } from "../types";
 import { Link, useNavigate } from "react-router-dom";
 import { hasPermission } from "../lib/permissions";
@@ -37,7 +34,6 @@ export function CustomersPage() {
   const { customers, addCustomer, updateCustomer, deleteCustomer, archiveCustomer, nextCustomerCode } = useCatalog();
   const { vehicles } = useCarwash();
   const { salesInvoices } = useInvoicing();
-  const { customerBalance } = useReporting();
   const { currentUser } = useAuth();
   const { settings } = useSettings();
   const toast = useToast();

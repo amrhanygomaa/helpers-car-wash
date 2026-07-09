@@ -972,7 +972,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return { ok: true };
   }, [loadStoredStateFromDesktop, users]);
 
-  const devLogin = useCallback(async () => {
+  const devLogin = useCallback(async (): Promise<LoginResult> => {
     if (window.desktopAPI?.auth.devLogin) {
       const result = await window.desktopAPI.auth.devLogin();
       if (!result.ok) return result;

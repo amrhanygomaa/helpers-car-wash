@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Button } from "../../components/ui/Button";
 import { Dialog } from "../../components/ui/Dialog";
-import { Field, Input, Textarea } from "../../components/ui/Input";
+import { Field, Input } from "../../components/ui/Input";
 import type { Customer } from "../../types";
 import { useCatalog } from "../../store/CatalogContext";
 import { useToast } from "../../components/ui/Toast";

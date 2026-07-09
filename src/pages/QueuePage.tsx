@@ -155,8 +155,6 @@ export function QueuePage() {
 
   // Guest Mode states
   const [isGuest, setIsGuest] = useState(false);
-  const [guestName, setGuestName] = useState("");
-  const [guestPhone, setGuestPhone] = useState("");
   const [guestBrand, setGuestBrand] = useState("");
   const [guestModel, setGuestModel] = useState("");
   const [guestPlate, setGuestPlate] = useState("");

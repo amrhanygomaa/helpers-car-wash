@@ -4,13 +4,11 @@ import { ArrowRight, Ban, HandCoins, MessageCircle, Printer, Trash2 } from "luci
 import { PageHeader } from "../components/layout/AppLayout";
 import { Card, CardBody, CardHeader } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
-import { Badge } from "../components/ui/Badge";
 import { Table, TBody, TD, TH, THead, TR } from "../components/ui/Table";
 import { useInvoicing } from "../store/InvoicingContext";
 import { useCatalog } from "../store/CatalogContext";
 import { useAuth } from "../store/AuthContext";
 import { useSettings } from "../store/SettingsContext";
-import { useReporting } from "../store/ReportingContext";
 import { lineWorkers } from "../store/_pure";
 import { useToast } from "../components/ui/Toast";
 import { formatCurrency, formatDate, PAYMENT_METHOD_LABELS } from "../lib/format";
@@ -28,7 +26,6 @@ export function SalesInvoiceDetailPage() {
   const { customers } = useCatalog();
   const { currentUser } = useAuth();
   const { settings } = useSettings();
-  const { customerBalance } = useReporting();
   const inv = salesInvoices.find((s) => s.id === id);
   const canReceiveSales = hasPermission(currentUser, "salesInvoices", "receive");
   const canCancelSales = hasPermission(currentUser, "salesInvoices", "cancel");
@@ -56,16 +53,7 @@ export function SalesInvoiceDetailPage() {
   }
 
   const customer = customers.find((c) => c.id === inv.customerId);
-  const totalCustomerBalance = customerBalance(inv.customerId);
   const totalCollected = inv.amountReceived + (inv.overpayment ?? 0);
-  const dueDatePassed = (() => {
-    if (!inv.paymentDueDate || inv.remaining <= 0) return false;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const due = new Date(inv.paymentDueDate);
-    due.setHours(0, 0, 0, 0);
-    return due.getTime() < today.getTime();
-  })();
 
   return (
     <>

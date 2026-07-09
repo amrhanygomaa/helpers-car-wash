@@ -5,15 +5,13 @@ import {
   Plus,
   Pencil,
   Eye,
-  ToggleLeft,
-  ToggleRight,
   TrendingUp,
   UserCheck,
   UserMinus,
   Briefcase,
 } from "lucide-react";
 import { PageHeader } from "../components/layout/AppLayout";
-import { Card, CardBody, CardHeader } from "../components/ui/Card";
+import { Card, CardBody } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Badge } from "../components/ui/Badge";
 import { Table, TBody, TD, TH, THead, TR } from "../components/ui/Table";
