@@ -1,0 +1,52 @@
+name: Windows Build (Manual)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build unsigned .exe
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install real license public key
+        shell: pwsh
+        env:
+          LICENSE_PUBLIC_KEY_PEM: ${{ secrets.LICENSE_PUBLIC_KEY_PEM }}
+        run: |
+          $escaped = $env:LICENSE_PUBLIC_KEY_PEM -replace "`r`n", "`n"
+          $escaped = $escaped -replace "`n", '\n'
+          $content = @"
+// SECURITY: Public key is hardcoded -- never allow ENV override.
+// This prevents attackers from replacing the key with their own keypair.
+const LICENSE_PUBLIC_KEY =
+  "$escaped";
+
+// Freeze to prevent runtime mutation via require cache
+Object.freeze(module.exports = { LICENSE_PUBLIC_KEY });
+"@
+          Set-Content -Path electron/license-public-key.cjs -Value $content -NoNewline
+
+      - name: Build Windows installer (unsigned)
+        run: npm run dist:win
+        env:
+          HELPERS_SKIP_CODE_SIGN: "1"
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: top-gear-car-wash-windows-installer
+          path: release/*.exe
+          retention-days: 30
