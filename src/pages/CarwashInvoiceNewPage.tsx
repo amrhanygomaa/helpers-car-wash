@@ -222,6 +222,29 @@ export function CarwashInvoiceNewPageContent() {
     amountReceived,
   ]);
 
+  // Clean up draft lines referencing deleted/archived services or products (e.g., after database reset)
+  useEffect(() => {
+    if (activeServices.length > 0 && lines.length > 0) {
+      const validLines = lines.filter((l) => activeServices.some((s) => s.id === l.serviceId));
+      if (validLines.length !== lines.length) {
+        setLines(validLines);
+      }
+    } else if (activeServices.length === 0 && lines.length > 0) {
+      setLines([]);
+    }
+  }, [activeServices, lines.length]);
+
+  useEffect(() => {
+    if (dbProducts.length > 0 && productLines.length > 0) {
+      const validLines = productLines.filter((l) => dbProducts.some((p) => p.id === l.productId));
+      if (validLines.length !== productLines.length) {
+        setProductLines(validLines);
+      }
+    } else if (dbProducts.length === 0 && productLines.length > 0) {
+      setProductLines([]);
+    }
+  }, [dbProducts, productLines.length]);
+
   const customerVehicles = useMemo(
     () => vehicles.filter((v) => v.customerId === customerId && !v.archived),
     [vehicles, customerId]
