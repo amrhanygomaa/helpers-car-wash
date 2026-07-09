@@ -153,7 +153,7 @@ export function WorkerDetailPage() {
   // commission on this month, regardless of whether the day is closed yet.
   const commissionLog = useMemo(() => {
     if (!worker) return [];
-    const rows: { key: string; date: string; invoiceNumber: string; serviceName: string; amount: number }[] = [];
+    const rows: { key: string; invoiceId: string; date: string; invoiceNumber: string; serviceName: string; amount: number }[] = [];
     for (const inv of salesInvoices) {
       if (inv.invoiceKind !== "service" || inv.cancelled) continue;
       if (!inv.date.startsWith(selectedMonth)) continue;
@@ -163,6 +163,7 @@ export function WorkerDetailPage() {
         if (!share || (share.commissionAmount ?? 0) <= 0) continue;
         rows.push({
           key: `${inv.id}-${line.id}`,
+          invoiceId: inv.id,
           date: inv.date,
           invoiceNumber: inv.invoiceNumber,
           serviceName: line.productName,
@@ -509,6 +510,46 @@ export function WorkerDetailPage() {
                       </TR>
                     );
                   })}
+                </TBody>
+              </Table>
+            )}
+          </CardBody>
+        </Card>
+
+        {/* Per-invoice commission log — detail behind "إجمالي العمولات" above */}
+        <Card className="lg:col-span-3">
+          <CardHeader
+            title="سجل عمولات الصنايعي"
+            subtitle={`تفاصيل كل عمولة بالفاتورة والخدمة — إجمالي الشهر: ${formatCurrency(financials.totalCommissions, settings.currency)}`}
+          />
+          <CardBody className="p-0">
+            {commissionLog.length === 0 ? (
+              <div className="p-6">
+                <EmptyState title="لا توجد عمولات مسجلة" description="ستظهر هنا كل عمولة تُحتسب من فواتير الغسيل هذا الشهر." />
+              </div>
+            ) : (
+              <Table>
+                <THead>
+                  <TR>
+                    <TH>التاريخ</TH>
+                    <TH>رقم الفاتورة</TH>
+                    <TH>الخدمة</TH>
+                    <TH className="text-end">العمولة</TH>
+                  </TR>
+                </THead>
+                <TBody>
+                  {commissionLog.map((row) => (
+                    <TR key={row.key}>
+                      <TD className="text-xs whitespace-nowrap">{row.date}</TD>
+                      <TD>
+                        <Link to={`/sales/${row.key.split("-")[0]}`} className="text-brand-700 hover:underline font-mono text-xs">
+                          {row.invoiceNumber}
+                        </Link>
+                      </TD>
+                      <TD className="text-slate-700">{row.serviceName}</TD>
+                      <TD className="text-end font-semibold text-emerald-700">{formatCurrency(row.amount, settings.currency)}</TD>
+                    </TR>
+                  ))}
                 </TBody>
               </Table>
             )}
