@@ -10,6 +10,7 @@ import {
   Droplets,
   GripVertical,
   KeyRound,
+  Phone,
   Play,
   Plus,
   Printer,
@@ -1212,10 +1213,13 @@ function TicketCard({
           <div className="flex items-center gap-1.5 text-[13px] font-medium text-slate-700">
             <Car className="h-4 w-4 shrink-0 text-slate-400" />
             <span className="min-w-0 truncate">{t.vehicleLabel ?? t.vehicleBrand}</span>
-            {t.phone ? <span className="shrink-0 text-slate-400" dir="ltr">· {t.phone}</span> : null}
           </div>
-        ) : t.phone ? (
-          <div dir="ltr" className="text-start">{t.phone}</div>
+        ) : null}
+        {t.phone ? (
+          <div className="flex items-center gap-1.5 text-[12px] text-slate-500" dir="ltr">
+            <Phone className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+            <span>{t.phone}</span>
+          </div>
         ) : null}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <span className="flex items-center gap-1">
