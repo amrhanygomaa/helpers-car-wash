@@ -1,18 +1,20 @@
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowRight, Printer, Trash2 } from "lucide-react";
+import { ArrowRight, Printer, RotateCcw, Trash2 } from "lucide-react";
 import { PageHeader } from "../components/layout/AppLayout";
 import { Card, CardBody, CardHeader } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
+import { Badge } from "../components/ui/Badge";
 import { Table, TBody, TD, TH, THead, TR } from "../components/ui/Table";
 import { useInvoicing } from "../store/InvoicingContext";
 import { useCatalog } from "../store/CatalogContext";
 import { useAuth } from "../store/AuthContext";
 import { useSettings } from "../store/SettingsContext";
-import { lineWorkers } from "../store/_pure";
+import { lineWorkers, returnableProductLines } from "../store/_pure";
 import { useToast } from "../components/ui/Toast";
 import { formatCurrency, formatDate } from "../lib/format";
 import { ConfirmDialog } from "../components/ui/Dialog";
+import { SalesReturnDialog } from "../features/invoices/SalesReturnDialog";
 import { printServiceInvoice } from "../lib/print";
 import { hasPermission } from "../lib/permissions";
 
@@ -20,13 +22,17 @@ export function SalesInvoiceDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const toast = useToast();
-  const { salesInvoices, deleteSalesInvoice } = useInvoicing();
+  const { salesInvoices, salesReturns, deleteSalesInvoice } = useInvoicing();
   const { customers } = useCatalog();
   const { currentUser } = useAuth();
   const { settings } = useSettings();
   const inv = salesInvoices.find((s) => s.id === id);
   const canDeleteSales = hasPermission(currentUser, "salesInvoices", "delete");
+  // Returns reverse part of a sale (stock + cash), same blast radius as
+  // cancelling — so they ride the "cancel" permission rather than a new key.
+  const canReturn = hasPermission(currentUser, "salesInvoices", "cancel");
   const [delOpen, setDelOpen] = useState(false);
+  const [returnOpen, setReturnOpen] = useState(false);
 
   if (!inv) {
     return (
@@ -44,6 +50,11 @@ export function SalesInvoiceDetailPage() {
   }
 
   const customer = customers.find((c) => c.id === inv.customerId);
+  const invoiceReturns = salesReturns.filter((r) => r.originalInvoiceId === inv.id);
+  const totalReturned = invoiceReturns.reduce((sum, r) => sum + r.total, 0);
+  const hasReturnable =
+    !inv.cancelled &&
+    returnableProductLines(inv, salesReturns).some((r) => r.returnableQty > 0);
   const totalCollected = inv.amountReceived + (inv.overpayment ?? 0);
   // The customer may have handed over more cash than the invoice total and
   // gotten change back on the spot — cashTendered preserves that real amount
@@ -55,7 +66,7 @@ export function SalesInvoiceDetailPage() {
   return (
     <>
       <PageHeader
-        title={`فاتورة غسيل ${inv.invoiceNumber}`}
+        title={`${inv.invoiceKind === "product" ? "فاتورة منتجات" : "فاتورة غسيل"} ${inv.invoiceNumber}`}
         description={`${inv.customerName} • ${formatDate(inv.date)}`}
         actions={
           <>
@@ -63,6 +74,11 @@ export function SalesInvoiceDetailPage() {
               <ArrowRight className="w-4 h-4" />
               رجوع
             </Button>
+            {canReturn && hasReturnable ? (
+              <Button variant="outline" onClick={() => setReturnOpen(true)}>
+                <RotateCcw className="w-4 h-4" /> مرتجع منتجات
+              </Button>
+            ) : null}
             <Button
               variant="outline"
               onClick={() => {
@@ -116,10 +132,17 @@ export function SalesInvoiceDetailPage() {
         {inv.remaining > 0 ? (
           <Stat label="المتبقي" value={formatCurrency(inv.remaining, settings.currency)} tone="amber" />
         ) : null}
+        {totalReturned > 0 ? (
+          <Stat
+            label="إجمالي المرتجع"
+            value={`- ${formatCurrency(totalReturned, settings.currency)}`}
+            tone="red"
+          />
+        ) : null}
         <Stat
           label="الحالة"
-          value={inv.cancelled ? "ملغاة" : "مكتملة"}
-          tone={inv.cancelled ? "slate" : "green"}
+          value={inv.cancelled ? "ملغاة" : totalReturned > 0 ? "بها مرتجع" : "مكتملة"}
+          tone={inv.cancelled ? "slate" : totalReturned > 0 ? "amber" : "green"}
         />
       </div>
 
@@ -186,6 +209,53 @@ export function SalesInvoiceDetailPage() {
           </Table>
         </CardBody>
       </Card>
+
+      {invoiceReturns.length > 0 ? (
+        <Card>
+          <CardHeader
+            title="المرتجعات المسجلة"
+            subtitle="كل مرتجع يعيد الكمية للمخزون ويسوّي الفاتورة تلقائياً."
+          />
+          <CardBody>
+            <Table>
+              <THead>
+                <TR>
+                  <TH>رقم المرتجع</TH>
+                  <TH>التاريخ</TH>
+                  <TH>المنتجات</TH>
+                  <TH className="text-end">الإجمالي</TH>
+                  <TH>نوع الرد</TH>
+                  <TH>ملاحظات</TH>
+                </TR>
+              </THead>
+              <TBody>
+                {invoiceReturns.map((r) => (
+                  <TR key={r.id}>
+                    <TD className="font-medium text-slate-900">{r.returnNumber}</TD>
+                    <TD>{formatDate(r.date)}</TD>
+                    <TD>
+                      {r.lines
+                        .map((l) => `${l.productName} × ${l.quantity}`)
+                        .join("، ")}
+                    </TD>
+                    <TD className="text-end font-medium text-rose-700">
+                      {formatCurrency(r.total, settings.currency)}
+                    </TD>
+                    <TD>
+                      <Badge tone={r.refundCash ? "green" : "blue"}>
+                        {r.refundCash ? "رد نقدي" : "خصم من المتبقي"}
+                      </Badge>
+                    </TD>
+                    <TD className="text-slate-600">{r.notes ?? "—"}</TD>
+                  </TR>
+                ))}
+              </TBody>
+            </Table>
+          </CardBody>
+        </Card>
+      ) : null}
+
+      <SalesReturnDialog open={returnOpen} invoice={inv} onClose={() => setReturnOpen(false)} />
 
       <ConfirmDialog
         open={delOpen}

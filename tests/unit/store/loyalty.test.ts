@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeLoyaltyEarned, loyaltyRedemptionValue, visitHistory } from "../../../src/store/_pure";
+import { computeLoyaltyEarned, visitHistory } from "../../../src/store/_pure";
 import type { SalesInvoice } from "../../../src/types";
 
 describe("computeLoyaltyEarned", () => {
@@ -14,18 +14,6 @@ describe("computeLoyaltyEarned", () => {
   it("returns 0 for non-positive total or rate", () => {
     expect(computeLoyaltyEarned(0, { enabled: true, egpPerPoint: 10 })).toBe(0);
     expect(computeLoyaltyEarned(100, { enabled: true, egpPerPoint: 0 })).toBe(0);
-  });
-});
-
-describe("loyaltyRedemptionValue", () => {
-  it("multiplies points by point value", () => {
-    expect(loyaltyRedemptionValue(20, 1.5)).toBe(30);
-  });
-
-  it("returns 0 for non-positive inputs", () => {
-    expect(loyaltyRedemptionValue(0, 1)).toBe(0);
-    expect(loyaltyRedemptionValue(10, 0)).toBe(0);
-    expect(loyaltyRedemptionValue(10, undefined)).toBe(0);
   });
 });
 
@@ -44,8 +32,9 @@ function inv(partial: Partial<SalesInvoice>): SalesInvoice {
     priceType: "retail",
     status: "paid",
     invoiceKind: "service",
+    createdAt: "2026-06-20T00:00:00Z",
     ...partial,
-  };
+  } as SalesInvoice;
 }
 
 describe("visitHistory", () => {

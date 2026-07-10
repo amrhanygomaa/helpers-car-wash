@@ -135,11 +135,7 @@ export function computeLoyaltyEarned(
   return Math.floor(total / per);
 }
 
-/** EGP value of redeeming `points` loyalty points (each worth `pointValue` EGP). */
-export function loyaltyRedemptionValue(points: number, pointValue: number | undefined): number {
-  if (points <= 0 || !pointValue || pointValue <= 0) return 0;
-  return Math.round(points * pointValue * 100) / 100;
-}
+
 
 /** Aggregate visit history for a customer or vehicle, derived from invoices. */
 export interface VisitHistory {
@@ -167,47 +163,7 @@ export function visitHistory(
   return { visits, totalSpent, lastVisit };
 }
 
-/** Per-employee service performance over a date range (Car Wash — features 5 + 8). */
-export interface EmployeeServiceStats {
-  carsWashed: number;
-  servicesPerformed: number;
-  attributedRevenue: number;
-}
 
-/**
- * Sums the work a single worker performed on car-wash service invoices in
- * [from, to] (inclusive), multi-worker aware. A "car washed" is a distinct
- * non-cancelled service invoice on which the worker performed at least one line;
- * "services performed" counts those service lines (× quantity); "attributed
- * revenue" sums the worker's *share* of each line's subtotal (split equally
- * among the line's workers) — the base for that worker's commission. Pure.
- */
-export function employeeServiceStats(
-  invoices: Pick<SalesInvoice, "id" | "date" | "cancelled" | "invoiceKind" | "lines">[],
-  userId: string,
-  from: string,
-  to: string,
-): EmployeeServiceStats {
-  let carsWashed = 0;
-  let servicesPerformed = 0;
-  let attributedRevenue = 0;
-  for (const inv of invoices) {
-    if (inv.cancelled) continue;
-    if (inv.invoiceKind !== "service") continue;
-    if (inv.date < from || inv.date > to) continue;
-    let touchedThisInvoice = false;
-    for (const line of inv.lines) {
-      if (line.kind !== "service") continue;
-      const workers = lineWorkers(line);
-      if (!workers.some((w) => w.workerId === userId)) continue;
-      touchedThisInvoice = true;
-      servicesPerformed += line.quantity > 0 ? line.quantity : 1;
-      attributedRevenue += line.subtotal / workers.length;
-    }
-    if (touchedThisInvoice) carsWashed += 1;
-  }
-  return { carsWashed, servicesPerformed, attributedRevenue };
-}
 
 export function applyReturnToInvoiceLines(lines: InvoiceLine[], returns: ReturnLine[]) {
   const remainingByLine = new Map<string, number>();
@@ -303,6 +259,45 @@ export function employeeCollectedCash(
           (empReturnIds.has(ce.referenceId) && ce.type === "adjustment")),
     )
     .reduce((sum, ce) => sum + ce.amount, 0);
+}
+
+export interface ReturnableLine {
+  line: InvoiceLine;
+  soldQty: number;
+  returnedQty: number;
+  returnableQty: number;
+}
+
+/**
+ * The invoice lines a مرتجع can be issued against, with remaining quantities.
+ * Returns cover PRODUCTS ONLY — services on a wash invoice were performed and
+ * cannot come back; only the sellable add-ons (فوّاحة، معطر…) can. Previous
+ * returns are matched by sourceLineId (falling back to productId for legacy
+ * rows without one) and subtracted, so a line can never be over-returned.
+ */
+export function returnableProductLines(
+  invoice: Pick<SalesInvoice, "id" | "lines" | "cancelled">,
+  allReturns: Array<Pick<SalesReturn, "originalInvoiceId" | "lines">>,
+): ReturnableLine[] {
+  if (invoice.cancelled) return [];
+  const priorLines = allReturns
+    .filter((r) => r.originalInvoiceId === invoice.id)
+    .flatMap((r) => r.lines);
+  return invoice.lines
+    .filter((l) => l.kind !== "service" && l.productId)
+    .map((line) => {
+      const returnedQty = priorLines
+        .filter((rl) =>
+          rl.sourceLineId ? rl.sourceLineId === line.id : rl.productId === line.productId
+        )
+        .reduce((sum, rl) => sum + rl.quantity, 0);
+      return {
+        line,
+        soldQty: line.quantity,
+        returnedQty,
+        returnableQty: Math.max(0, line.quantity - returnedQty),
+      };
+    });
 }
 
 export function settleSalesInvoiceReturn(

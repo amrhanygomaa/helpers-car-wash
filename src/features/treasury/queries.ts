@@ -156,13 +156,19 @@ export async function deleteWorkerWithdrawal(withdrawalId: string): Promise<void
   if (!list[0]) return;
 
   const w = list[0];
+  // The withdrawal and its treasury entry are inserted in one batch sharing
+  // the same createdAt. Matching on it (plus type) pins the delete to that
+  // single entry — (worker, date, amount) alone wiped every same-amount
+  // withdrawal the worker made that day.
   await db.batch([
     db.delete(workerWithdrawals).where(eq(workerWithdrawals.id, withdrawalId)),
     db.delete(treasuryEntries).where(
       and(
+        eq(treasuryEntries.type, "withdrawal"),
         eq(treasuryEntries.workerId, w.workerId),
         eq(treasuryEntries.businessDate, w.businessDate),
-        eq(treasuryEntries.amount, w.amount)
+        eq(treasuryEntries.amount, w.amount),
+        eq(treasuryEntries.createdAt, w.createdAt)
       )
     )
   ]);

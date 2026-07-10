@@ -27,7 +27,7 @@ test("E2E-002: 5 wrong passwords trigger the rate-limit lockout", async () => {
     const setup = new FirstRunScreen(window);
     await expect(setup.heading()).toBeVisible();
     await setup.createOwner(OWNER_USERNAME, OWNER_PASSWORD);
-    await expect(window.getByText(/أهلاً بك في/)).toBeVisible();
+    await expect(window.getByText(/لوحة تشغيل المغسلة/)).toBeVisible();
 
     // ── Step 2: Logout to reach the login screen ────────────────────────────
     await window.getByRole("button", { name: "تسجيل الخروج" }).click();

@@ -12,6 +12,7 @@ import { useCarwash } from "../store/CarwashContext";
 import { useInvoicing } from "../store/InvoicingContext";
 import { useAuth } from "../store/AuthContext";
 import { useSettings } from "../store/SettingsContext";
+import { useApp } from "../store/AppContext";
 import { formatCurrency } from "../lib/format";
 import { piastresToEgp, egpToPiastres } from "../lib/money";
 import { todayISO, uid, vehicleLabel } from "../lib/utils";
@@ -89,16 +90,30 @@ export function CarwashInvoiceNewPageContent() {
   const ticket = useMemo(() => queueTickets.find((t) => t.id === queueId), [queueTickets, queueId]);
 
   // Workers (صنايعية) and products from relational DB
+  const { syncCarwashProducts } = useApp();
   const [dbWorkers, setDbWorkers] = useState<Worker[]>([]);
   const [dbProducts, setDbProducts] = useState<CarwashProduct[]>([]);
   const [dbMaterials, setDbMaterials] = useState<RawMaterial[]>([]);
+  const [dbProductsLoaded, setDbProductsLoaded] = useState(false);
+
   useEffect(() => {
     if (hasDb()) {
       listActiveWorkers().then(setDbWorkers).catch(() => {});
-      listActiveCarwashProducts().then(setDbProducts).catch(() => {});
       listActiveRawMaterials().then(setDbMaterials).catch(() => {});
+      
+      syncCarwashProducts()
+        .then(() => listActiveCarwashProducts())
+        .then((list) => {
+          setDbProducts(list);
+          setDbProductsLoaded(true);
+        })
+        .catch(() => {
+          setDbProductsLoaded(true);
+        });
+    } else {
+      setDbProductsLoaded(true);
     }
-  }, []);
+  }, [syncCarwashProducts]);
 
   const draftKey = productOnly ? "draft_invoice_products" : "draft_invoice_wash";
 
@@ -106,7 +121,9 @@ export function CarwashInvoiceNewPageContent() {
     try {
       const stored = localStorage.getItem(draftKey);
       if (stored) return JSON.parse(stored);
-    } catch (e) {}
+    } catch {
+      // Ignored
+    }
     return null;
   };
 
@@ -196,7 +213,6 @@ export function CarwashInvoiceNewPageContent() {
   // the running total — otherwise adding another line would silently wipe out
   // an overpayment amount they already entered.
   const [receivedTouched, setReceivedTouched] = useState(false);
-  const [paymentDueDate, setPaymentDueDate] = useState("");
 
   useEffect(() => {
     const draft = {
@@ -237,6 +253,7 @@ export function CarwashInvoiceNewPageContent() {
   }, [activeServices, lines.length]);
 
   useEffect(() => {
+    if (!dbProductsLoaded) return;
     if (dbProducts.length > 0 && productLines.length > 0) {
       const validLines = productLines.filter((l) => dbProducts.some((p) => p.id === l.productId));
       if (validLines.length !== productLines.length) {
@@ -245,7 +262,7 @@ export function CarwashInvoiceNewPageContent() {
     } else if (dbProducts.length === 0 && productLines.length > 0) {
       setProductLines([]);
     }
-  }, [dbProducts, productLines.length]);
+  }, [dbProductsLoaded, dbProducts, productLines.length]);
 
   const customerVehicles = useMemo(
     () => vehicles.filter((v) => v.customerId === customerId && !v.archived),
@@ -591,6 +608,9 @@ export function CarwashInvoiceNewPageContent() {
     }
 
     localStorage.removeItem(draftKey);
+    if (hasDb()) {
+      void syncCarwashProducts();
+    }
     toast.success(productOnly ? "تم تأكيد فاتورة المنتجات" : "تم تأكيد فاتورة الغسيل", `رقم ${inv.invoiceNumber}`);
     navigate(`/sales/${inv.id}`);
   }
@@ -707,11 +727,11 @@ export function CarwashInvoiceNewPageContent() {
                 onChange={(e) => setAmountReceived(Number(e.target.value))}
               />
             </Field>
-            {false && remainingDue > 0 && (
+            {/* remainingDue > 0 && (
               <Field label="تاريخ استحقاق المتبقي" required>
                 <Input type="date" value={paymentDueDate} onChange={(e) => setPaymentDueDate(e.target.value)} />
               </Field>
-            )}
+            ) */}
           </CardBody>
         </Card>
       </div>
@@ -1210,6 +1230,7 @@ export function CarwashInvoiceNewPageContent() {
         onClose={() => setProductFormOpen(false)}
         onCreated={async (newProduct) => {
           if (hasDb()) {
+            await syncCarwashProducts();
             const list = await listActiveCarwashProducts();
             setDbProducts(list);
           }
@@ -1283,7 +1304,7 @@ export function ProductFormDialog({ open, onClose, onCreated }: ProductFormDialo
       toast.success("تم إضافة المنتج بنجاح");
       onCreated(newProduct);
       onClose();
-    } catch (e) {
+    } catch {
       toast.error("حدث خطأ أثناء إضافة المنتج");
     } finally {
       setSaving(false);

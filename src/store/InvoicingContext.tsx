@@ -5,15 +5,20 @@ import type {
   ID,
   PaymentMethod,
   SalesInvoice,
+  SalesReturn,
 } from "../types";
 
 export interface InvoicingContextValue {
   salesInvoices: SalesInvoice[];
+  salesReturns: SalesReturn[];
   cashEntries: CashEntry[];
   discountCodes: DiscountCode[];
   addSalesInvoice: (
     inv: Omit<SalesInvoice, "id" | "createdAt" | "status" | "remaining">
   ) => SalesInvoice;
+  addSalesReturn: (
+    r: Omit<SalesReturn, "id" | "createdAt" | "returnNumber">
+  ) => SalesReturn;
   recordSalesReceipt: (id: string, amount: number, paymentMethod?: PaymentMethod, notes?: string) => void;
   cancelSalesInvoice: (id: string, refundMode?: "cash" | "credit") => void;
   deleteSalesInvoice: (id: string) => boolean;

@@ -58,6 +58,7 @@ import {
   seedDiscountCodes,
 } from "../data/seed";
 import { localISODate, todayISO, uid } from "../lib/utils";
+import { hasDb } from "../db/client";
 import { buildXlsx } from "../lib/xlsx";
 import { isAutoBackupDue, backupFileName, backupFileNameDaily } from "../lib/backupSchedule";
 import {
@@ -251,6 +252,7 @@ interface AppActions {
   importBackup: (file: File) => Promise<boolean>;
   backupToPath: (dirOverride?: string) => Promise<{ ok: boolean; path?: string; error?: string }>;
   exportToExcel: (dataType: "products" | "customers" | "suppliers" | "sales" | "purchases" | "stock" | "supplierDues" | "commissions") => void;
+  syncCarwashProducts: () => Promise<void>;
 }
 
 type AppContextValue = AppState & AppActions;
@@ -728,6 +730,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setQueueTickets(tickets);
     setNextQueueNumber(nextDailyQueueNumber(tickets));
   }, [licenseStatus]);
+
+
 
   const clearDesktopRendererState = useCallback(() => {
     setSettings(applyLicenseSettings(seedSettings, licenseStatus));
@@ -2018,6 +2022,57 @@ export function AppProvider({ children }: { children: ReactNode }) {
       logAudit("invoice_sale_updated", `${inv.invoiceNumber} — ${inv.customerName}`, `دفعة: ${amount}`);
     }
   };
+  /**
+   * Mirror KV-store stock changes (invoice cancel/delete/edit/return restores)
+   * into the relational products table as "adjustment" movements, keeping
+   * SQLite the source of truth for stock. Fire-and-forget: the KV update the
+   * caller just made is the user-visible one; products unknown to SQLite no-op.
+   */
+  const mirrorCarwashStock = (deltas: Array<{ productId: string; deltaQty: number }>) => {
+    if (!hasDb()) return;
+    const pending = deltas.filter((d) => d.productId && d.deltaQty !== 0);
+    if (pending.length === 0) return;
+    void (async () => {
+      try {
+        const { recordProductAdjustment } = await import("../features/products/carwash-queries");
+        const createdAt = new Date().toISOString();
+        const businessDate = todayISO();
+        for (const d of pending) {
+          await recordProductAdjustment({
+            movementId: uid("mov_adj"),
+            productId: d.productId,
+            deltaQty: d.deltaQty,
+            branchId: settings.currentBranchId || "branch-main",
+            businessDate,
+            createdBy: currentUser?.id,
+            createdAt,
+          });
+        }
+      } catch (err) {
+        console.error("Error mirroring stock adjustment to SQLite:", err);
+      }
+    })();
+  };
+
+  /** Per-product stock delta between two line sets: positive = stock returns. */
+  const productLineDeltas = (
+    oldLines: SalesInvoice["lines"],
+    newLines: SalesInvoice["lines"]
+  ): Array<{ productId: string; deltaQty: number }> => {
+    const ids = new Set(
+      [...oldLines, ...newLines]
+        .filter((l) => l.kind !== "service" && l.productId)
+        .map((l) => l.productId)
+    );
+    return [...ids].map((productId) => {
+      const sum = (lines: SalesInvoice["lines"]) =>
+        lines
+          .filter((l) => l.productId === productId && l.kind !== "service")
+          .reduce((s, l) => s + l.quantity, 0);
+      return { productId, deltaQty: sum(oldLines) - sum(newLines) };
+    });
+  };
+
   const updateSalesInvoice: AppActions["updateSalesInvoice"] = (id, patch) => {
     const inv = salesInvoices.find((s) => s.id === id);
     if (!inv || inv.cancelled) return;
@@ -2051,6 +2106,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return { ...p, quantity: Math.max(0, p.quantity + delta) };
       })
     );
+    mirrorCarwashStock(productLineDeltas(inv.lines, patch.lines));
 
     // Replace stock movements for this invoice
     setStockMovements((list) => {
@@ -2137,6 +2193,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return { ...p, quantity: p.quantity + totalQty };
       })
     );
+    mirrorCarwashStock(productLineDeltas(inv.lines, []));
     const totalCollected = inv.amountReceived + (inv.overpayment ?? 0);
     if (totalCollected > 0 && refundMode === "cash") {
       const ce: CashEntry = {
@@ -2209,6 +2266,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           return { ...p, quantity: p.quantity + totalQty };
         })
       );
+      mirrorCarwashStock(productLineDeltas(inv.lines, []));
       // Car Wash: BOM raw materials are tracked in the relational DB and are not
       // reversed here (they were physically consumed during the wash).
     }
@@ -2255,6 +2313,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             return { ...p, quantity: Math.max(0, p.quantity - totalQty) };
           })
         );
+        mirrorCarwashStock(productLineDeltas([], inv.lines));
         // Car Wash: BOM raw materials live in the relational DB and are not
         // re-applied on restore (KV product store no longer tracks them).
       }
@@ -2321,6 +2380,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
         return { ...p, quantity: p.quantity + totalQty };
       })
+    );
+    mirrorCarwashStock(
+      r.lines
+        .filter((l) => l.productId)
+        .map((l) => ({ productId: l.productId, deltaQty: l.quantity }))
     );
 
     // Stock movements
@@ -2969,6 +3033,104 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return off;
   }, [isDesktop, settings.backupOnClose, settings.backupPath, currentUser, buildBackupData]);
 
+  const syncCarwashProducts = useCallback(async () => {
+    if (!hasDb()) return;
+    try {
+      const { listAllCarwashProducts, createCarwashProduct } = await import("../features/products/carwash-queries");
+      const dbProds = await listAllCarwashProducts();
+      const dbIds = new Set(dbProds.map((dp) => dp.id));
+
+      // 1. KV → SQLite: insert products SQLite doesn't know yet (legacy data,
+      //    restored backups). Existing rows are NEVER updated from the KV side:
+      //    SQLite owns product definitions and stock — overwriting here used to
+      //    silently revert restocks/edits made on the products page before the
+      //    stale KV copy caught up.
+      const lsProds = lsGet<LegacyProduct[]>("products", []).map(normalizeProduct);
+      const newDbInserts = lsProds
+        .filter((lp) => !dbIds.has(lp.id))
+        .map((lp) =>
+          createCarwashProduct({
+            id: lp.id,
+            name: lp.name,
+            salePrice: Math.round((lp.retailPrice || 0) * 100),
+            purchasePrice: Math.round((lp.purchasePrice || 0) * 100),
+            stockQty: lp.quantity || 0,
+            lowStockThreshold: lp.minStock || 5,
+            active: !lp.archived,
+          }).catch((e) => console.error("Error syncing product to SQLite:", e))
+        );
+
+      if (newDbInserts.length > 0) {
+        await Promise.all(newDbInserts);
+      }
+
+      // 2. SQLite → KV: SQLite wins for everything, including stock. All stock
+      //    flows land in SQLite (sales via recordProductSale, restocks via the
+      //    products page, cancel/edit/return restores via
+      //    recordProductAdjustment), so the KV copy is a read-model.
+      const updatedDbProds = await listAllCarwashProducts();
+      const currentLsProds = lsGet<LegacyProduct[]>("products", []).map(normalizeProduct);
+      let lsChanged = false;
+      const nextLsProds = [...currentLsProds];
+
+      for (const dp of updatedDbProds) {
+        const existsIndex = nextLsProds.findIndex((lp) => lp.id === dp.id);
+        if (existsIndex === -1) {
+          nextLsProds.push({
+            id: dp.id,
+            code: `PRD-${nextLsProds.length + 1000}`,
+            name: dp.name,
+            purchasePrice: (dp.purchasePrice || 0) / 100,
+            wholesalePrice: (dp.salePrice || 0) / 100,
+            retailPrice: (dp.salePrice || 0) / 100,
+            quantity: dp.stockQty || 0,
+            minStock: dp.lowStockThreshold || 5,
+            hasExpiry: false,
+            category: "Carwash",
+            unit: "pcs",
+            createdAt: new Date().toISOString(),
+            archived: !dp.active,
+          });
+          lsChanged = true;
+        } else {
+          const lp = nextLsProds[existsIndex];
+          const dpSalePriceEgp = (dp.salePrice || 0) / 100;
+          const dpPurchasePriceEgp = (dp.purchasePrice || 0) / 100;
+          if (
+            lp.retailPrice !== dpSalePriceEgp ||
+            lp.purchasePrice !== dpPurchasePriceEgp ||
+            lp.quantity !== dp.stockQty ||
+            lp.archived !== !dp.active ||
+            lp.name !== dp.name
+          ) {
+            nextLsProds[existsIndex] = {
+              ...lp,
+              name: dp.name,
+              purchasePrice: dpPurchasePriceEgp,
+              retailPrice: dpSalePriceEgp,
+              wholesalePrice: dpSalePriceEgp,
+              quantity: dp.stockQty,
+              minStock: dp.lowStockThreshold,
+              archived: !dp.active,
+            };
+            lsChanged = true;
+          }
+        }
+      }
+
+      if (lsChanged) {
+        lsSet("products", nextLsProds);
+        setProducts(nextLsProds);
+      }
+    } catch (err) {
+      console.error("Error in syncCarwashProducts:", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    void syncCarwashProducts();
+  }, [syncCarwashProducts, settings.currentBranchId]);
+
   const importBackup: AppActions["importBackup"] = useCallback(async (file) => {
     try {
       const text = await file.text();
@@ -3040,11 +3202,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setNextQueueNumber(s.nextQueueNumber);
       }
 
+      void syncCarwashProducts();
       return true;
     } catch {
       return false;
     }
-  }, [licenseStatus]);
+  }, [licenseStatus, syncCarwashProducts]);
 
   const exportToExcel: AppActions["exportToExcel"] = useCallback((type) => {
     let rows: (string | number | undefined)[][] = [];
@@ -3222,6 +3385,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       importBackup,
       backupToPath,
       exportToExcel,
+      syncCarwashProducts,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
@@ -3263,6 +3427,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       importBackup,
       backupToPath,
       exportToExcel,
+      syncCarwashProducts,
     ]
   );
 

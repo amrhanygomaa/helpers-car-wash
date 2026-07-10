@@ -21,7 +21,7 @@ import { hasPermission } from "../lib/permissions";
 import type { SalesInvoice } from "../types";
 
 export function SalesInvoicesPage() {
-  const { salesInvoices, deleteSalesInvoice } = useInvoicing();
+  const { salesInvoices, salesReturns, deleteSalesInvoice } = useInvoicing();
   const { customers } = useCatalog();
   const { currentUser } = useAuth();
   const { settings } = useSettings();
@@ -46,6 +46,11 @@ export function SalesInvoicesPage() {
   const customerPhoneMap = useMemo(
     () => new Map(customers.map((c) => [c.id, (c.phone ?? "").toLowerCase()])),
     [customers]
+  );
+
+  const returnedInvoiceIds = useMemo(
+    () => new Set(salesReturns.map((r) => r.originalInvoiceId)),
+    [salesReturns]
   );
 
   const filtered = useMemo(() => {
@@ -242,6 +247,8 @@ export function SalesInvoicesPage() {
                     <TD>
                       {s.cancelled ? (
                         <Badge tone="slate">ملغاة</Badge>
+                      ) : returnedInvoiceIds.has(s.id) ? (
+                        <Badge tone="amber">بها مرتجع</Badge>
                       ) : (
                         <Badge tone="green">مكتملة</Badge>
                       )}

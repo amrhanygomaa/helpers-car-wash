@@ -29,6 +29,26 @@ function formatReceiptDate(iso?: string): string {
   }).format(date);
 }
 
+function getBrandingSettings() {
+  try {
+    const raw = window.desktopAPI?.storage
+      ? window.desktopAPI.storage.get("helpers_inventory_v1::settings")
+      : localStorage.getItem("helpers_inventory_v1::settings");
+    if (raw) {
+      return JSON.parse(raw);
+    }
+  } catch (e) {
+    console.error("Failed to read branding settings", e);
+  }
+  return {
+    companyName: "Top Gear",
+    companyNameAr: "مغسلة توب جير",
+    logoImage: "",
+    logoText: "TG",
+    arabicLabels: true,
+  };
+}
+
 export async function printIntakeTicket({
   ticket,
   carsAhead,
@@ -53,6 +73,12 @@ export async function printIntakeTicket({
   frame.style.opacity = "0";
   frame.style.pointerEvents = "none";
 
+  const branding = getBrandingSettings();
+  const companyName = branding.arabicLabels ? (branding.companyNameAr || branding.companyName) : (branding.companyName || "Top Gear");
+  const logoHtml = branding.logoImage
+    ? `<img src="${escapeHtml(branding.logoImage)}" class="logo" alt="Logo" />`
+    : `<div class="brand">${escapeHtml(companyName)}</div>`;
+
   const serviceRows = services.length
     ? services.map((name) => `<li>${escapeHtml(name)}</li>`).join("")
     : "<li>غير محدد</li>";
@@ -75,8 +101,9 @@ export async function printIntakeTicket({
     }
     .center { text-align: center; }
     .brand { font-size: 16px; font-weight: 800; }
+    .logo { max-height: 60px; max-width: 180px; object-fit: contain; margin: 0 auto 6px auto; display: block; }
     .muted { color: #4b5563; }
-    .ticket { font-size: 28px; font-weight: 900; border: 1px dashed #111827; padding: 6px; margin: 8px 0; }
+    .ticket { font-size: 32px; font-weight: 900; margin: 8px 0; }
     .row { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px solid #e5e7eb; padding: 3px 0; }
     ul { margin: 4px 0 0; padding: 0 14px 0 0; }
     .footer { margin-top: 8px; padding-top: 6px; border-top: 1px dashed #111827; }
@@ -84,8 +111,7 @@ export async function printIntakeTicket({
 </head>
 <body>
   <div class="center">
-    <div class="brand">Top Gear</div>
-    <div class="muted">تذكرة استقبال غسيل</div>
+    ${logoHtml}
     <div class="ticket">#${escapeHtml(ticket.number)}</div>
   </div>
   <div class="row"><span>الاستلام المتوقع</span><strong>${escapeHtml(formatReceiptDate(ticket.requestedPickupAt) || "-")}</strong></div>
@@ -138,7 +164,7 @@ function fmtPrice(amount: number | undefined, currency: string): string {
 
 /**
  * Prints the final 80mm service invoice for a completed car-wash job.
- * Shows: services + per-line worker, discount, total, payment.
+ * Shows: all invoice lines (services + product add-ons), discount, total, payment.
  * Worker commission is internal-only and intentionally never printed.
  */
 export function printServiceInvoice({
@@ -152,10 +178,9 @@ export function printServiceInvoice({
 }): { ok: boolean; error?: string } {
   if (typeof document === "undefined") return { ok: false, error: "document_unavailable" };
 
-  const serviceLines = invoice.lines.filter((l) => l.kind === "service");
   const documentTitle = invoice.invoiceKind === "product" ? "فاتورة منتجات" : "فاتورة غسيل سيارات";
 
-  const lineRows = serviceLines
+  const lineRows = invoice.lines
     .map(
       (l) => `
       <tr>

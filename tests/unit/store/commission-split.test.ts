@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { lineWorkers, splitCommissionEvenly, employeeServiceStats } from "../../../src/store/_pure";
+import { lineWorkers, splitCommissionEvenly } from "../../../src/store/_pure";
 import type { InvoiceLine, SalesInvoice } from "../../../src/types";
 
 describe("splitCommissionEvenly", () => {
@@ -51,60 +51,4 @@ describe("lineWorkers", () => {
   });
 });
 
-function inv(lines: InvoiceLine[], date = "2026-06-20"): SalesInvoice {
-  return {
-    id: Math.random().toString(36).slice(2),
-    invoiceNumber: "INV-1",
-    date,
-    customerId: "c1",
-    customerName: "عميل",
-    lines,
-    total: 0,
-    amountReceived: 0,
-    remaining: 0,
-    paymentType: "cash",
-    priceType: "retail",
-    status: "paid",
-    invoiceKind: "service",
-  };
-}
 
-function multiWorkerLine(workers: { workerId: string; commissionAmount: number }[], subtotal: number, quantity = 1): InvoiceLine {
-  return {
-    id: Math.random().toString(36).slice(2),
-    productId: "",
-    productName: "خدمة",
-    unit: "خدمة",
-    quantity,
-    price: subtotal / quantity,
-    subtotal,
-    kind: "service",
-    serviceId: "svc",
-    workers,
-  };
-}
-
-describe("employeeServiceStats — multi-worker", () => {
-  it("splits attributed revenue equally among the line's workers", () => {
-    const invoices = [inv([multiWorkerLine([{ workerId: "A", commissionAmount: 5 }, { workerId: "B", commissionAmount: 5 }], 100)])];
-    const a = employeeServiceStats(invoices, "A", "2026-06-01", "2026-06-30");
-    const b = employeeServiceStats(invoices, "B", "2026-06-01", "2026-06-30");
-    expect(a.attributedRevenue).toBe(50);
-    expect(b.attributedRevenue).toBe(50);
-    expect(a.carsWashed).toBe(1);
-    expect(b.carsWashed).toBe(1);
-  });
-
-  it("counts a car once for each participating worker and services per worker", () => {
-    const invoices = [
-      inv([
-        multiWorkerLine([{ workerId: "A", commissionAmount: 5 }], 60, 2),
-        multiWorkerLine([{ workerId: "A", commissionAmount: 5 }, { workerId: "B", commissionAmount: 5 }], 40),
-      ]),
-    ];
-    const a = employeeServiceStats(invoices, "A", "2026-06-01", "2026-06-30");
-    expect(a.carsWashed).toBe(1);
-    expect(a.servicesPerformed).toBe(3); // 2 + 1
-    expect(a.attributedRevenue).toBe(80); // 60 + 40/2
-  });
-});

@@ -11,6 +11,7 @@ import { EmptyState } from "../components/ui/EmptyState";
 import { useToast } from "../components/ui/Toast";
 import { useAuth } from "../store/AuthContext";
 import { useSettings } from "../store/SettingsContext";
+import { useApp } from "../store/AppContext";
 import { hasPermissionKey } from "../lib/permissions";
 import { piastresToEgp, egpToPiastres } from "../lib/money";
 import { todayISO, uid } from "../lib/utils";
@@ -170,6 +171,7 @@ function RestockDialog({ open, product, onSave, onClose }: RestockProps) {
 export function CarwashProductsPage() {
   const { currentUser } = useAuth();
   const { settings } = useSettings();
+  const { syncCarwashProducts } = useApp();
   const toast = useToast();
   const branchId = settings.currentBranchId || "branch-main";
   const canManage = hasPermissionKey(currentUser, "products.manage");
@@ -185,13 +187,14 @@ export function CarwashProductsPage() {
   const load = useCallback(async () => {
     if (!hasDb()) { setLoading(false); return; }
     try {
+      await syncCarwashProducts();
       const [prods, profs] = await Promise.all([listAllCarwashProducts(), getProductProfits()]);
       setProducts(prods);
       setProfits(profs);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [syncCarwashProducts]);
 
   useEffect(() => { load(); }, [load]);
 

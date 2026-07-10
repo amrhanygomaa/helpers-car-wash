@@ -2,6 +2,7 @@ import { eq, sql } from "drizzle-orm";
 import { db } from "../../db/client";
 import { products, productMovements } from "../../db/schema";
 import type { Product } from "../../db/schema";
+import { todayISO } from "../../lib/utils";
 
 export type { Product };
 
@@ -46,7 +47,9 @@ export async function createCarwashProduct(data: {
         qty: initialQty,
         unitPrice: data.purchasePrice ?? 0,
         branchId: data.branchId ?? "branch-main",
-        businessDate: data.businessDate ?? new Date().toISOString().slice(0, 10),
+        // Cairo business date, not UTC — between midnight and 2am local the
+        // two differ and the movement would land on the wrong report day.
+        businessDate: data.businessDate ?? todayISO(),
         createdBy: data.createdBy ?? null,
         createdAt: data.createdAt ?? new Date().toISOString(),
       }),
@@ -134,6 +137,49 @@ export async function recordProductSale(opts: {
       qty: opts.qty,
       unitPrice: opts.unitPrice,
       orderId: opts.orderId ?? null,
+      branchId: opts.branchId ?? MAIN_BRANCH_ID,
+      businessDate: opts.businessDate,
+      createdBy: opts.createdBy ?? null,
+      createdAt: opts.createdAt,
+    }),
+  ]);
+}
+
+/**
+ * Mirror a legacy KV-store stock change (invoice cancel/edit/return restores)
+ * into the relational products table so SQLite stays the source of truth for
+ * stock. Writes an "adjustment" movement, which the purchase/sale statistics
+ * in reports deliberately ignore. Unknown product ids no-op — legacy retail
+ * products that never existed in the carwash table are skipped.
+ */
+export async function recordProductAdjustment(opts: {
+  movementId: string;
+  productId: string;
+  /** Positive restores stock, negative deducts. Whole units. */
+  deltaQty: number;
+  branchId?: string;
+  businessDate: string;
+  createdBy?: string;
+  createdAt: string;
+}): Promise<void> {
+  if (!opts.deltaQty) return;
+  const existing = await db
+    .select({ id: products.id })
+    .from(products)
+    .where(eq(products.id, opts.productId))
+    .limit(1);
+  if (!existing[0]) return;
+  await db.batch([
+    db
+      .update(products)
+      .set({ stockQty: sql`MAX(0, stock_qty + ${opts.deltaQty})` })
+      .where(eq(products.id, opts.productId)),
+    db.insert(productMovements).values({
+      id: opts.movementId,
+      productId: opts.productId,
+      type: "adjustment",
+      qty: opts.deltaQty,
+      unitPrice: 0,
       branchId: opts.branchId ?? MAIN_BRANCH_ID,
       businessDate: opts.businessDate,
       createdBy: opts.createdBy ?? null,

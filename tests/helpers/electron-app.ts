@@ -37,6 +37,17 @@ export async function launchElectron(): Promise<ElectronHandle> {
   const window = await app.firstWindow();
   await window.waitForLoadState("domcontentloaded");
 
+  // The Electron userData dir (and with it localStorage: legacy KV products,
+  // invoices, SR/PRD number sequences…) is shared across launches, so state
+  // from earlier runs leaks into new tests. Wipe web storage and reload for a
+  // hermetic run — the SQLite side is already fresh via HW_E2E_DB_PATH.
+  await window.evaluate(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+  });
+  await window.reload();
+  await window.waitForLoadState("domcontentloaded");
+
   return { app, window, dbPath };
 }
 

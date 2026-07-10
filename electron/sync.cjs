@@ -229,7 +229,6 @@ function createSyncEngine({ db, deviceId, log = () => {} }) {
  * comparisons are byte-consistent across devices.
  */
 function createSupabaseTransport(cfg) {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { createClient } = require("@supabase/supabase-js");
   const client = createClient(cfg.url, cfg.key, { auth: { persistSession: false } });
   return {

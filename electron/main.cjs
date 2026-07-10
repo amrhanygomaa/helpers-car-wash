@@ -1256,10 +1256,10 @@ function buildInvoiceReceiptHtml(invoice, settings) {
     return new Intl.DateTimeFormat("ar-EG-u-nu-latn", { dateStyle: "short", timeStyle: "short" }).format(date);
   };
 
-  // Service invoices list only the wash services; product invoices list all lines.
+  // List every line on the receipt — wash services and product add-ons alike —
+  // so the printed items always reconcile with the invoice total.
   const allLines = Array.isArray(invoice.lines) ? invoice.lines : [];
-  const serviceLines = allLines.filter((l) => l.kind === "service");
-  const displayLines = isProduct ? allLines : serviceLines.length ? serviceLines : allLines;
+  const displayLines = allLines;
 
   const lineRows = displayLines
     .map(
@@ -1800,7 +1800,7 @@ function buildIntakeTicketHtml(payload, settings) {
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="utf-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'none'; connect-src 'none'; base-uri 'none'; form-action 'none';" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; script-src 'none'; connect-src 'none'; base-uri 'none'; form-action 'none';" />
   <title>تذكرة استقبال #${escapeHtml(ticketNumber)}</title>
   <style>
     @page { size: ${widthMm}mm auto; margin: 4mm; }
@@ -1813,8 +1813,9 @@ function buildIntakeTicketHtml(payload, settings) {
     .receipt { width: ${widthMm}mm; margin: 18px auto; padding: 4mm; background: white; box-shadow: 0 10px 28px rgba(15,23,42,.16); font-size: 11px; line-height: 1.55; }
     .center { text-align: center; }
     .brand { font-size: 16px; font-weight: 800; }
+    .logo { max-height: 60px; max-width: 180px; object-fit: contain; margin: 0 auto 6px auto; display: block; }
     .muted { color: #4b5563; }
-    .ticket { font-size: 28px; font-weight: 900; border: 1px dashed #111827; padding: 6px; margin: 8px 0; }
+    .ticket { font-size: 32px; font-weight: 900; margin: 8px 0; }
     .row { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px solid #e5e7eb; padding: 3px 0; }
     ul { margin: 4px 0 0; padding: 0 14px 0 0; }
     .footer { margin-top: 8px; padding-top: 6px; border-top: 1px dashed #111827; }
@@ -1830,8 +1831,7 @@ function buildIntakeTicketHtml(payload, settings) {
   </div>
   <main class="receipt">
     <div class="center">
-      <div class="brand">${escapeHtml(companyName || "Top Gear Car Wash")}</div>
-      <div class="muted">تذكرة استقبال غسيل</div>
+      ${settings.logoImage ? `<img src="${escapeHtml(settings.logoImage)}" class="logo" alt="Logo" />` : `<div class="brand">${escapeHtml(companyName || "Top Gear")}</div>`}
       <div class="ticket">#${escapeHtml(ticketNumber)}</div>
     </div>
     <div class="row"><span>الاستلام المتوقع</span><strong>${escapeHtml(formatDateTime(ticket.requestedPickupAt))}</strong></div>

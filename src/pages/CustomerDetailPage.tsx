@@ -63,6 +63,14 @@ export function CustomerDetailPage() {
     };
   }, [vehicles, salesInvoices, id]);
 
+  // Filter history invoices for the selected historyVehicle. Must stay above
+  // the `!customer` early return — a hook after a conditional return crashes
+  // the component when the customer appears on a later render (rules of hooks).
+  const vehicleHistoryInvoices = useMemo(() => {
+    if (!historyVehicle) return [];
+    return viewingInvoices.filter((inv) => inv.vehicleId === historyVehicle.id);
+  }, [viewingInvoices, historyVehicle]);
+
   // Brand logo helper
   const getBrandLogo = (brandName: string): string | undefined => {
     if (!brandName) return undefined;
@@ -117,12 +125,6 @@ export function CustomerDetailPage() {
     toast.success("تم تحديث بيانات السيارة بنجاح");
     setEditVehicle(null);
   }
-
-  // Filter history invoices for the selected historyVehicle
-  const vehicleHistoryInvoices = useMemo(() => {
-    if (!historyVehicle) return [];
-    return viewingInvoices.filter((inv) => inv.vehicleId === historyVehicle.id);
-  }, [viewingInvoices, historyVehicle]);
 
   return (
     <div className="space-y-6" dir="rtl">

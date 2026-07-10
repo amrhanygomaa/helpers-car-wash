@@ -21,6 +21,7 @@ import {
   loadCarwashReportSnapshot,
   type CarwashReportDbSnapshot,
 } from "../features/reports/carwash-report-queries";
+import { buildWorkerReportRows } from "../features/reports/worker-rows";
 import { listAllWorkers, type Worker } from "../features/workers/queries";
 import { formatDate, formatCurrency } from "../lib/format";
 import { peakHours, topServices, averageTicket, workerLeaderboard } from "../lib/analytics";
@@ -396,52 +397,10 @@ export function CarwashReportsPage() {
     [serviceInvoices]
   );
 
-  const workerRows = useMemo(() => {
-    const closureMap = new Map<string, { netDue: number; payrollCost: number }>();
-    for (const closure of snapshot.dailyClosures) {
-      const current = closureMap.get(closure.workerId) ?? { netDue: 0, payrollCost: 0 };
-      current.netDue += closure.netDue;
-      current.payrollCost += closure.baseAmount + closure.commissionTotal;
-      closureMap.set(closure.workerId, current);
-    }
-
-    return workers
-      .map((worker) => {
-        const carIds = new Set<string>();
-        let servicesCount = 0;
-        let attributedRevenue = 0;
-        let commission = 0;
-        for (const invoice of serviceInvoices) {
-          for (const line of invoice.lines) {
-            if (line.kind !== "service" || line.employeeId !== worker.id) continue;
-            carIds.add(invoice.id);
-            servicesCount += line.quantity;
-            attributedRevenue += egpToPiastres(line.subtotal);
-            commission += egpToPiastres(line.commissionAmount ?? 0);
-          }
-        }
-        const closure = closureMap.get(worker.id);
-        return {
-          id: worker.id,
-          name: worker.name,
-          cars: carIds.size,
-          servicesCount,
-          attributedRevenue,
-          commission,
-          payrollCost: closure?.payrollCost ?? 0,
-          netDue: closure?.netDue ?? 0,
-        };
-      })
-      .filter(
-        (row) =>
-          row.cars > 0 ||
-          row.servicesCount > 0 ||
-          row.commission > 0 ||
-          row.payrollCost > 0 ||
-          row.netDue !== 0
-      )
-      .sort((a, b) => b.attributedRevenue - a.attributedRevenue);
-  }, [workers, serviceInvoices, snapshot.dailyClosures]);
+  const workerRows = useMemo(
+    () => buildWorkerReportRows(workers, serviceInvoices, snapshot.dailyClosures),
+    [workers, serviceInvoices, snapshot.dailyClosures]
+  );
 
   const productRows = useMemo(() => {
     return snapshot.products

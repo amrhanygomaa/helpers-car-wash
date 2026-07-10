@@ -24,33 +24,27 @@ test("@smoke carwash core: first-run → dashboard → new invoice page → repo
     const setup = new FirstRunScreen(window);
     await expect(setup.heading()).toBeVisible();
     await setup.createOwner(OWNER_USERNAME, OWNER_PASSWORD);
-    await expect(window.getByText(/أهلاً بك في/)).toBeVisible();
+    await expect(window.getByText(/لوحة تشغيل المغسلة/)).toBeVisible();
 
     // ── Step 2: Navigate to new invoice page ─────────────────────────────
-    await window.goto("http://localhost:5173/carwash/new").catch(() => {
-      // In production Electron mode the base is file://; use internal navigation.
-    });
-    // Use sidebar nav link as a reliable navigation method
+    // Never window.goto() here: in production Electron the app loads from
+    // file://, so navigating to a dev-server URL blanks the window for good.
     const invoiceLink = window.getByRole("link", { name: "فاتورة غسيل جديدة" });
     if (await invoiceLink.isVisible({ timeout: 3000 }).catch(() => false)) {
       await invoiceLink.click();
     }
     // The new invoice page must show an invoice number field
-    await expect(window.getByText(/رقم الفاتورة|فاتورة غسيل/i)).toBeVisible({ timeout: 10_000 });
+    await expect(window.getByText("رقم الفاتورة").first()).toBeVisible({ timeout: 10_000 });
 
     // ── Step 3: Navigate to carwash reports page ──────────────────────────
-    const reportsLink = window.getByRole("link", { name: "تقارير الغسيل" });
-    if (await reportsLink.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await reportsLink.click();
-    }
-    await expect(window.getByText(/تقارير الغسيل/i)).toBeVisible({ timeout: 10_000 });
+    // Sidebar groups are open by default; Playwright auto-scrolls to the link.
+    await window.getByRole("link", { name: "تقارير المغسلة" }).click();
+    await expect(window.locator("h1", { hasText: "تقارير المغسلة" })).toBeVisible({ timeout: 10_000 });
 
     // ── Step 4: Navigate to day-close / payroll page ──────────────────────
-    const dayCloseLink = window.getByRole("link", { name: "قفلة اليوم" });
-    if (await dayCloseLink.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await dayCloseLink.click();
-    }
-    await expect(window.getByText(/قفلة اليوم/i)).toBeVisible({ timeout: 10_000 });
+    // Sidebar label is "تقفيل اليوم"; the page header reads "قفلة اليوم".
+    await window.getByRole("link", { name: "تقفيل اليوم" }).click();
+    await expect(window.getByText(/قفلة اليوم/i).first()).toBeVisible({ timeout: 10_000 });
   } finally {
     await closeElectron(handle);
   }
@@ -65,7 +59,7 @@ test("@smoke logout then re-login as carwash owner", async () => {
     const setup = new FirstRunScreen(window);
     await expect(setup.heading()).toBeVisible();
     await setup.createOwner(OWNER_USERNAME, OWNER_PASSWORD);
-    await expect(window.getByText(/أهلاً بك في/)).toBeVisible();
+    await expect(window.getByText(/لوحة تشغيل المغسلة/)).toBeVisible();
 
     // Logout
     await window.getByRole("button", { name: "تسجيل الخروج" }).click();
@@ -74,7 +68,7 @@ test("@smoke logout then re-login as carwash owner", async () => {
     const login = new LoginScreen(window);
     await expect(login.usernameInput()).toBeVisible();
     await login.loginAs(OWNER_USERNAME, OWNER_PASSWORD);
-    await expect(window.getByText(/أهلاً بك في/)).toBeVisible();
+    await expect(window.getByText(/لوحة تشغيل المغسلة/)).toBeVisible();
   } finally {
     await closeElectron(handle);
   }
