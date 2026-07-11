@@ -3034,7 +3034,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [isDesktop, settings.backupOnClose, settings.backupPath, currentUser, buildBackupData]);
 
   const syncCarwashProducts = useCallback(async () => {
-    if (!hasDb()) return;
+    if (!hasDb() || !auth.isAuthenticated) return;
     try {
       const { listAllCarwashProducts, createCarwashProduct } = await import("../features/products/carwash-queries");
       const dbProds = await listAllCarwashProducts();
@@ -3125,7 +3125,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       console.error("Error in syncCarwashProducts:", err);
     }
-  }, []);
+  }, [auth.isAuthenticated]);
 
   useEffect(() => {
     void syncCarwashProducts();
